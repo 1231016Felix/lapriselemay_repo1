@@ -1,1 +1,10 @@
-<Solution />
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="perfmonitorQt/build/PerfMonitorQt.vcxproj" Id="0a2f712e-2b3c-3474-9b6a-330dde77bbfb">
+    <Platform Project="x64" />
+  </Project>
+  <Project Path="SurfaceBatteryMonitor/SurfaceBatteryMonitor.vcxproj" Id="82e8d4af-341f-4463-b32b-3cdbe70d9d1b" />
+</Solution>

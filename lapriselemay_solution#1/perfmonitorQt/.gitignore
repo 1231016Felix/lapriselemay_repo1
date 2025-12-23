@@ -1,0 +1,61 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+x64/
+Debug/
+Release/
+
+# IDE files
+.vs/
+.vscode/
+*.vcxproj*
+*.sln
+CMakeUserPresets.json
+.idea/
+
+# Ninja build files
+.ninja_deps
+.ninja_log
+compile_commands.json
+
+# Qt Creator
+*.pro.user*
+*.qbs.user*
+*.qmlproject.user
+*.autosave
+
+# Compiled files
+*.obj
+*.o
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+*.exp
+
+# Generated files
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+*_automoc.cpp
+*_autogen/
+
+# Installer output
+installer/output/
+
+# Redistributables (download separately)
+installer/redist/*.exe
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*~

@@ -1,0 +1,12 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/">
+        <file>icons/app_icon.png</file>
+        <file>icons/cpu.png</file>
+        <file>icons/memory.png</file>
+        <file>icons/disk.png</file>
+        <file>icons/network.png</file>
+        <file>icons/battery.png</file>
+        <file>icons/process.png</file>
+    </qresource>
+</RCC>
