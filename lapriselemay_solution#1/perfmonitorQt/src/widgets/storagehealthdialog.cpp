@@ -182,11 +182,13 @@ DiskDetailWidget::DiskDetailWidget(QWidget *parent)
 void DiskDetailWidget::setupUi()
 {
     auto mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(15);
+    mainLayout->setSpacing(8);
+    mainLayout->setContentsMargins(8, 8, 8, 8);
     
     // === Drive Information ===
     auto infoGroup = new QGroupBox(tr("Drive Information"));
     auto infoLayout = new QGridLayout(infoGroup);
+    infoLayout->setSpacing(4);
     
     infoLayout->addWidget(new QLabel(tr("Model:")), 0, 0);
     m_modelLabel = new QLabel("-");
@@ -314,21 +316,25 @@ void DiskDetailWidget::setupUi()
     m_smartTable->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_smartTable->horizontalHeader()->setStretchLastSection(true);
     m_smartTable->verticalHeader()->setVisible(false);
-    m_smartTable->setMinimumHeight(250);
-    m_smartTable->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    m_smartTable->setMinimumHeight(100);
+    m_smartTable->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
     smartLayout->addWidget(m_smartTable);
     
-    smartGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    smartGroup->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
     mainLayout->addWidget(smartGroup, 1);  // Give it stretch factor
     
     // === Alerts ===
     m_alertsLabel = new QLabel();
     m_alertsLabel->setWordWrap(true);
     m_alertsLabel->setVisible(false);
+    m_alertsLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
     mainLayout->addWidget(m_alertsLabel);
     
     // Ensure the widget expands properly in the scroll area
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
+    
+    // Add a spacer at the end to prevent excessive stretching
+    mainLayout->addStretch(0);
 }
 
 void DiskDetailWidget::setDiskInfo(const DiskHealthInfo& info)
@@ -487,7 +493,17 @@ void DiskDetailWidget::updateNvmeSection(const DiskHealthInfo& info)
 void DiskDetailWidget::updateSmartTable(const DiskHealthInfo& info)
 {
     m_smartModel->setAttributes(info.smartAttributes);
+    
+    // Resize columns to content
     m_smartTable->resizeColumnsToContents();
+    
+    // Ensure the table is properly updated
+    m_smartTable->update();
+    
+    // If no attributes, show a message
+    if (info.smartAttributes.empty()) {
+        qDebug() << "No SMART attributes available for disk:" << info.model;
+    }
 }
 
 void DiskDetailWidget::clear()
@@ -519,8 +535,8 @@ StorageHealthDialog::StorageHealthDialog(QWidget *parent)
     : QDialog(parent)
 {
     setWindowTitle(tr("Storage Health Monitor"));
-    setMinimumSize(900, 700);
-    resize(1000, 750);
+    setMinimumSize(600, 350);
+    resize(750, 480);
     
     m_monitor = std::make_unique<StorageHealthMonitor>(this);
     
@@ -604,8 +620,8 @@ void StorageHealthDialog::setupUi()
     auto cardsScroll = new QScrollArea();
     cardsScroll->setWidgetResizable(true);
     cardsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    cardsScroll->setMinimumWidth(350);
-    cardsScroll->setMaximumWidth(450);
+    cardsScroll->setMinimumWidth(220);
+    cardsScroll->setMaximumWidth(280);
     
     m_cardsContainer = new QWidget();
     m_cardsLayout = new QVBoxLayout(m_cardsContainer);
@@ -620,8 +636,12 @@ void StorageHealthDialog::setupUi()
     // Right side - Detail view
     auto detailScroll = new QScrollArea();
     detailScroll->setWidgetResizable(true);
+    detailScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    detailScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    detailScroll->setMinimumWidth(300);
     
     m_detailWidget = new DiskDetailWidget();
+    m_detailWidget->setMinimumSize(280, 350);
     detailScroll->setWidget(m_detailWidget);
     
     splitter->addWidget(detailScroll);
@@ -664,7 +684,10 @@ void StorageHealthDialog::updateDiskCards()
     
     // Create new cards
     const auto& disks = m_monitor->disks();
+    qDebug() << "StorageHealthDialog: Found" << disks.size() << "disks";
+    
     for (const auto& disk : disks) {
+        qDebug() << "  - Disk:" << disk.model << "Path:" << disk.devicePath;
         auto* card = new DiskHealthCard();
         card->setDiskInfo(disk);
         connect(card, &DiskHealthCard::detailsRequested, this, &StorageHealthDialog::showDiskDetails);

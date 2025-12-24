@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="src">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\core">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\registry">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\scanners">
+      <UniqueIdentifier>{A1B2C3D4-1234-5678-9ABC-DEF012345678}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\cleaners">
+      <UniqueIdentifier>{B2C3D4E5-2345-6789-ABCD-EF0123456789}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\backup">
+      <UniqueIdentifier>{C3D4E5F6-3456-789A-BCDE-F01234567890}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src\ui">
+      <UniqueIdentifier>{D4E5F6A7-4567-89AB-CDEF-012345678901}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\pch.h">
+      <Filter>src</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\Config.h">
+      <Filter>src\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\core\ProtectedKeys.h">
+      <Filter>src\core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\registry\RegistryKey.h">
+      <Filter>src\registry</Filter>
+    </ClInclude>
+    <ClInclude Include="src\registry\RegistryValue.h">
+      <Filter>src\registry</Filter>
+    </ClInclude>
+    <ClInclude Include="src\registry\RegistryUtils.h">
+      <Filter>src\registry</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scanners\BaseScanner.h">
+      <Filter>src\scanners</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scanners\UninstallScanner.h">
+      <Filter>src\scanners</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scanners\FileExtensionScanner.h">
+      <Filter>src\scanners</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scanners\MRUScanner.h">
+      <Filter>src\scanners</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scanners\StartupScanner.h">
+      <Filter>src\scanners</Filter>
+    </ClInclude>
+    <ClInclude Include="src\scanners\SharedDllScanner.h">
+      <Filter>src\scanners</Filter>
+    </ClInclude>
+    <ClInclude Include="src\cleaners\RegistryCleaner.h">
+      <Filter>src\cleaners</Filter>
+    </ClInclude>
+    <ClInclude Include="src\backup\BackupManager.h">
+      <Filter>src\backup</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ui\ConsoleUI.h">
+      <Filter>src\ui</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\pch.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\main.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\registry\RegistryKey.cpp">
+      <Filter>src\registry</Filter>
+    </ClCompile>
+    <ClCompile Include="src\registry\RegistryValue.cpp">
+      <Filter>src\registry</Filter>
+    </ClCompile>
+    <ClCompile Include="src\registry\RegistryUtils.cpp">
+      <Filter>src\registry</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scanners\BaseScanner.cpp">
+      <Filter>src\scanners</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scanners\UninstallScanner.cpp">
+      <Filter>src\scanners</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scanners\FileExtensionScanner.cpp">
+      <Filter>src\scanners</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scanners\MRUScanner.cpp">
+      <Filter>src\scanners</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scanners\StartupScanner.cpp">
+      <Filter>src\scanners</Filter>
+    </ClCompile>
+    <ClCompile Include="src\scanners\SharedDllScanner.cpp">
+      <Filter>src\scanners</Filter>
+    </ClCompile>
+    <ClCompile Include="src\cleaners\RegistryCleaner.cpp">
+      <Filter>src\cleaners</Filter>
+    </ClCompile>
+    <ClCompile Include="src\backup\BackupManager.cpp">
+      <Filter>src\backup</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ui\ConsoleUI.cpp">
+      <Filter>src\ui</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>

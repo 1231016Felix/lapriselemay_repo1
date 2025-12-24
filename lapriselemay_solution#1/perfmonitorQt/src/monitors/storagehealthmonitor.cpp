@@ -315,12 +315,16 @@ void StorageHealthMonitor::update()
     m_disks.clear();
     enumerateDisks();
     
+    qDebug() << "StorageHealthMonitor: Found" << m_disks.size() << "disks";
+    
     for (auto& disk : m_disks) {
+        qDebug() << "Processing disk:" << disk.model << "NVMe:" << disk.isNvme;
         if (disk.isNvme) {
             readNvmeHealth(disk);
         } else {
             readSmartData(disk);
         }
+        qDebug() << "SMART attributes count:" << disk.smartAttributes.size();
         calculateHealthStatus(disk);
         checkAlerts(disk);
         disk.lastUpdated = QDateTime::currentDateTime();
@@ -356,7 +360,33 @@ void StorageHealthMonitor::enumerateDisks()
         );
         
         if (hDevice == INVALID_HANDLE_VALUE) {
-            continue;
+            // Try with read-only access (non-admin fallback)
+            hDevice = CreateFileW(
+                reinterpret_cast<LPCWSTR>(devicePath.utf16()),
+                GENERIC_READ,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                nullptr,
+                OPEN_EXISTING,
+                0,
+                nullptr
+            );
+            
+            if (hDevice == INVALID_HANDLE_VALUE) {
+                // Try with minimum access for enumeration only
+                hDevice = CreateFileW(
+                    reinterpret_cast<LPCWSTR>(devicePath.utf16()),
+                    0,  // No access rights, just query
+                    FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    nullptr,
+                    OPEN_EXISTING,
+                    0,
+                    nullptr
+                );
+                
+                if (hDevice == INVALID_HANDLE_VALUE) {
+                    continue;
+                }
+            }
         }
         
         DiskHealthInfo disk;
@@ -444,10 +474,18 @@ void StorageHealthMonitor::enumerateDisks()
         
         CloseHandle(hDevice);
         
+        qDebug() << "Found disk:" << disk.model << "Interface:" << disk.interfaceType 
+                 << "Removable:" << disk.isRemovable << "NVMe:" << disk.isNvme;
+        
         if (!disk.isRemovable && !disk.interfaceType.contains("USB")) {
             m_disks.push_back(disk);
+            qDebug() << "  -> Added to list";
+        } else {
+            qDebug() << "  -> Filtered out";
         }
     }
+    
+    qDebug() << "Total disks enumerated:" << m_disks.size();
 #endif
 }
 
@@ -469,7 +507,21 @@ void StorageHealthMonitor::readSmartData(DiskHealthInfo& disk)
     );
     
     if (hDevice == INVALID_HANDLE_VALUE) {
-        return;
+        // Try with read-only access if read-write fails (non-admin)
+        hDevice = CreateFileW(
+            reinterpret_cast<LPCWSTR>(disk.devicePath.utf16()),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr,
+            OPEN_EXISTING,
+            0,
+            nullptr
+        );
+        if (hDevice == INVALID_HANDLE_VALUE) {
+            qDebug() << "Failed to open device for SMART data:" << disk.devicePath 
+                     << "Error:" << GetLastError();
+            return;
+        }
     }
     
     int driveNumber = 0;
@@ -609,21 +661,33 @@ void StorageHealthMonitor::readNvmeHealth(DiskHealthInfo& disk)
     );
     
     if (hDevice == INVALID_HANDLE_VALUE) {
-        return;
+        // Try with read-only access if read-write fails (non-admin)
+        hDevice = CreateFileW(
+            reinterpret_cast<LPCWSTR>(disk.devicePath.utf16()),
+            GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr,
+            OPEN_EXISTING,
+            0,
+            nullptr
+        );
+        if (hDevice == INVALID_HANDLE_VALUE) {
+            qDebug() << "Failed to open device for NVMe health:" << disk.devicePath;
+            return;
+        }
     }
     
-    struct QueryBuffer {
+    // Proper structure for NVMe health query
+    struct {
+        STORAGE_PROPERTY_QUERY Query;
         STORAGE_PROTOCOL_SPECIFIC_DATA ProtocolSpecific;
-        NVME_HEALTH_INFO_BLOCK HealthInfo;
-    };
+        BYTE Buffer[sizeof(NVME_HEALTH_INFO_BLOCK)];
+    } queryBuffer;
     
-    STORAGE_PROPERTY_QUERY query;
-    memset(&query, 0, sizeof(query));
-    query.PropertyId = StorageDeviceProtocolSpecificProperty;
-    query.QueryType = PropertyStandardQuery;
-    
-    QueryBuffer queryBuffer;
     memset(&queryBuffer, 0, sizeof(queryBuffer));
+    
+    queryBuffer.Query.PropertyId = StorageDeviceProtocolSpecificProperty;
+    queryBuffer.Query.QueryType = PropertyStandardQuery;
     
     queryBuffer.ProtocolSpecific.ProtocolType = ProtocolTypeNvme;
     queryBuffer.ProtocolSpecific.DataType = NVMeDataTypeLogPage;
@@ -634,19 +698,19 @@ void StorageHealthMonitor::readNvmeHealth(DiskHealthInfo& disk)
     
     DWORD bytesReturned = 0;
     BOOL success = DeviceIoControl(hDevice, IOCTL_STORAGE_QUERY_PROPERTY,
-        &query, sizeof(query),
+        &queryBuffer, sizeof(queryBuffer),
         &queryBuffer, sizeof(queryBuffer), &bytesReturned, nullptr);
     
-    if (success && bytesReturned >= sizeof(queryBuffer)) {
-        const NVME_HEALTH_INFO_BLOCK& healthInfo = queryBuffer.HealthInfo;
+    if (success && bytesReturned >= offsetof(decltype(queryBuffer), Buffer) + sizeof(NVME_HEALTH_INFO_BLOCK)) {
+        const NVME_HEALTH_INFO_BLOCK* healthInfo = reinterpret_cast<const NVME_HEALTH_INFO_BLOCK*>(queryBuffer.Buffer);
         
         disk.nvmeHealth.isValid = true;
-        disk.nvmeHealth.availableSpare = healthInfo.AvailableSpare;
-        disk.nvmeHealth.availableSpareThreshold = healthInfo.AvailableSpareThreshold;
-        disk.nvmeHealth.percentageUsed = healthInfo.PercentageUsed;
+        disk.nvmeHealth.availableSpare = healthInfo->AvailableSpare;
+        disk.nvmeHealth.availableSpareThreshold = healthInfo->AvailableSpareThreshold;
+        disk.nvmeHealth.percentageUsed = healthInfo->PercentageUsed;
         
-        disk.nvmeHealth.temperature = healthInfo.CompositeTemperature;
-        disk.temperatureCelsius = healthInfo.CompositeTemperature - 273;
+        disk.nvmeHealth.temperature = healthInfo->CompositeTemperature;
+        disk.temperatureCelsius = healthInfo->CompositeTemperature - 273;
         
         auto extract64 = [](const BYTE* d) -> uint64_t {
             uint64_t value = 0;
@@ -656,12 +720,12 @@ void StorageHealthMonitor::readNvmeHealth(DiskHealthInfo& disk)
             return value;
         };
         
-        disk.nvmeHealth.dataUnitsRead = extract64(healthInfo.DataUnitsRead);
-        disk.nvmeHealth.dataUnitsWritten = extract64(healthInfo.DataUnitsWritten);
-        disk.nvmeHealth.powerCycles = extract64(healthInfo.PowerCycles);
-        disk.nvmeHealth.powerOnHours = extract64(healthInfo.PowerOnHours);
-        disk.nvmeHealth.unsafeShutdowns = extract64(healthInfo.UnsafeShutdowns);
-        disk.nvmeHealth.mediaErrors = extract64(healthInfo.MediaErrors);
+        disk.nvmeHealth.dataUnitsRead = extract64(healthInfo->DataUnitsRead);
+        disk.nvmeHealth.dataUnitsWritten = extract64(healthInfo->DataUnitsWritten);
+        disk.nvmeHealth.powerCycles = extract64(healthInfo->PowerCycles);
+        disk.nvmeHealth.powerOnHours = extract64(healthInfo->PowerOnHours);
+        disk.nvmeHealth.unsafeShutdowns = extract64(healthInfo->UnsafeShutdowns);
+        disk.nvmeHealth.mediaErrors = extract64(healthInfo->MediaErrors);
         
         disk.powerOnHours = disk.nvmeHealth.powerOnHours;
         disk.powerCycles = disk.nvmeHealth.powerCycles;
