@@ -10,6 +10,7 @@
 #include "widgets/startupdialog.h"
 #include "widgets/settingsdialog.h"
 #include "widgets/cleanerdialog.h"
+#include "widgets/storagehealthdialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -168,6 +169,16 @@ void MainWindow::setupMenuBar()
     cleanerAction->setToolTip(tr("Clean temporary files, browser cache, and other junk"));
     connect(cleanerAction, &QAction::triggered, this, [this]() {
         CleanerDialog dialog(this);
+        dialog.exec();
+    });
+    
+    toolsMenu->addSeparator();
+    
+    auto storageHealthAction = toolsMenu->addAction(tr("💾 Storage &Health..."));
+    storageHealthAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
+    storageHealthAction->setToolTip(tr("Check SSD/HDD health with S.M.A.R.T. data"));
+    connect(storageHealthAction, &QAction::triggered, this, [this]() {
+        StorageHealthDialog dialog(this);
         dialog.exec();
     });
     
