@@ -7,7 +7,7 @@ namespace RegistryCleaner::Config {
 
     // Application info
     inline constexpr StringView APP_NAME = L"Windows Registry Cleaner";
-    inline constexpr StringView APP_VERSION = L"1.0.0";
+    inline constexpr StringView APP_VERSION = L"2.0.0";
 
     // Backup settings
     inline constexpr StringView BACKUP_FOLDER = L"RegistryBackups";
@@ -44,29 +44,45 @@ namespace RegistryCleaner::Config {
         MRUEntry,            // Most Recently Used lists
         StartupEntry,        // Invalid startup programs
         SharedDll,           // Orphaned SharedDLLs
-        COMEntry,            // Invalid COM/ActiveX entries
-        AppPath,             // Invalid application paths
-        Installer,           // Windows Installer orphans
-        Help,                // Orphaned help file references
-        Font,                // Invalid font entries
-        Sound,               // Invalid sound scheme entries
+        ActiveX,             // ActiveX/COM components
+        AppPaths,            // Application paths
+        Software,            // Software paths
+        HelpFiles,           // Help file references
+        Firewall,            // Firewall rules
+        Fonts,               // Font entries
+        StartMenu,           // Start menu entries
+        Sounds,              // Sound events
+        BrowserHistory,      // IE History/TypedURLs
+        ImageExecution,      // IFEO entries
+        EmptyKeys,           // Empty registry keys
+        Services,            // Windows services
+        MUICache,            // MUI Cache
+        ContextMenu,         // Context menu handlers
         Other                // Miscellaneous
     };
 
     // Get category name
     [[nodiscard]] inline String GetCategoryName(IssueCategory category) {
         switch (category) {
-            case IssueCategory::UninstallEntry:  return L"Entrées de désinstallation";
-            case IssueCategory::FileExtension:   return L"Extensions de fichiers";
-            case IssueCategory::MRUEntry:        return L"Fichiers récents (MRU)";
-            case IssueCategory::StartupEntry:    return L"Programmes au démarrage";
-            case IssueCategory::SharedDll:       return L"DLLs partagées";
-            case IssueCategory::COMEntry:        return L"Entrées COM/ActiveX";
-            case IssueCategory::AppPath:         return L"Chemins d'applications";
-            case IssueCategory::Installer:       return L"Windows Installer";
-            case IssueCategory::Help:            return L"Fichiers d'aide";
-            case IssueCategory::Font:            return L"Polices";
-            case IssueCategory::Sound:           return L"Schémas sonores";
+            case IssueCategory::UninstallEntry:  return L"Desinstallation";
+            case IssueCategory::FileExtension:   return L"Extensions fichiers";
+            case IssueCategory::MRUEntry:        return L"Fichiers recents";
+            case IssueCategory::StartupEntry:    return L"Demarrage";
+            case IssueCategory::SharedDll:       return L"DLLs partagees";
+            case IssueCategory::ActiveX:         return L"ActiveX/COM";
+            case IssueCategory::AppPaths:        return L"Chemins applications";
+            case IssueCategory::Software:        return L"Chemins logiciels";
+            case IssueCategory::HelpFiles:       return L"Fichiers aide";
+            case IssueCategory::Firewall:        return L"Pare-feu";
+            case IssueCategory::Fonts:           return L"Polices";
+            case IssueCategory::StartMenu:       return L"Menu Demarrer";
+            case IssueCategory::Sounds:          return L"Sons";
+            case IssueCategory::BrowserHistory:  return L"Historique IE";
+            case IssueCategory::ImageExecution:  return L"Execution Image";
+            case IssueCategory::EmptyKeys:       return L"Cles vides";
+            case IssueCategory::Services:        return L"Services";
+            case IssueCategory::MUICache:        return L"Cache MUI";
+            case IssueCategory::ContextMenu:     return L"Menu contextuel";
             case IssueCategory::Other:           return L"Autres";
             default:                             return L"Inconnu";
         }
@@ -77,7 +93,7 @@ namespace RegistryCleaner::Config {
         switch (severity) {
             case Severity::Low:      return L"Faible";
             case Severity::Medium:   return L"Moyen";
-            case Severity::High:     return L"Élevé";
+            case Severity::High:     return L"Eleve";
             case Severity::Critical: return L"Critique";
             default:                 return L"Inconnu";
         }

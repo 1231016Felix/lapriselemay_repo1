@@ -2,6 +2,21 @@
 #include "pch.h"
 #include "ui/ConsoleUI.h"
 
+namespace {
+    HANDLE g_hConsole = nullptr;
+    
+    void Print(std::wstring_view text) {
+        if (!g_hConsole) g_hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+        DWORD written;
+        WriteConsoleW(g_hConsole, text.data(), static_cast<DWORD>(text.size()), &written, nullptr);
+    }
+    
+    void PrintLn(std::wstring_view text = L"") {
+        Print(text);
+        Print(L"\n");
+    }
+}
+
 // Check if running as administrator
 bool IsRunningAsAdmin() {
     BOOL isAdmin = FALSE;
@@ -41,14 +56,10 @@ bool RequestElevation() {
 }
 
 int wmain(int argc, wchar_t* argv[]) {
+    g_hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    
     // Set console title
     SetConsoleTitleW(L"Windows Registry Cleaner");
-
-    // Enable ANSI escape sequences for modern terminals
-    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    DWORD dwMode = 0;
-    GetConsoleMode(hOut, &dwMode);
-    SetConsoleMode(hOut, dwMode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 
     // Check for command line arguments
     bool forceNoAdmin = false;
@@ -60,26 +71,28 @@ int wmain(int argc, wchar_t* argv[]) {
 
     // Check admin rights
     if (!forceNoAdmin && !IsRunningAsAdmin()) {
-        std::wcout << L"Ce programme nécessite des droits administrateur.\n";
-        std::wcout << L"Voulez-vous relancer en tant qu'administrateur? (O/N): ";
+        PrintLn(L"Ce programme necessite des droits administrateur.");
+        Print(L"Voulez-vous relancer en tant qu'administrateur? (O/N): ");
         
         wchar_t input;
         std::wcin >> input;
         
         if (towupper(input) == L'O' || towupper(input) == L'Y') {
             if (RequestElevation()) {
-                return 0; // Exit this instance
+                return 0;
             } else {
-                std::wcout << L"Impossible d'obtenir les droits administrateur.\n";
-                std::wcout << L"Certaines fonctionnalités seront limitées.\n\n";
-                std::wcout << L"Appuyez sur une touche pour continuer...";
+                PrintLn(L"Impossible d'obtenir les droits administrateur.");
+                PrintLn(L"Certaines fonctionnalites seront limitees.");
+                PrintLn();
+                Print(L"Appuyez sur une touche pour continuer...");
                 std::wcin.ignore();
                 std::wcin.get();
             }
         } else {
-            std::wcout << L"Exécution sans droits administrateur.\n";
-            std::wcout << L"Certaines clés du registre ne seront pas accessibles.\n\n";
-            std::wcout << L"Appuyez sur une touche pour continuer...";
+            PrintLn(L"Execution sans droits administrateur.");
+            PrintLn(L"Certaines cles du registre ne seront pas accessibles.");
+            PrintLn();
+            Print(L"Appuyez sur une touche pour continuer...");
             std::wcin.ignore();
             std::wcin.get();
         }
@@ -90,11 +103,15 @@ int wmain(int argc, wchar_t* argv[]) {
         ui.Run();
     }
     catch (const std::exception& e) {
-        std::wcerr << L"Erreur fatale: " << e.what() << L"\n";
+        Print(L"Erreur fatale: ");
+        // Convert narrow string to wide
+        std::string msg = e.what();
+        std::wstring wmsg(msg.begin(), msg.end());
+        PrintLn(wmsg);
         return 1;
     }
     catch (...) {
-        std::wcerr << L"Erreur fatale inconnue\n";
+        PrintLn(L"Erreur fatale inconnue");
         return 1;
     }
 

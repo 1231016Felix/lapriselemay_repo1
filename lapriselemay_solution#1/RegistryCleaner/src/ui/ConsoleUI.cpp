@@ -6,6 +6,20 @@
 #include "scanners/MRUScanner.h"
 #include "scanners/StartupScanner.h"
 #include "scanners/SharedDllScanner.h"
+#include "scanners/ActiveXScanner.h"
+#include "scanners/AppPathScanner.h"
+#include "scanners/SoftwarePathScanner.h"
+#include "scanners/HelpFileScanner.h"
+#include "scanners/FirewallScanner.h"
+#include "scanners/FontScanner.h"
+#include "scanners/StartMenuScanner.h"
+#include "scanners/SoundEventScanner.h"
+#include "scanners/IEHistoryScanner.h"
+#include "scanners/ImageExecutionScanner.h"
+#include "scanners/EmptyKeyScanner.h"
+#include "scanners/ServiceScanner.h"
+#include "scanners/MUICacheScanner.h"
+#include "scanners/ContextMenuScanner.h"
 
 namespace RegistryCleaner::UI {
 
@@ -16,20 +30,41 @@ namespace RegistryCleaner::UI {
         GetConsoleScreenBufferInfo(m_hConsole, &csbi);
         m_defaultAttribs = csbi.wAttributes;
 
-        // Set console to UTF-16
-        SetConsoleOutputCP(CP_UTF8);
-        _setmode(_fileno(stdout), _O_U16TEXT);
-
         // Register all scanners
-        m_cleaner.AddScanner(std::make_unique<UninstallScanner>());
+        m_cleaner.AddScanner(std::make_unique<ActiveXScanner>());
+        m_cleaner.AddScanner(std::make_unique<SoftwarePathScanner>());
+        m_cleaner.AddScanner(std::make_unique<AppPathScanner>());
         m_cleaner.AddScanner(std::make_unique<FileExtensionScanner>());
-        m_cleaner.AddScanner(std::make_unique<MRUScanner>());
-        m_cleaner.AddScanner(std::make_unique<StartupScanner>());
+        m_cleaner.AddScanner(std::make_unique<HelpFileScanner>());
+        m_cleaner.AddScanner(std::make_unique<FirewallScanner>());
+        m_cleaner.AddScanner(std::make_unique<FontScanner>());
         m_cleaner.AddScanner(std::make_unique<SharedDllScanner>());
+        m_cleaner.AddScanner(std::make_unique<MRUScanner>());
+        m_cleaner.AddScanner(std::make_unique<UninstallScanner>());
+        m_cleaner.AddScanner(std::make_unique<StartMenuScanner>());
+        m_cleaner.AddScanner(std::make_unique<StartupScanner>());
+        m_cleaner.AddScanner(std::make_unique<SoundEventScanner>());
+        m_cleaner.AddScanner(std::make_unique<IEHistoryScanner>());
+        m_cleaner.AddScanner(std::make_unique<ImageExecutionScanner>());
+        m_cleaner.AddScanner(std::make_unique<EmptyKeyScanner>());
+        m_cleaner.AddScanner(std::make_unique<ServiceScanner>());
+        m_cleaner.AddScanner(std::make_unique<MUICacheScanner>());
+        m_cleaner.AddScanner(std::make_unique<ContextMenuScanner>());
     }
 
     ConsoleUI::~ConsoleUI() {
         ResetColor();
+    }
+
+    // Core print function using WriteConsoleW for proper Unicode support
+    void ConsoleUI::Print(StringView text) {
+        DWORD written;
+        WriteConsoleW(m_hConsole, text.data(), static_cast<DWORD>(text.size()), &written, nullptr);
+    }
+
+    void ConsoleUI::PrintLn(StringView text) {
+        Print(text);
+        Print(L"\n");
     }
 
     void ConsoleUI::Run() {
@@ -52,93 +87,95 @@ namespace RegistryCleaner::UI {
         }
 
         ClearScreen();
-        std::wcout << L"Au revoir!\n";
+        PrintLn(L"Au revoir!");
     }
 
     void ConsoleUI::ShowMainMenu() {
         ClearScreen();
         PrintHeader(Config::APP_NAME);
         
-        std::wcout << L"\n";
+        PrintLn();
         SetColor(ConsoleColor::Cyan);
-        std::wcout << L"  [1]";
+        Print(L"  [1]");
         ResetColor();
-        std::wcout << L" Sélectionner les analyses\n";
+        PrintLn(L" Selectionner les analyses");
         
         SetColor(ConsoleColor::Cyan);
-        std::wcout << L"  [2]";
+        Print(L"  [2]");
         ResetColor();
-        std::wcout << L" Analyser le registre\n";
+        PrintLn(L" Analyser le registre");
         
         SetColor(ConsoleColor::Cyan);
-        std::wcout << L"  [3]";
+        Print(L"  [3]");
         ResetColor();
-        std::wcout << L" Voir les résultats (" << m_currentIssues.size() << L" problèmes)\n";
+        Print(L" Voir les resultats (");
+        Print(std::to_wstring(m_currentIssues.size()));
+        PrintLn(L" problemes)");
         
         SetColor(ConsoleColor::Cyan);
-        std::wcout << L"  [4]";
+        Print(L"  [4]");
         ResetColor();
-        std::wcout << L" Nettoyer les entrées sélectionnées\n";
+        PrintLn(L" Nettoyer les entrees selectionnees");
         
         SetColor(ConsoleColor::Cyan);
-        std::wcout << L"  [5]";
+        Print(L"  [5]");
         ResetColor();
-        std::wcout << L" Gérer les sauvegardes\n";
+        PrintLn(L" Gerer les sauvegardes");
         
         SetColor(ConsoleColor::Cyan);
-        std::wcout << L"  [6]";
+        Print(L"  [6]");
         ResetColor();
-        std::wcout << L" À propos\n";
+        PrintLn(L" A propos");
         
-        std::wcout << L"\n";
+        PrintLn();
         SetColor(ConsoleColor::Red);
-        std::wcout << L"  [0]";
+        Print(L"  [0]");
         ResetColor();
-        std::wcout << L" Quitter\n";
+        PrintLn(L" Quitter");
         
         PrintSeparator();
-        std::wcout << L"Votre choix: ";
+        Print(L"Votre choix: ");
     }
 
     void ConsoleUI::ShowScannerSelection() {
         ClearScreen();
-        PrintHeader(L"Sélection des analyses");
+        PrintHeader(L"Selection des analyses");
         
         const auto& scanners = m_cleaner.GetScanners();
         
-        std::wcout << L"\n";
+        PrintLn();
         for (size_t i = 0; i < scanners.size(); ++i) {
             SetColor(ConsoleColor::Cyan);
-            std::wcout << L"  [" << (i + 1) << L"]";
+            Print(std::format(L"  [{}]", i + 1));
             ResetColor();
             
             if (scanners[i]->IsEnabled()) {
                 SetColor(ConsoleColor::Green);
-                std::wcout << L" [X] ";
+                Print(L" [X] ");
             } else {
                 SetColor(ConsoleColor::Red);
-                std::wcout << L" [ ] ";
+                Print(L" [ ] ");
             }
             ResetColor();
             
-            std::wcout << scanners[i]->Name() << L"\n";
+            PrintLn(scanners[i]->Name());
         }
         
-        std::wcout << L"\n";
+        PrintLn();
         SetColor(ConsoleColor::Yellow);
-        std::wcout << L"  [0]";
+        Print(L"  [0]");
         ResetColor();
-        std::wcout << L" Retour\n";
+        PrintLn(L" Retour");
         
         PrintSeparator();
-        std::wcout << L"Entrez le numéro pour activer/désactiver: ";
+        Print(L"Entrez le numero pour activer/desactiver: ");
         
         int choice = GetUserChoice(0, static_cast<int>(scanners.size()));
         
         if (choice > 0 && choice <= static_cast<int>(scanners.size())) {
             auto& scanner = m_cleaner.GetScanners()[choice - 1];
             scanner->SetEnabled(!scanner->IsEnabled());
-            ShowScannerSelection(); // Recurse to show updated state
+            ShowScannerSelection();
         }
     }
 
@@ -146,39 +183,42 @@ namespace RegistryCleaner::UI {
         ClearScreen();
         PrintHeader(L"Analyse du registre");
         
-        std::wcout << L"\n";
+        PrintLn();
         SetColor(ConsoleColor::Yellow);
-        std::wcout << L"Analyse en cours...\n\n";
+        PrintLn(L"Analyse en cours...");
+        PrintLn();
         ResetColor();
 
         auto progressCallback = [this](StringView scanner, StringView key, size_t found) {
-            // Clear line and print progress
-            std::wcout << L"\r                                                                              ";
-            std::wcout << L"\r  [" << scanner << L"] " << found << L" problèmes - " << key.substr(0, 50);
-            std::wcout.flush();
+            String status = std::format(L"\r  [{}] {} problemes - {}", 
+                scanner, found, key.substr(0, 50));
+            Print(L"\r                                                                              ");
+            Print(status);
         };
 
         m_currentIssues = m_cleaner.Scan(progressCallback);
         m_selectedIndices.clear();
         
-        // Select all by default
         for (size_t i = 0; i < m_currentIssues.size(); ++i) {
             if (m_currentIssues[i].severity != Severity::Critical) {
                 m_selectedIndices.push_back(i);
             }
         }
 
-        std::wcout << L"\n\n";
+        PrintLn();
+        PrintLn();
         PrintSeparator();
         
         const auto& stats = m_cleaner.GetStats();
         
         SetColor(ConsoleColor::Green);
-        std::wcout << L"Analyse terminée!\n";
+        PrintLn(L"Analyse terminee!");
         ResetColor();
         
-        std::wcout << L"  Problèmes trouvés: " << stats.issuesFound << L"\n";
-        std::wcout << L"  Durée: " << FormatDuration(stats.scanDuration) << L"\n";
+        Print(L"  Problemes trouves: ");
+        PrintLn(std::to_wstring(stats.issuesFound));
+        Print(L"  Duree: ");
+        PrintLn(FormatDuration(stats.scanDuration));
         
         WaitForKey();
     }
@@ -186,10 +226,10 @@ namespace RegistryCleaner::UI {
     void ConsoleUI::ShowResults() {
         if (m_currentIssues.empty()) {
             ClearScreen();
-            PrintHeader(L"Résultats de l'analyse");
-            std::wcout << L"\n";
+            PrintHeader(L"Resultats de l'analyse");
+            PrintLn();
             SetColor(ConsoleColor::Yellow);
-            std::wcout << L"Aucun problème trouvé. Lancez d'abord une analyse.\n";
+            PrintLn(L"Aucun probleme trouve. Lancez d'abord une analyse.");
             ResetColor();
             WaitForKey();
             return;
@@ -201,9 +241,9 @@ namespace RegistryCleaner::UI {
 
         while (true) {
             ClearScreen();
-            PrintHeader(std::format(L"Résultats ({}/{})", m_currentIssues.size(), m_selectedIndices.size()));
+            PrintHeader(std::format(L"Resultats ({}/{})", m_currentIssues.size(), m_selectedIndices.size()));
             
-            std::wcout << L"\n";
+            PrintLn();
             
             size_t start = page * ITEMS_PER_PAGE;
             size_t end = std::min(start + ITEMS_PER_PAGE, m_currentIssues.size());
@@ -212,7 +252,6 @@ namespace RegistryCleaner::UI {
                 const auto& issue = m_currentIssues[i];
                 bool selected = ranges::find(m_selectedIndices, i) != m_selectedIndices.end();
                 
-                // Severity color
                 switch (issue.severity) {
                     case Severity::Low: SetColor(ConsoleColor::Green); break;
                     case Severity::Medium: SetColor(ConsoleColor::Yellow); break;
@@ -220,23 +259,22 @@ namespace RegistryCleaner::UI {
                     case Severity::Critical: SetColor(ConsoleColor::Magenta); break;
                 }
                 
-                std::wcout << (selected ? L"[X] " : L"[ ] ");
+                Print(selected ? L"[X] " : L"[ ] ");
                 ResetColor();
                 
-                std::wcout << std::format(L"{:3}. ", i + 1);
-                std::wcout << issue.description.substr(0, 55) << L"\n";
+                PrintLn(std::format(L"{:3}. {}", i + 1, issue.description.substr(0, 55)));
             }
             
-            std::wcout << L"\n";
-            std::wcout << L"Page " << (page + 1) << L"/" << totalPages << L"\n";
+            PrintLn();
+            PrintLn(std::format(L"Page {}/{}", page + 1, totalPages));
             PrintSeparator();
-            std::wcout << L"[N]ext [P]rev [A]ll [D]eselect [T]oggle# [Q]uit: ";
+            Print(L"[N]ext [P]rev [A]ll [D]eselect [T]oggle# [Q]uit: ");
             
             wchar_t input;
             std::wcin >> input;
-            std::wcin.ignore(std::numeric_limits<std::streamsize>::max(), L'\n');
+            std::wcin.ignore((std::numeric_limits<std::streamsize>::max)(), L'\n');
             
-            input = towupper(input);
+            input = static_cast<wchar_t>(towupper(input));
             
             if (input == L'N' && page < totalPages - 1) {
                 ++page;
@@ -252,10 +290,10 @@ namespace RegistryCleaner::UI {
             } else if (input == L'D') {
                 m_selectedIndices.clear();
             } else if (input == L'T') {
-                std::wcout << L"Numéro à basculer: ";
+                Print(L"Numero a basculer: ");
                 size_t num;
                 std::wcin >> num;
-                std::wcin.ignore(std::numeric_limits<std::streamsize>::max(), L'\n');
+                std::wcin.ignore((std::numeric_limits<std::streamsize>::max)(), L'\n');
                 
                 if (num > 0 && num <= m_currentIssues.size()) {
                     size_t idx = num - 1;
@@ -276,9 +314,9 @@ namespace RegistryCleaner::UI {
         if (m_selectedIndices.empty()) {
             ClearScreen();
             PrintHeader(L"Nettoyage");
-            std::wcout << L"\n";
+            PrintLn();
             SetColor(ConsoleColor::Yellow);
-            std::wcout << L"Aucun élément sélectionné pour le nettoyage.\n";
+            PrintLn(L"Aucun element selectionne pour le nettoyage.");
             ResetColor();
             WaitForKey();
             return;
@@ -287,18 +325,35 @@ namespace RegistryCleaner::UI {
         ClearScreen();
         PrintHeader(L"Nettoyage du registre");
         
-        std::wcout << L"\n";
+        PrintLn();
         SetColor(ConsoleColor::Red);
-        std::wcout << L"ATTENTION: Cette opération va modifier le registre Windows!\n";
+        PrintLn(L"ATTENTION: Cette operation va modifier le registre Windows!");
         ResetColor();
-        std::wcout << L"Éléments à nettoyer: " << m_selectedIndices.size() << L"\n";
-        std::wcout << L"Une sauvegarde sera créée automatiquement.\n\n";
+        Print(L"Elements a nettoyer: ");
+        PrintLn(std::to_wstring(m_selectedIndices.size()));
+        PrintLn(L"Une sauvegarde sera creee automatiquement.");
+        PrintLn();
 
         if (!GetYesNo(L"Voulez-vous continuer?")) {
             return;
         }
 
-        // Build list of issues to clean
+        // Ask about force delete mode
+        PrintLn();
+        SetColor(ConsoleColor::Yellow);
+        PrintLn(L"Mode suppression forcee:");
+        ResetColor();
+        PrintLn(L"  Ce mode permet de supprimer les cles protegees par le systeme");
+        PrintLn(L"  en prenant possession des cles (TrustedInstaller/SYSTEM).");
+        PrintLn(L"  Les cles verrouillees seront programmees pour suppression au redemarrage.");
+        PrintLn();
+        SetColor(ConsoleColor::Red);
+        PrintLn(L"  RISQUE: Peut causer des instabilites si des cles systeme sont supprimees!");
+        ResetColor();
+        PrintLn();
+        
+        bool forceDelete = GetYesNo(L"Activer le mode suppression forcee?");
+
         std::vector<RegistryIssue> toClean;
         for (size_t idx : m_selectedIndices) {
             if (idx < m_currentIssues.size()) {
@@ -306,26 +361,70 @@ namespace RegistryCleaner::UI {
             }
         }
 
-        std::wcout << L"\nNettoyage en cours...\n";
+        PrintLn();
+        PrintLn(L"Nettoyage en cours...");
 
         auto progressCallback = [this](size_t current, size_t total, const RegistryIssue& issue) {
             PrintProgress(issue.description.substr(0, 40), current, total);
         };
 
-        auto stats = m_cleaner.Clean(toClean, true, progressCallback);
+        auto stats = m_cleaner.Clean(toClean, true, progressCallback, forceDelete);
 
-        std::wcout << L"\n\n";
+        PrintLn();
+        PrintLn();
         PrintSeparator();
         SetColor(ConsoleColor::Green);
-        std::wcout << L"Nettoyage terminé!\n";
+        PrintLn(L"Nettoyage termine!");
         ResetColor();
         
-        std::wcout << L"  Nettoyés: " << stats.issuesCleaned << L"\n";
-        std::wcout << L"  Échoués: " << stats.issuesFailed << L"\n";
-        std::wcout << L"  Ignorés: " << stats.issuesSkipped << L"\n";
-        std::wcout << L"  Durée: " << FormatDuration(stats.cleanDuration) << L"\n";
+        Print(L"  Nettoyes: ");
+        PrintLn(std::to_wstring(stats.issuesCleaned));
+        
+        if (forceDelete && (stats.forcedDeletes > 0 || stats.scheduledForReboot > 0)) {
+            Print(L"    - Suppressions forcees: ");
+            PrintLn(std::to_wstring(stats.forcedDeletes));
+            Print(L"    - Programmees au redemarrage: ");
+            PrintLn(std::to_wstring(stats.scheduledForReboot));
+        }
+        
+        Print(L"  Echoues: ");
+        PrintLn(std::to_wstring(stats.issuesFailed));
+        Print(L"  Ignores: ");
+        PrintLn(std::to_wstring(stats.issuesSkipped));
+        Print(L"  Duree: ");
+        PrintLn(FormatDuration(stats.cleanDuration));
 
-        // Clear cleaned issues from current list
+        // Show reboot notice if needed
+        if (stats.scheduledForReboot > 0) {
+            PrintLn();
+            SetColor(ConsoleColor::Cyan);
+            PrintLn(L"*** Un redemarrage est necessaire pour completer certaines suppressions ***");
+            ResetColor();
+        }
+
+        // Show failed items if any
+        if (!stats.failedItems.empty()) {
+            PrintLn();
+            SetColor(ConsoleColor::Yellow);
+            PrintLn(L"Elements non supprimes (acces refuse ou cle protegee):");
+            ResetColor();
+            size_t showCount = std::min(stats.failedItems.size(), size_t(10));
+            for (size_t i = 0; i < showCount; ++i) {
+                Print(L"  - ");
+                // Truncate long paths
+                if (stats.failedItems[i].length() > 70) {
+                    PrintLn(stats.failedItems[i].substr(0, 67) + L"...");
+                } else {
+                    PrintLn(stats.failedItems[i]);
+                }
+            }
+            if (stats.failedItems.size() > 10) {
+                Print(L"  ... et ");
+                Print(std::to_wstring(stats.failedItems.size() - 10));
+                PrintLn(L" autres");
+            }
+        }
+
         m_currentIssues.clear();
         m_selectedIndices.clear();
 
@@ -339,39 +438,40 @@ namespace RegistryCleaner::UI {
         auto backups = m_cleaner.GetBackupManager().ListBackups();
         
         if (backups.empty()) {
-            std::wcout << L"\n";
+            PrintLn();
             SetColor(ConsoleColor::Yellow);
-            std::wcout << L"Aucune sauvegarde disponible.\n";
+            PrintLn(L"Aucune sauvegarde disponible.");
             ResetColor();
             WaitForKey();
             return;
         }
 
-        std::wcout << L"\n";
+        PrintLn();
         for (size_t i = 0; i < backups.size(); ++i) {
             SetColor(ConsoleColor::Cyan);
-            std::wcout << L"  [" << (i + 1) << L"]";
+            Print(std::format(L"  [{}]", i + 1));
             ResetColor();
-            std::wcout << L" " << backups[i].filename().wstring() << L"\n";
+            Print(L" ");
+            PrintLn(backups[i].filename().wstring());
         }
 
-        std::wcout << L"\n";
+        PrintLn();
         SetColor(ConsoleColor::Yellow);
-        std::wcout << L"  [R]";
+        Print(L"  [R]");
         ResetColor();
-        std::wcout << L" Restaurer une sauvegarde\n";
+        PrintLn(L" Restaurer une sauvegarde");
         
         SetColor(ConsoleColor::Red);
-        std::wcout << L"  [0]";
+        Print(L"  [0]");
         ResetColor();
-        std::wcout << L" Retour\n";
+        PrintLn(L" Retour");
 
         PrintSeparator();
-        std::wcout << L"Votre choix: ";
+        Print(L"Votre choix: ");
         
         wchar_t input;
         std::wcin >> input;
-        std::wcin.ignore(std::numeric_limits<std::streamsize>::max(), L'\n');
+        std::wcin.ignore((std::numeric_limits<std::streamsize>::max)(), L'\n');
 
         if (towupper(input) == L'R') {
             RestoreBackup();
@@ -382,32 +482,33 @@ namespace RegistryCleaner::UI {
         auto backups = m_cleaner.GetBackupManager().ListBackups();
         if (backups.empty()) return;
 
-        std::wcout << L"Numéro de la sauvegarde à restaurer (0 pour annuler): ";
+        Print(L"Numero de la sauvegarde a restaurer (0 pour annuler): ");
         int choice = GetUserChoice(0, static_cast<int>(backups.size()));
         
         if (choice == 0) return;
 
         const auto& backupPath = backups[choice - 1];
         
-        std::wcout << L"\n";
+        PrintLn();
         SetColor(ConsoleColor::Red);
-        std::wcout << L"ATTENTION: La restauration va modifier le registre!\n";
+        PrintLn(L"ATTENTION: La restauration va modifier le registre!");
         ResetColor();
 
         if (!GetYesNo(L"Confirmer la restauration?")) {
             return;
         }
 
-        std::wcout << L"Restauration en cours...\n";
+        PrintLn(L"Restauration en cours...");
         
         auto result = m_cleaner.GetBackupManager().RestoreBackup(backupPath);
         
         if (result) {
             SetColor(ConsoleColor::Green);
-            std::wcout << L"Restauration réussie!\n";
+            PrintLn(L"Restauration reussie!");
         } else {
             SetColor(ConsoleColor::Red);
-            std::wcout << L"Échec: " << result.error() << L"\n";
+            Print(L"Echec: ");
+            PrintLn(result.error());
         }
         ResetColor();
         
@@ -416,30 +517,35 @@ namespace RegistryCleaner::UI {
 
     void ConsoleUI::ShowAbout() {
         ClearScreen();
-        PrintHeader(L"À propos");
+        PrintHeader(L"A propos");
         
-        std::wcout << L"\n";
+        PrintLn();
         SetColor(ConsoleColor::Cyan);
-        std::wcout << L"  " << Config::APP_NAME << L"\n";
+        Print(L"  ");
+        PrintLn(Config::APP_NAME);
         ResetColor();
-        std::wcout << L"  Version " << Config::APP_VERSION << L"\n\n";
+        Print(L"  Version ");
+        PrintLn(Config::APP_VERSION);
+        PrintLn();
         
-        std::wcout << L"  Un outil moderne de nettoyage du registre Windows\n";
-        std::wcout << L"  écrit en C++20 pour Visual Studio 2022.\n\n";
+        PrintLn(L"  Un outil moderne de nettoyage du registre Windows");
+        PrintLn(L"  ecrit en C++23 pour Visual Studio 2025.");
+        PrintLn();
         
         SetColor(ConsoleColor::Yellow);
-        std::wcout << L"  Fonctionnalités:\n";
+        PrintLn(L"  Fonctionnalites:");
         ResetColor();
-        std::wcout << L"  - Détection des entrées orphelines\n";
-        std::wcout << L"  - Sauvegarde automatique avant nettoyage\n";
-        std::wcout << L"  - Protection des clés système critiques\n";
-        std::wcout << L"  - Restauration des sauvegardes\n\n";
+        PrintLn(L"  - Detection des entrees orphelines");
+        PrintLn(L"  - Sauvegarde automatique avant nettoyage");
+        PrintLn(L"  - Protection des cles systeme critiques");
+        PrintLn(L"  - Restauration des sauvegardes");
+        PrintLn();
         
         SetColor(ConsoleColor::Red);
-        std::wcout << L"  AVERTISSEMENT:\n";
+        PrintLn(L"  AVERTISSEMENT:");
         ResetColor();
-        std::wcout << L"  Modifier le registre peut rendre votre système\n";
-        std::wcout << L"  instable. Utilisez cet outil avec précaution.\n";
+        PrintLn(L"  Modifier le registre peut rendre votre systeme");
+        PrintLn(L"  instable. Utilisez cet outil avec precaution.");
         
         WaitForKey();
     }
@@ -466,37 +572,37 @@ namespace RegistryCleaner::UI {
     void ConsoleUI::PrintHeader(StringView title) {
         PrintSeparator(L'=');
         SetColor(ConsoleColor::White);
-        std::wcout << L"  " << title << L"\n";
+        Print(L"  ");
+        PrintLn(title);
         ResetColor();
         PrintSeparator(L'=');
     }
 
     void ConsoleUI::PrintSeparator(wchar_t ch, int length) {
-        for (int i = 0; i < length; ++i) {
-            std::wcout << ch;
-        }
-        std::wcout << L"\n";
+        String sep(length, ch);
+        PrintLn(sep);
     }
 
     void ConsoleUI::PrintProgress(StringView message, size_t current, size_t total) {
         int percent = static_cast<int>((current * 100) / total);
-        std::wcout << L"\r  [";
         
+        String bar = L"\r  [";
         int barWidth = 30;
         int pos = (percent * barWidth) / 100;
         
         for (int i = 0; i < barWidth; ++i) {
-            if (i < pos) std::wcout << L"█";
-            else if (i == pos) std::wcout << L"▓";
-            else std::wcout << L"░";
+            if (i < pos) bar += L'#';
+            else if (i == pos) bar += L'>';
+            else bar += L'-';
         }
         
-        std::wcout << L"] " << percent << L"% - " << message;
-        std::wcout.flush();
+        bar += std::format(L"] {}% - {}", percent, message);
+        Print(bar);
     }
 
     void ConsoleUI::WaitForKey(StringView message) {
-        std::wcout << L"\n" << message;
+        PrintLn();
+        Print(message);
         std::wcin.get();
     }
 
@@ -504,18 +610,19 @@ namespace RegistryCleaner::UI {
         int choice;
         while (!(std::wcin >> choice) || choice < min || choice > max) {
             std::wcin.clear();
-            std::wcin.ignore(std::numeric_limits<std::streamsize>::max(), L'\n');
-            std::wcout << L"Choix invalide. Réessayez: ";
+            std::wcin.ignore((std::numeric_limits<std::streamsize>::max)(), L'\n');
+            Print(L"Choix invalide. Reessayez: ");
         }
-        std::wcin.ignore(std::numeric_limits<std::streamsize>::max(), L'\n');
+        std::wcin.ignore((std::numeric_limits<std::streamsize>::max)(), L'\n');
         return choice;
     }
 
     bool ConsoleUI::GetYesNo(StringView prompt) {
-        std::wcout << prompt << L" (O/N): ";
+        Print(prompt);
+        Print(L" (O/N): ");
         wchar_t input;
         std::wcin >> input;
-        std::wcin.ignore(std::numeric_limits<std::streamsize>::max(), L'\n');
+        std::wcin.ignore((std::numeric_limits<std::streamsize>::max)(), L'\n');
         return towupper(input) == L'O' || towupper(input) == L'Y';
     }
 
@@ -528,9 +635,9 @@ namespace RegistryCleaner::UI {
     }
 
     String ConsoleUI::FormatIssueCount(size_t count) const {
-        if (count == 0) return L"aucun problème";
-        if (count == 1) return L"1 problème";
-        return std::format(L"{} problèmes", count);
+        if (count == 0) return L"aucun probleme";
+        if (count == 1) return L"1 probleme";
+        return std::format(L"{} problemes", count);
     }
 
 } // namespace RegistryCleaner::UI

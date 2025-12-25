@@ -2,6 +2,7 @@
 #include "pch.h"
 #include "cleaners/RegistryCleaner.h"
 #include "registry/RegistryUtils.h"
+#include "registry/RegistryPermissions.h"
 #include "core/ProtectedKeys.h"
 
 namespace RegistryCleaner::Cleaners {
@@ -60,7 +61,8 @@ namespace RegistryCleaner::Cleaners {
     CleaningStats RegistryCleaner::Clean(
         const std::vector<RegistryIssue>& issues,
         bool createBackup,
-        const CleanProgressCallback& progress
+        const CleanProgressCallback& progress,
+        bool forceDelete
     ) {
         CleaningStats stats;
         stats.issuesFound = issues.size();
@@ -73,7 +75,7 @@ namespace RegistryCleaner::Cleaners {
         if (createBackup) {
             auto backupResult = m_backupManager.CreateBackup(issues, L"Pre-nettoyage");
             if (!backupResult) {
-                // Backup failed, but we can continue (user was warned)
+                // Backup failed, but we can continue
             }
         }
 
@@ -85,7 +87,7 @@ namespace RegistryCleaner::Cleaners {
                 progress(current, issues.size(), issue);
             }
 
-            // Double-check protected keys
+            // Double-check protected keys (even in force mode)
             if (ProtectedKeys::IsProtectedKey(issue.keyPath)) {
                 ++stats.issuesSkipped;
                 continue;
@@ -97,10 +99,35 @@ namespace RegistryCleaner::Cleaners {
                 continue;
             }
 
+            // Try normal deletion first
             if (DeleteRegistryItem(issue)) {
                 ++stats.issuesCleaned;
-            } else {
+            } 
+            // If force mode enabled, try force delete
+            else if (forceDelete && ForceDeleteRegistryItem(issue)) {
+                ++stats.issuesCleaned;
+                stats.forcedDeletes++;
+            }
+            // If still failed and force mode, try schedule for reboot
+            else if (forceDelete) {
+                auto [rootOpt, subKey] = SplitKeyPath(issue.keyPath);
+                if (rootOpt) {
+                    auto scheduleResult = RegistryPermissions::ScheduleDeleteOnReboot(*rootOpt, subKey);
+                    if (scheduleResult) {
+                        ++stats.issuesCleaned;
+                        stats.scheduledForReboot++;
+                    } else {
+                        ++stats.issuesFailed;
+                        StoreFailedItem(stats, issue);
+                    }
+                } else {
+                    ++stats.issuesFailed;
+                    StoreFailedItem(stats, issue);
+                }
+            }
+            else {
                 ++stats.issuesFailed;
+                StoreFailedItem(stats, issue);
             }
         }
 
@@ -119,6 +146,14 @@ namespace RegistryCleaner::Cleaners {
         return stats;
     }
 
+    void RegistryCleaner::StoreFailedItem(CleaningStats& stats, const RegistryIssue& issue) {
+        String failInfo = issue.keyPath;
+        if (!issue.valueName.empty()) {
+            failInfo += L" [" + issue.valueName + L"]";
+        }
+        stats.failedItems.push_back(failInfo);
+    }
+
     bool RegistryCleaner::DeleteRegistryItem(const RegistryIssue& issue) {
         auto [rootOpt, subKey] = SplitKeyPath(issue.keyPath);
         if (!rootOpt) return false;
@@ -126,17 +161,24 @@ namespace RegistryCleaner::Cleaners {
         if (issue.isValueIssue && !issue.valueName.empty()) {
             // Delete a specific value
             auto keyResult = RegistryKey::Open(*rootOpt, subKey, KEY_SET_VALUE);
-            if (!keyResult) return false;
+            if (!keyResult) {
+                keyResult = RegistryKey::Open(*rootOpt, subKey, KEY_WRITE);
+                if (!keyResult) return false;
+            }
 
             auto deleteResult = keyResult->DeleteValue(issue.valueName);
             return deleteResult.has_value();
         } else {
             // Delete entire key
-            // Find parent key path
             size_t lastSlash = subKey.rfind(L'\\');
             if (lastSlash == String::npos) {
-                // Direct child of root - use root to delete
-                LSTATUS result = RegDeleteKeyW(ToHKey(*rootOpt), subKey.c_str());
+                LSTATUS result = RegDeleteKeyExW(ToHKey(*rootOpt), subKey.c_str(), KEY_WOW64_64KEY, 0);
+                if (result == ERROR_SUCCESS) return true;
+                
+                result = RegDeleteKeyW(ToHKey(*rootOpt), subKey.c_str());
+                if (result == ERROR_SUCCESS) return true;
+                
+                result = RegDeleteTreeW(ToHKey(*rootOpt), subKey.c_str());
                 return result == ERROR_SUCCESS;
             }
 
@@ -144,15 +186,34 @@ namespace RegistryCleaner::Cleaners {
             String keyName = subKey.substr(lastSlash + 1);
 
             auto parentResult = RegistryKey::Open(*rootOpt, parentPath, KEY_ALL_ACCESS);
-            if (!parentResult) return false;
+            if (!parentResult) {
+                parentResult = RegistryKey::Open(*rootOpt, parentPath, DELETE | KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE);
+                if (!parentResult) {
+                    parentResult = RegistryKey::Open(*rootOpt, parentPath, KEY_WRITE);
+                    if (!parentResult) return false;
+                }
+            }
 
-            // Try to delete the key (will fail if has subkeys)
             auto deleteResult = parentResult->DeleteSubKey(keyName);
             if (deleteResult) return true;
 
-            // If failed, try recursive delete (be very careful!)
             auto treeResult = parentResult->DeleteSubKeyTree(keyName);
             return treeResult.has_value();
+        }
+    }
+
+    bool RegistryCleaner::ForceDeleteRegistryItem(const RegistryIssue& issue) {
+        auto [rootOpt, subKey] = SplitKeyPath(issue.keyPath);
+        if (!rootOpt) return false;
+
+        if (issue.isValueIssue && !issue.valueName.empty()) {
+            // Force delete a specific value
+            auto result = RegistryPermissions::ForceDeleteValue(*rootOpt, subKey, issue.valueName);
+            return result.has_value();
+        } else {
+            // Force delete entire key
+            auto result = RegistryPermissions::ForceDeleteKey(*rootOpt, subKey);
+            return result.has_value();
         }
     }
 

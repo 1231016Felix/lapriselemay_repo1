@@ -34,6 +34,8 @@ namespace RegistryCleaner::UI {
         void SetColor(ConsoleColor color);
         void ResetColor();
         void ClearScreen();
+        void Print(StringView text);
+        void PrintLn(StringView text = L"");
         void PrintHeader(StringView title);
         void PrintSeparator(wchar_t ch = L'-', int length = 60);
         void PrintProgress(StringView message, size_t current, size_t total);
