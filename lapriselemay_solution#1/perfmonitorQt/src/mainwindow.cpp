@@ -11,6 +11,7 @@
 #include "widgets/settingsdialog.h"
 #include "widgets/cleanerdialog.h"
 #include "widgets/storagehealthdialog.h"
+#include "widgets/detailedmemorydialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -179,6 +180,14 @@ void MainWindow::setupMenuBar()
     storageHealthAction->setToolTip(tr("Check SSD/HDD health with S.M.A.R.T. data"));
     connect(storageHealthAction, &QAction::triggered, this, [this]() {
         StorageHealthDialog dialog(this);
+        dialog.exec();
+    });
+    
+    auto detailedMemoryAction = toolsMenu->addAction(tr("🧠 Detailed &Memory..."));
+    detailedMemoryAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_M));
+    detailedMemoryAction->setToolTip(tr("Detailed RAM usage, working set analysis, and memory leak detection"));
+    connect(detailedMemoryAction, &QAction::triggered, this, [this]() {
+        DetailedMemoryDialog dialog(this);
         dialog.exec();
     });
     

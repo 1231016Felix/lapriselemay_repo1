@@ -54,6 +54,7 @@ set(SOURCES
     src/monitors/startupmonitor.cpp
     src/monitors/temperaturemonitor.cpp
     src/monitors/storagehealthmonitor.cpp
+    src/monitors/detailedmemorymonitor.cpp
     src/widgets/sparklinegraph.cpp
     src/widgets/systemtray.cpp
     src/widgets/processdialog.cpp
@@ -65,6 +66,7 @@ set(SOURCES
     src/widgets/advancedprocesswidget.cpp
     src/widgets/cleanerdialog.cpp
     src/widgets/storagehealthdialog.cpp
+    src/widgets/detailedmemorydialog.cpp
     src/utils/systeminfo.cpp
     src/utils/energymode.cpp
     src/cleaners/systemcleaner.cpp
@@ -82,6 +84,7 @@ set(HEADERS
     src/monitors/startupmonitor.h
     src/monitors/temperaturemonitor.h
     src/monitors/storagehealthmonitor.h
+    src/monitors/detailedmemorymonitor.h
     src/widgets/sparklinegraph.h
     src/widgets/systemtray.h
     src/widgets/processdialog.h
@@ -93,6 +96,7 @@ set(HEADERS
     src/widgets/advancedprocesswidget.h
     src/widgets/cleanerdialog.h
     src/widgets/storagehealthdialog.h
+    src/widgets/detailedmemorydialog.h
     src/utils/systeminfo.h
     src/utils/energymode.h
     src/cleaners/systemcleaner.h
