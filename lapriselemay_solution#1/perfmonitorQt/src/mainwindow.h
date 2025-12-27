@@ -25,6 +25,9 @@
 #include "widgets/floatingwidget.h"
 #include "widgets/settingsdialog.h"
 #include "utils/energymode.h"
+#include "utils/monitorworker.h"
+
+class ToolsWidget;
 
 class MainWindow : public QMainWindow
 {
@@ -39,7 +42,7 @@ protected:
     void changeEvent(QEvent *event) override;
 
 private slots:
-    void updateMonitors();
+    void onMonitorDataReady(const MonitorData& data);
     void onTrayActivated(QSystemTrayIcon::ActivationReason reason);
     void toggleAlwaysOnTop();
     void showSettings();
@@ -65,6 +68,7 @@ private:
     void createNetworkTab();
     void createBatteryTab();
     void createProcessTab();
+    void createToolsTab();
     void loadSettings();
     void saveSettings();
     void applyTabVisibility(const AppSettings& settings);
@@ -74,7 +78,6 @@ private:
 
     // UI Components
     QTabWidget* m_tabWidget{nullptr};
-    QTimer* m_updateTimer{nullptr};
     
     // Status bar widgets
     QLabel* m_cpuStatusLabel{nullptr};
@@ -154,14 +157,14 @@ private:
     QWidget* m_processTab{nullptr};
     AdvancedProcessWidget* m_processWidget{nullptr};
     
-    // Monitors
-    std::unique_ptr<CpuMonitor> m_cpuMonitor;
-    std::unique_ptr<MemoryMonitor> m_memoryMonitor;
-    std::unique_ptr<GpuMonitor> m_gpuMonitor;
-    std::unique_ptr<DiskMonitor> m_diskMonitor;
-    std::unique_ptr<NetworkMonitor> m_networkMonitor;
-    std::unique_ptr<BatteryMonitor> m_batteryMonitor;
-    std::unique_ptr<TemperatureMonitor> m_temperatureMonitor;
+    // Tools Tab
+    QWidget* m_toolsTab{nullptr};
+    
+    // Background monitor worker (runs in separate thread)
+    std::unique_ptr<MonitorWorker> m_monitorWorker;
+    
+    // Cached monitor data (updated from worker thread)
+    MonitorData m_monitorData;
     
     // System tray
     std::unique_ptr<SystemTrayManager> m_trayManager;

@@ -51,6 +51,7 @@ public:
 
     void update();
     [[nodiscard]] QAbstractTableModel* model() { return m_model.get(); }
+    [[nodiscard]] const std::vector<DiskInfo>& disks() const { return m_disks; }
     [[nodiscard]] const DiskActivity& activity() const { return m_activity; }
 
 private:

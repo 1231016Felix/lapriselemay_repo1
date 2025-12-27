@@ -53,6 +53,7 @@ public:
 
     void update();
     [[nodiscard]] QAbstractTableModel* model() { return m_model.get(); }
+    [[nodiscard]] const std::vector<NetworkAdapterInfo>& adapters() const { return m_adapters; }
     [[nodiscard]] const NetworkActivity& activity() const { return m_activity; }
 
 private:

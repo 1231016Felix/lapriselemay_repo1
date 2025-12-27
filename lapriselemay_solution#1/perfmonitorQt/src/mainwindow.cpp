@@ -12,6 +12,8 @@
 #include "widgets/cleanerdialog.h"
 #include "widgets/storagehealthdialog.h"
 #include "widgets/detailedmemorydialog.h"
+#include "widgets/toolswidget.h"
+#include "widgets/diskscannerdialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -49,14 +51,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Check admin privileges first
     m_isAdmin = MemoryMonitor::isAdministrator();
     
-    // Initialize monitors
-    m_cpuMonitor = std::make_unique<CpuMonitor>();
-    m_memoryMonitor = std::make_unique<MemoryMonitor>();
-    m_gpuMonitor = std::make_unique<GpuMonitor>();
-    m_diskMonitor = std::make_unique<DiskMonitor>();
-    m_networkMonitor = std::make_unique<NetworkMonitor>();
-    m_batteryMonitor = std::make_unique<BatteryMonitor>();
-    m_temperatureMonitor = std::make_unique<TemperatureMonitor>();
+    // Initialize Energy Mode Manager (stays in main thread)
     m_energyModeManager = std::make_unique<EnergyModeManager>();
     
     setupUi();
@@ -65,13 +60,15 @@ MainWindow::MainWindow(QWidget *parent)
     setupTrayIcon();
     loadSettings();
     
-    // Setup update timer
-    m_updateTimer = new QTimer(this);
-    connect(m_updateTimer, &QTimer::timeout, this, &MainWindow::updateMonitors);
-    m_updateTimer->start(m_updateInterval);
+    // Initialize background monitor worker
+    m_monitorWorker = std::make_unique<MonitorWorker>();
     
-    // Initial update
-    updateMonitors();
+    // Connect worker signal to UI update slot (Qt::QueuedConnection for thread safety)
+    connect(m_monitorWorker.get(), &MonitorWorker::dataReady,
+            this, &MainWindow::onMonitorDataReady, Qt::QueuedConnection);
+    
+    // Start the worker thread
+    m_monitorWorker->start(m_updateInterval);
     
     // Show admin warning if not running as admin
     checkAdminPrivileges();
@@ -80,7 +77,11 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     saveSettings();
-    m_updateTimer->stop();
+    
+    // Stop the monitor worker
+    if (m_monitorWorker) {
+        m_monitorWorker->stop();
+    }
 }
 
 void MainWindow::setupUi()
@@ -95,6 +96,7 @@ void MainWindow::setupUi()
     createNetworkTab();
     createBatteryTab();
     createProcessTab();
+    createToolsTab();
     
     setCentralWidget(m_tabWidget);
 }
@@ -129,43 +131,35 @@ void MainWindow::setupMenuBar()
     m_floatingWidgetAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F));
     connect(m_floatingWidgetAction, &QAction::triggered, this, &MainWindow::toggleFloatingWidget);
     
-    // Options menu
-    auto optionsMenu = menuBar()->addMenu(tr("&Options"));
+    // Tools menu
+    auto toolsMenu = menuBar()->addMenu(tr("&Tools"));
     
-    // Energy Mode
-    m_energyModeAction = optionsMenu->addAction(tr("⚡ &Mode Énergie"));
+    // === System Optimization ===
+    m_energyModeAction = toolsMenu->addAction(tr("⚡ &Energy Mode"));
     m_energyModeAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_E));
     m_energyModeAction->setCheckable(true);
     m_energyModeAction->setChecked(m_energyModeManager->isActive());
     connect(m_energyModeAction, &QAction::triggered, this, &MainWindow::toggleEnergyMode);
     
-    auto energyModeConfigAction = optionsMenu->addAction(tr("Configurer Mode Énergie..."));
+    auto energyModeConfigAction = toolsMenu->addAction(tr("    Configure Energy Mode..."));
     connect(energyModeConfigAction, &QAction::triggered, this, &MainWindow::showEnergyModeDialog);
     
-    optionsMenu->addSeparator();
-    
-    auto purgeMemoryAction = optionsMenu->addAction(tr("&Purge Memory"));
+    auto purgeMemoryAction = toolsMenu->addAction(tr("🧹 &Purge Memory"));
     purgeMemoryAction->setToolTip(tr("Free up system memory (requires Admin)"));
     connect(purgeMemoryAction, &QAction::triggered, this, &MainWindow::purgeMemory);
     
-    optionsMenu->addSeparator();
+    toolsMenu->addSeparator();
     
-    auto settingsAction = optionsMenu->addAction(tr("&Settings..."));
-    settingsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
-    connect(settingsAction, &QAction::triggered, this, &MainWindow::showSettings);
-    
-    // Tools menu
-    auto toolsMenu = menuBar()->addMenu(tr("&Tools"));
-    
+    // === Startup & Cleaning ===
     auto startupManagerAction = toolsMenu->addAction(tr("🚀 &Startup Manager..."));
-    startupManagerAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_S));
+    startupManagerAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
     startupManagerAction->setToolTip(tr("Manage programs that run at Windows startup"));
     connect(startupManagerAction, &QAction::triggered, this, [this]() {
         StartupDialog dialog(this);
         dialog.exec();
     });
     
-    auto cleanerAction = toolsMenu->addAction(tr("🧹 &System Cleaner..."));
+    auto cleanerAction = toolsMenu->addAction(tr("🗑️ System &Cleaner..."));
     cleanerAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_L));
     cleanerAction->setToolTip(tr("Clean temporary files, browser cache, and other junk"));
     connect(cleanerAction, &QAction::triggered, this, [this]() {
@@ -175,6 +169,7 @@ void MainWindow::setupMenuBar()
     
     toolsMenu->addSeparator();
     
+    // === Analysis & Diagnostics ===
     auto storageHealthAction = toolsMenu->addAction(tr("💾 Storage &Health..."));
     storageHealthAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
     storageHealthAction->setToolTip(tr("Check SSD/HDD health with S.M.A.R.T. data"));
@@ -190,6 +185,12 @@ void MainWindow::setupMenuBar()
         DetailedMemoryDialog dialog(this);
         dialog.exec();
     });
+    
+    // Settings menu (direct access to settings)
+    auto settingsMenu = menuBar()->addMenu(tr("&Settings"));
+    auto settingsAction = settingsMenu->addAction(tr("⚙️ &Preferences..."));
+    settingsAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_Comma));
+    connect(settingsAction, &QAction::triggered, this, &MainWindow::showSettings);
     
     // Help menu
     auto helpMenu = menuBar()->addMenu(tr("&Help"));
@@ -670,12 +671,54 @@ void MainWindow::createProcessTab()
     m_tabWidget->addTab(m_processTab, tr("Processes"));
 }
 
-void MainWindow::updateMonitors()
+void MainWindow::createToolsTab()
 {
-    // Update CPU
-    m_cpuMonitor->update();
-    const auto& cpuInfo = m_cpuMonitor->info();
+    m_toolsTab = new QWidget();
+    m_toolsTab->setStyleSheet("background-color: #1e1e24;");
     
+    auto layout = new QVBoxLayout(m_toolsTab);
+    layout->setContentsMargins(0, 0, 0, 0);
+    
+    auto toolsWidget = new ToolsWidget();
+    layout->addWidget(toolsWidget);
+    
+    // Connect tool signals
+    connect(toolsWidget, &ToolsWidget::startupManagerRequested, this, [this]() {
+        StartupDialog dialog(this);
+        dialog.exec();
+    });
+    
+    connect(toolsWidget, &ToolsWidget::systemCleanerRequested, this, [this]() {
+        CleanerDialog dialog(this);
+        dialog.exec();
+    });
+    
+    connect(toolsWidget, &ToolsWidget::storageHealthRequested, this, [this]() {
+        StorageHealthDialog dialog(this);
+        dialog.exec();
+    });
+    
+    connect(toolsWidget, &ToolsWidget::detailedMemoryRequested, this, [this]() {
+        DetailedMemoryDialog dialog(this);
+        dialog.exec();
+    });
+    
+    connect(toolsWidget, &ToolsWidget::energyModeRequested, this, &MainWindow::toggleEnergyMode);
+    
+    connect(toolsWidget, &ToolsWidget::energyModeConfigRequested, this, &MainWindow::showEnergyModeDialog);
+    
+    connect(toolsWidget, &ToolsWidget::purgeMemoryRequested, this, &MainWindow::purgeMemory);
+    
+    m_tabWidget->addTab(m_toolsTab, tr("🧰 Tools"));
+}
+
+void MainWindow::onMonitorDataReady(const MonitorData& data)
+{
+    // Store the data for other uses
+    m_monitorData = data;
+    
+    // Update CPU UI
+    const auto& cpuInfo = data.cpu;
     m_cpuNameLabel->setText(cpuInfo.name);
     m_cpuUsageLabel->setText(QString("%1%").arg(cpuInfo.usage, 0, 'f', 1));
     m_cpuSpeedLabel->setText(QString("%1 GHz").arg(cpuInfo.currentSpeed, 0, 'f', 2));
@@ -687,31 +730,25 @@ void MainWindow::updateMonitors()
     m_cpuGraph->addValue(cpuInfo.usage);
     m_cpuStatusLabel->setText(QString("CPU: %1%").arg(cpuInfo.usage, 0, 'f', 0));
     
-    // Update Temperature
-    m_temperatureMonitor->update();
-    const auto& tempInfo = m_temperatureMonitor->info();
-    
+    // Update Temperature UI
+    const auto& tempInfo = data.temperature;
     if (tempInfo.hasTemperature) {
-        // CPU Temperature with color coding
         QString cpuTempColor;
         if (tempInfo.cpuTemperature >= 80) {
-            cpuTempColor = "color: #ff0000;"; // Red - Hot
+            cpuTempColor = "color: #ff0000;";
         } else if (tempInfo.cpuTemperature >= 60) {
-            cpuTempColor = "color: #ff8c00;"; // Orange - Warm
+            cpuTempColor = "color: #ff8c00;";
         } else {
-            cpuTempColor = "color: #00aa00;"; // Green - Normal
+            cpuTempColor = "color: #00aa00;";
         }
         m_cpuTempLabel->setText(QString("%1 °C").arg(tempInfo.cpuTemperature, 0, 'f', 1));
         m_cpuTempLabel->setStyleSheet(QString("font-weight: bold; %1").arg(cpuTempColor));
         
-        // Chassis Temperature
         if (tempInfo.chassisTemperature > -900) {
             m_chassisTempLabel->setText(QString("%1 °C").arg(tempInfo.chassisTemperature, 0, 'f', 1));
         } else {
             m_chassisTempLabel->setText("N/A");
         }
-        
-        // Status bar temperature
         m_tempStatusLabel->setText(QString("🌡 %1°C").arg(tempInfo.cpuTemperature, 0, 'f', 0));
         m_tempStatusLabel->setStyleSheet(cpuTempColor);
     } else {
@@ -720,10 +757,8 @@ void MainWindow::updateMonitors()
         m_tempStatusLabel->setText("🌡 N/A");
     }
     
-    // Update GPU
-    m_gpuMonitor->update();
-    const auto& gpuInfo = m_gpuMonitor->primaryGpu();
-    
+    // Update GPU UI
+    const auto& gpuInfo = data.primaryGpu;
     m_gpuNameLabel->setText(gpuInfo.name);
     m_gpuVendorLabel->setText(gpuInfo.vendor);
     m_gpuUsageLabel->setText(QString("%1%").arg(gpuInfo.usage, 0, 'f', 1));
@@ -745,15 +780,10 @@ void MainWindow::updateMonitors()
     } else {
         m_gpuTempLabel->setText("N/A");
     }
-    
-    m_gpuTableView->setModel(m_gpuMonitor->model());
-    m_gpuTableView->resizeColumnsToContents();
     m_gpuStatusLabel->setText(QString("GPU: %1%").arg(gpuInfo.usage, 0, 'f', 0));
     
-    // Update Memory
-    m_memoryMonitor->update();
-    const auto& memInfo = m_memoryMonitor->info();
-    
+    // Update Memory UI
+    const auto& memInfo = data.memory;
     m_memUsageLabel->setText(QString("%1 GB / %2 GB")
         .arg(memInfo.usedGB, 0, 'f', 1)
         .arg(memInfo.totalGB, 0, 'f', 1));
@@ -771,32 +801,22 @@ void MainWindow::updateMonitors()
     m_memGraph->addValue(memInfo.usagePercent);
     m_memStatusLabel->setText(QString("Memory: %1%").arg(memInfo.usagePercent, 0, 'f', 0));
     
-    // Update Disk
-    m_diskMonitor->update();
-    m_diskTableView->setModel(m_diskMonitor->model());
-    m_diskTableView->resizeColumnsToContents();
-    
-    const auto& diskActivity = m_diskMonitor->activity();
+    // Update Disk UI
+    const auto& diskActivity = data.diskActivity;
     m_diskReadLabel->setText(formatBytes(diskActivity.readBytesPerSec) + "/s");
     m_diskWriteLabel->setText(formatBytes(diskActivity.writeBytesPerSec) + "/s");
     m_diskReadGraph->addValue(diskActivity.readBytesPerSec / 1048576.0);  // MB/s
     m_diskWriteGraph->addValue(diskActivity.writeBytesPerSec / 1048576.0);
     
-    // Update Network
-    m_networkMonitor->update();
-    m_networkTableView->setModel(m_networkMonitor->model());
-    m_networkTableView->resizeColumnsToContents();
-    
-    const auto& netActivity = m_networkMonitor->activity();
+    // Update Network UI
+    const auto& netActivity = data.networkActivity;
     m_netSendLabel->setText(formatBytes(netActivity.sentBytesPerSec) + "/s");
     m_netRecvLabel->setText(formatBytes(netActivity.receivedBytesPerSec) + "/s");
     m_netSendGraph->addValue(netActivity.sentBytesPerSec / 1048576.0);
     m_netRecvGraph->addValue(netActivity.receivedBytesPerSec / 1048576.0);
     
-    // Update Battery
-    m_batteryMonitor->update();
-    const auto& batteryInfo = m_batteryMonitor->info();
-    
+    // Update Battery UI
+    const auto& batteryInfo = data.battery;
     if (batteryInfo.hasBattery) {
         m_batteryPercentLabel->setText(QString("%1%").arg(batteryInfo.percentage));
         m_batteryStatusLabel2->setText(batteryInfo.status);
@@ -809,19 +829,16 @@ void MainWindow::updateMonitors()
         m_batteryVoltageLabel->setText(QString("%1 mV").arg(batteryInfo.voltage));
         if (batteryInfo.temperature > -900) {
             m_batteryTempLabel->setText(QString("%1 °C").arg(batteryInfo.temperature, 0, 'f', 1));
-        }
-        else {
+        } else {
             m_batteryTempLabel->setText("N/A");
         }
         m_batteryProgressBar->setValue(batteryInfo.percentage);
         m_batteryGraph->addValue(batteryInfo.percentage);
         
-        // Color based on level
         QString color = batteryInfo.percentage > 50 ? "#00aa00" : 
                        (batteryInfo.percentage > 20 ? "#ffaa00" : "#ff0000");
         m_batteryPercentLabel->setStyleSheet(
             QString("font-size: 48px; font-weight: bold; color: %1;").arg(color));
-        
         m_batteryStatusLabel->setText(QString("Battery: %1%").arg(batteryInfo.percentage));
     } else {
         m_batteryPercentLabel->setText("N/A");
@@ -829,6 +846,7 @@ void MainWindow::updateMonitors()
         m_batteryStatusLabel->setText("Battery: N/A");
     }
     
+    // Update Tray
     m_trayManager->updateTooltip(cpuInfo.usage, memInfo.usagePercent);
     
     // Update Floating Widget
@@ -843,7 +861,7 @@ void MainWindow::updateMonitors()
         );
     }
     
-    // Check alert thresholds
+    // Check alerts
     checkAlerts(
         cpuInfo.usage,
         memInfo.usagePercent,
@@ -941,12 +959,12 @@ void MainWindow::toggleFloatingWidget()
         m_floatingWidget->show();
         m_floatingWidgetAction->setChecked(true);
         
-        // Trigger immediate update
-        const auto& cpuInfo = m_cpuMonitor->info();
-        const auto& memInfo = m_memoryMonitor->info();
-        const auto& gpuInfo = m_gpuMonitor->primaryGpu();
-        const auto& batteryInfo = m_batteryMonitor->info();
-        const auto& tempInfo = m_temperatureMonitor->info();
+        // Trigger immediate update using cached data
+        const auto& cpuInfo = m_monitorData.cpu;
+        const auto& memInfo = m_monitorData.memory;
+        const auto& gpuInfo = m_monitorData.primaryGpu;
+        const auto& batteryInfo = m_monitorData.battery;
+        const auto& tempInfo = m_monitorData.temperature;
         
         m_floatingWidget->updateMetrics(
             cpuInfo.usage,
@@ -977,7 +995,9 @@ void MainWindow::showSettings()
         // Apply update interval
         if (m_updateInterval != settings.updateInterval) {
             m_updateInterval = settings.updateInterval;
-            m_updateTimer->setInterval(m_updateInterval);
+            if (m_monitorWorker) {
+                m_monitorWorker->setInterval(m_updateInterval);
+            }
         }
         
         // Apply minimize to tray
@@ -1133,18 +1153,18 @@ void MainWindow::purgeMemory()
         return;
     }
     
-    // Get memory before purge
-    m_memoryMonitor->update();
-    double memBefore = m_memoryMonitor->info().usedGB;
+    // Get memory before purge (use cached data)
+    double memBefore = m_monitorData.memory.usedGB;
     
     // Perform purge
     QApplication::setOverrideCursor(Qt::WaitCursor);
     bool success = MemoryMonitor::purgeAllMemory();
     QApplication::restoreOverrideCursor();
     
-    // Get memory after purge
-    m_memoryMonitor->update();
-    double memAfter = m_memoryMonitor->info().usedGB;
+    // Get memory after purge - use a temporary monitor for immediate reading
+    MemoryMonitor tempMonitor;
+    tempMonitor.update();
+    double memAfter = tempMonitor.info().usedGB;
     double freed = memBefore - memAfter;
     
     if (success && freed > 0) {
@@ -1165,8 +1185,10 @@ void MainWindow::purgeMemory()
                "Some system processes may have denied access."));
     }
     
-    // Update display
-    updateMonitors();
+    // Request immediate update from worker
+    if (m_monitorWorker) {
+        m_monitorWorker->requestUpdate();
+    }
 }
 
 void MainWindow::checkAdminPrivileges()
@@ -1292,6 +1314,7 @@ void MainWindow::applyTabVisibility(const AppSettings& settings)
         {m_networkTab, tr("Network"), settings.showNetworkTab},
         {m_batteryTab, tr("Battery"), settings.showBatteryTab},
         {m_processTab, tr("Processes"), settings.showProcessTab},
+        {m_toolsTab, tr("🧰 Tools"), true},  // Tools tab always visible
     };
     
     // Remove all tabs first
@@ -1398,7 +1421,7 @@ void MainWindow::checkAlerts(double cpu, double memory, int battery, double gpuT
     // Battery Alert (only if battery exists and discharging)
     if (battery > 0 && battery <= m_alertSettings.batteryAlertThreshold) {
         if (currentTime - m_lastBatteryAlertTime > cooldownMs) {
-            const auto& batteryInfo = m_batteryMonitor->info();
+            const auto& batteryInfo = m_monitorData.battery;
             if (!batteryInfo.isCharging) {
                 m_lastBatteryAlertTime = currentTime;
                 m_trayManager->showNotification(

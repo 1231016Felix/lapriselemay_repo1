@@ -55,6 +55,7 @@ set(SOURCES
     src/monitors/temperaturemonitor.cpp
     src/monitors/storagehealthmonitor.cpp
     src/monitors/detailedmemorymonitor.cpp
+    src/monitors/diskscannermonitor.cpp
     src/widgets/sparklinegraph.cpp
     src/widgets/systemtray.cpp
     src/widgets/processdialog.cpp
@@ -67,8 +68,11 @@ set(SOURCES
     src/widgets/cleanerdialog.cpp
     src/widgets/storagehealthdialog.cpp
     src/widgets/detailedmemorydialog.cpp
+    src/widgets/diskscannerdialog.cpp
+    src/widgets/toolswidget.cpp
     src/utils/systeminfo.cpp
     src/utils/energymode.cpp
+    src/utils/monitorworker.cpp
     src/cleaners/systemcleaner.cpp
 )
 
@@ -85,6 +89,7 @@ set(HEADERS
     src/monitors/temperaturemonitor.h
     src/monitors/storagehealthmonitor.h
     src/monitors/detailedmemorymonitor.h
+    src/monitors/diskscannermonitor.h
     src/widgets/sparklinegraph.h
     src/widgets/systemtray.h
     src/widgets/processdialog.h
@@ -97,8 +102,11 @@ set(HEADERS
     src/widgets/cleanerdialog.h
     src/widgets/storagehealthdialog.h
     src/widgets/detailedmemorydialog.h
+    src/widgets/diskscannerdialog.h
+    src/widgets/toolswidget.h
     src/utils/systeminfo.h
     src/utils/energymode.h
+    src/utils/monitorworker.h
     src/cleaners/systemcleaner.h
 )
 
