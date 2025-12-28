@@ -74,6 +74,8 @@ struct ScanStatistics {
     int totalDirectories{0};
     int filesScanned{0};
     int directoriesScanned{0};
+    int inaccessibleDirectories{0};  // Directories that couldn't be read
+    int skippedSymlinks{0};          // Symlinks/junctions skipped
     double scanDurationSeconds{0.0};
     QString rootPath;
     
@@ -146,6 +148,7 @@ public:
     void setPath(const QString& path) { m_path = path; }
     void setMinFileSize(qint64 size) { m_minFileSize = size; }
     void setMaxDepth(int depth) { m_maxDepth = depth; }
+    void setLargeFileThreshold(qint64 size) { m_largeFileThreshold = size; }
     void cancel() { m_cancelled = true; }
     bool isCancelled() const { return m_cancelled; }
 

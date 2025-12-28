@@ -88,6 +88,8 @@ private:
     QLabel* m_totalFilesLabel{nullptr};
     QLabel* m_totalDirsLabel{nullptr};
     QLabel* m_scanTimeLabel{nullptr};
+    QLabel* m_inaccessibleLabel{nullptr};
+    QLabel* m_symlinksLabel{nullptr};
     QTableWidget* m_extensionsTable{nullptr};
     QTableWidget* m_sizeDistTable{nullptr};
     

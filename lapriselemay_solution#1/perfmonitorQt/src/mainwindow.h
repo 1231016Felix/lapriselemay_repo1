@@ -28,6 +28,7 @@
 #include "utils/monitorworker.h"
 
 class ToolsWidget;
+class MetricsHistory;
 
 class MainWindow : public QMainWindow
 {
@@ -55,12 +56,19 @@ private slots:
     void showEnergyModeDialog();
     void toggleEnergyMode();
     void onTrayExitRequested();
+    
+    // New features
+    void showServicesManager();
+    void showMetricsHistory();
+    void showDiskScanner();
+    void showNetworkSpeedTest();
 
 private:
     void setupUi();
     void setupMenuBar();
     void setupStatusBar();
     void setupTrayIcon();
+    void setupMetricsHistory();
     void createCpuTab();
     void createGpuTab();
     void createMemoryTab();
@@ -74,6 +82,7 @@ private:
     void applyTabVisibility(const AppSettings& settings);
     void applyTheme(const QString& theme);
     void checkAlerts(double cpu, double memory, int battery, double gpuTemp);
+    void recordMetrics();
     static QString formatBytes(qint64 bytes);
 
     // UI Components
@@ -177,6 +186,9 @@ private:
     std::unique_ptr<EnergyModeManager> m_energyModeManager;
     QAction* m_energyModeAction{nullptr};
     QLabel* m_energyModeStatusLabel{nullptr};
+    
+    // Metrics History (for persistent data recording)
+    std::unique_ptr<MetricsHistory> m_metricsHistory;
     
     // Settings
     bool m_minimizeToTray{true};

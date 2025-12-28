@@ -321,11 +321,22 @@ void DiskScannerWorker::scanDirectory(FileSystemItem* parent, int currentDepth)
     QDir dir(parent->path);
     if (!dir.exists()) return;
     
+    // Check if directory is readable
+    if (!dir.isReadable()) {
+        m_stats.inaccessibleDirectories++;
+        return;
+    }
+    
     dir.setFilter(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
     dir.setSorting(QDir::Size | QDir::Reversed);
     
     QFileIconProvider iconProvider;
     QFileInfoList entries = dir.entryInfoList();
+    
+    // If we can't read entries (permission denied), count as inaccessible
+    if (entries.isEmpty() && dir.count() > 2) { // More than . and ..
+        m_stats.inaccessibleDirectories++;
+    }
     
     for (const QFileInfo& info : entries) {
         if (m_cancelled) return;
@@ -342,6 +353,7 @@ void DiskScannerWorker::scanDirectory(FileSystemItem* parent, int currentDepth)
         if (info.isDir()) {
             // Skip junction points and symlinks to avoid infinite loops
             if (info.isSymLink()) {
+                m_stats.skippedSymlinks++;
                 continue;
             }
             
@@ -487,6 +499,7 @@ void DiskScannerMonitor::startScan(const QString& path)
     m_worker->setPath(path);
     m_worker->setMinFileSize(m_minFileSize);
     m_worker->setMaxDepth(m_maxDepth);
+    m_worker->setLargeFileThreshold(m_largeFileThreshold);
     m_worker->moveToThread(m_workerThread.get());
     
     // Connect signals

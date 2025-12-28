@@ -14,6 +14,10 @@
 #include "widgets/detailedmemorydialog.h"
 #include "widgets/toolswidget.h"
 #include "widgets/diskscannerdialog.h"
+#include "widgets/servicesdialog.h"
+#include "widgets/historydialog.h"
+#include "widgets/networkspeedtestdialog.h"
+#include "database/metricshistory.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -54,6 +58,9 @@ MainWindow::MainWindow(QWidget *parent)
     // Initialize Energy Mode Manager (stays in main thread)
     m_energyModeManager = std::make_unique<EnergyModeManager>();
     
+    // Initialize Metrics History for persistent recording
+    setupMetricsHistory();
+    
     setupUi();
     setupMenuBar();
     setupStatusBar();
@@ -82,6 +89,75 @@ MainWindow::~MainWindow()
     if (m_monitorWorker) {
         m_monitorWorker->stop();
     }
+    
+    // Flush metrics history
+    if (m_metricsHistory) {
+        m_metricsHistory->flush();
+    }
+}
+
+void MainWindow::setupMetricsHistory()
+{
+    m_metricsHistory = std::make_unique<MetricsHistory>();
+    
+    if (!m_metricsHistory->initialize()) {
+        qWarning() << "Failed to initialize metrics history database";
+    } else {
+        qDebug() << "Metrics history initialized:" << m_metricsHistory->databasePath();
+        
+        // Set retention to 30 days by default
+        m_metricsHistory->setRetentionDays(30);
+    }
+}
+
+void MainWindow::recordMetrics()
+{
+    if (!m_metricsHistory || !m_metricsHistory->isReady()) {
+        return;
+    }
+    
+    // Record all metrics from the current monitor data
+    std::vector<std::tuple<MetricType, double, QString>> metrics;
+    
+    // CPU
+    metrics.emplace_back(MetricType::CpuUsage, m_monitorData.cpu.usage, QString());
+    
+    // CPU Temperature (if available)
+    if (m_monitorData.temperature.hasTemperature) {
+        metrics.emplace_back(MetricType::CpuTemperature, m_monitorData.temperature.cpuTemperature, QString());
+    }
+    
+    // Memory
+    metrics.emplace_back(MetricType::MemoryUsed, m_monitorData.memory.usedGB, QString());
+    metrics.emplace_back(MetricType::MemoryAvailable, m_monitorData.memory.availableGB, QString());
+    metrics.emplace_back(MetricType::MemoryCommit, m_monitorData.memory.committedGB, QString());
+    
+    // GPU
+    metrics.emplace_back(MetricType::GpuUsage, m_monitorData.primaryGpu.usage, QString());
+    metrics.emplace_back(MetricType::GpuMemory, m_monitorData.primaryGpu.memoryUsagePercent, QString());
+    if (m_monitorData.primaryGpu.temperature > -900) {
+        metrics.emplace_back(MetricType::GpuTemperature, m_monitorData.primaryGpu.temperature, QString());
+    }
+    
+    // Disk I/O
+    double diskReadMB = m_monitorData.diskActivity.readBytesPerSec / (1024.0 * 1024.0);
+    double diskWriteMB = m_monitorData.diskActivity.writeBytesPerSec / (1024.0 * 1024.0);
+    metrics.emplace_back(MetricType::DiskRead, diskReadMB, QString());
+    metrics.emplace_back(MetricType::DiskWrite, diskWriteMB, QString());
+    
+    // Network
+    double netSendMB = m_monitorData.networkActivity.sentBytesPerSec / (1024.0 * 1024.0);
+    double netRecvMB = m_monitorData.networkActivity.receivedBytesPerSec / (1024.0 * 1024.0);
+    metrics.emplace_back(MetricType::NetworkSend, netSendMB, QString());
+    metrics.emplace_back(MetricType::NetworkReceive, netRecvMB, QString());
+    
+    // Battery (if available)
+    if (m_monitorData.battery.hasBattery) {
+        metrics.emplace_back(MetricType::BatteryPercent, m_monitorData.battery.percentage, QString());
+        metrics.emplace_back(MetricType::BatteryHealth, m_monitorData.battery.healthPercent, QString());
+    }
+    
+    m_metricsHistory->recordMetrics(metrics);
 }
 
 void MainWindow::setupUi()
@@ -131,6 +207,13 @@ void MainWindow::setupMenuBar()
     m_floatingWidgetAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F));
     connect(m_floatingWidgetAction, &QAction::triggered, this, &MainWindow::toggleFloatingWidget);
     
+    viewMenu->addSeparator();
+    
+    // Metrics History in View menu
+    auto historyAction = viewMenu->addAction(tr("📊 &Metrics History..."));
+    historyAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
+    connect(historyAction, &QAction::triggered, this, &MainWindow::showMetricsHistory);
+    
     // Tools menu
     auto toolsMenu = menuBar()->addMenu(tr("&Tools"));
     
@@ -150,6 +233,12 @@ void MainWindow::setupMenuBar()
     
     toolsMenu->addSeparator();
     
+    // === Services Manager (NEW) ===
+    auto servicesAction = toolsMenu->addAction(tr("⚙️ &Services Manager..."));
+    servicesAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V));
+    servicesAction->setToolTip(tr("View and manage Windows services"));
+    connect(servicesAction, &QAction::triggered, this, &MainWindow::showServicesManager);
+    
     // === Startup & Cleaning ===
     auto startupManagerAction = toolsMenu->addAction(tr("🚀 &Startup Manager..."));
     startupManagerAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S));
@@ -167,11 +256,20 @@ void MainWindow::setupMenuBar()
         dialog.exec();
     });
     
+    auto diskScannerAction = toolsMenu->addAction(tr("📁 &Disk Scanner..."));
+    diskScannerAction->setToolTip(tr("Analyze disk usage and find large files"));
+    connect(diskScannerAction, &QAction::triggered, this, &MainWindow::showDiskScanner);
+    
+    // === Network Tools ===
+    auto networkSpeedTestAction = toolsMenu->addAction(tr("🌐 &Network Speed Test..."));
+    networkSpeedTestAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_T));
+    networkSpeedTestAction->setToolTip(tr("Test internet download, upload and latency"));
+    connect(networkSpeedTestAction, &QAction::triggered, this, &MainWindow::showNetworkSpeedTest);
+    
     toolsMenu->addSeparator();
     
     // === Analysis & Diagnostics ===
     auto storageHealthAction = toolsMenu->addAction(tr("💾 Storage &Health..."));
-    storageHealthAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
     storageHealthAction->setToolTip(tr("Check SSD/HDD health with S.M.A.R.T. data"));
     connect(storageHealthAction, &QAction::triggered, this, [this]() {
         StorageHealthDialog dialog(this);
@@ -709,13 +807,56 @@ void MainWindow::createToolsTab()
     
     connect(toolsWidget, &ToolsWidget::purgeMemoryRequested, this, &MainWindow::purgeMemory);
     
+    // New features connections
+    connect(toolsWidget, &ToolsWidget::servicesManagerRequested, this, &MainWindow::showServicesManager);
+    connect(toolsWidget, &ToolsWidget::metricsHistoryRequested, this, &MainWindow::showMetricsHistory);
+    connect(toolsWidget, &ToolsWidget::diskScannerRequested, this, &MainWindow::showDiskScanner);
+    connect(toolsWidget, &ToolsWidget::networkSpeedTestRequested, this, &MainWindow::showNetworkSpeedTest);
+    
     m_tabWidget->addTab(m_toolsTab, tr("🧰 Tools"));
 }
+
+// ============= New Feature Slots =============
+
+void MainWindow::showServicesManager()
+{
+    ServicesDialog dialog(this);
+    dialog.exec();
+}
+
+void MainWindow::showMetricsHistory()
+{
+    if (!m_metricsHistory || !m_metricsHistory->isReady()) {
+        QMessageBox::warning(this, tr("Metrics History"),
+            tr("Metrics history is not available. The database may not be initialized."));
+        return;
+    }
+    
+    HistoryDialog dialog(m_metricsHistory.get(), this);
+    dialog.exec();
+}
+
+void MainWindow::showDiskScanner()
+{
+    DiskScannerDialog dialog(this);
+    dialog.exec();
+}
+
+void MainWindow::showNetworkSpeedTest()
+{
+    NetworkSpeedTestDialog dialog(this);
+    dialog.exec();
+}
+
+// ============================================
 
 void MainWindow::onMonitorDataReady(const MonitorData& data)
 {
     // Store the data for other uses
     m_monitorData = data;
+    
+    // Record metrics to history database
+    recordMetrics();
     
     // Update CPU UI
     const auto& cpuInfo = data.cpu;
@@ -1073,7 +1214,6 @@ void MainWindow::loadSettings()
     
     // Apply theme from settings
     if (m_alertSettings.theme != "system") {
-        // Don't show message on startup
         QString styleSheet;
         if (m_alertSettings.theme == "dark") {
             qApp->setStyle(QStyleFactory::create("Fusion"));
@@ -1201,6 +1341,7 @@ void MainWindow::checkAdminPrivileges()
         msgBox.setInformativeText(
             tr("Some features will be limited:\n\n"
                "- Memory purge will not work\n"
+               "- Service control will not work\n"
                "- Some process information may be unavailable\n"
                "- Battery details may be incomplete\n\n"
                "For full functionality, please restart as Administrator."));
@@ -1212,7 +1353,6 @@ void MainWindow::checkAdminPrivileges()
         msgBox.exec();
         
         if (msgBox.clickedButton() == restartBtn) {
-            // Restart as admin
 #ifdef _WIN32
             wchar_t path[MAX_PATH];
             GetModuleFileNameW(nullptr, path, MAX_PATH);
@@ -1221,12 +1361,11 @@ void MainWindow::checkAdminPrivileges()
             sei.cbSize = sizeof(sei);
             sei.lpVerb = L"runas";
             sei.lpFile = path;
-            sei.hwnd = nullptr;  // Don't use parent window
+            sei.hwnd = nullptr;
             sei.nShow = SW_NORMAL;
-            sei.fMask = SEE_MASK_NOASYNC;  // Wait for the operation to complete
+            sei.fMask = SEE_MASK_NOASYNC;
             
             if (ShellExecuteExW(&sei)) {
-                // Force immediate exit without cleanup to avoid two windows
                 ::ExitProcess(0);
             } else {
                 QMessageBox::warning(this, tr("Error"),
@@ -1238,12 +1377,10 @@ void MainWindow::checkAdminPrivileges()
     }
 }
 
-
 void MainWindow::showEnergyModeDialog()
 {
     EnergyModeDialog dialog(m_energyModeManager.get(), this);
     
-    // Connect to update UI when mode changes
     connect(m_energyModeManager.get(), &EnergyModeManager::activationChanged,
             this, [this](bool active) {
         m_energyModeAction->setChecked(active);
@@ -1292,14 +1429,12 @@ void MainWindow::toggleEnergyMode()
 
 void MainWindow::applyTabVisibility(const AppSettings& settings)
 {
-    // Store current tab index
     int currentIndex = m_tabWidget->currentIndex();
     QString currentTabName;
     if (currentIndex >= 0) {
         currentTabName = m_tabWidget->tabText(currentIndex);
     }
     
-    // Map tabs to their visibility settings
     struct TabInfo {
         QWidget* widget;
         QString name;
@@ -1314,15 +1449,13 @@ void MainWindow::applyTabVisibility(const AppSettings& settings)
         {m_networkTab, tr("Network"), settings.showNetworkTab},
         {m_batteryTab, tr("Battery"), settings.showBatteryTab},
         {m_processTab, tr("Processes"), settings.showProcessTab},
-        {m_toolsTab, tr("🧰 Tools"), true},  // Tools tab always visible
+        {m_toolsTab, tr("🧰 Tools"), true},
     };
     
-    // Remove all tabs first
     while (m_tabWidget->count() > 0) {
         m_tabWidget->removeTab(0);
     }
     
-    // Add visible tabs back in order
     int newCurrentIndex = 0;
     for (const auto& tab : tabs) {
         if (tab.visible && tab.widget) {
@@ -1333,7 +1466,6 @@ void MainWindow::applyTabVisibility(const AppSettings& settings)
         }
     }
     
-    // Restore selection if possible
     if (m_tabWidget->count() > 0) {
         m_tabWidget->setCurrentIndex(newCurrentIndex);
     }
@@ -1344,7 +1476,6 @@ void MainWindow::applyTheme(const QString& theme)
     QString styleSheet;
     
     if (theme == "dark") {
-        // Dark theme
         qApp->setStyle(QStyleFactory::create("Fusion"));
         QPalette darkPalette;
         darkPalette.setColor(QPalette::Window, QColor(53, 53, 53));
@@ -1368,12 +1499,10 @@ void MainWindow::applyTheme(const QString& theme)
             QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 5px; }
         )";
     } else if (theme == "light") {
-        // Light theme
         qApp->setStyle(QStyleFactory::create("Fusion"));
         qApp->setPalette(qApp->style()->standardPalette());
         styleSheet = "";
     } else {
-        // System default
         qApp->setStyle(QStyleFactory::create("windowsvista"));
         qApp->setPalette(qApp->style()->standardPalette());
         styleSheet = "";

@@ -67,6 +67,12 @@ signals:
     void energyModeRequested();
     void energyModeConfigRequested();
     void purgeMemoryRequested();
+    
+    // New features
+    void servicesManagerRequested();
+    void metricsHistoryRequested();
+    void diskScannerRequested();
+    void networkSpeedTestRequested();
 
 private:
     void setupUi();

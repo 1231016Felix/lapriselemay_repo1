@@ -291,6 +291,15 @@ void DiskScannerDialog::createStatisticsTab()
     m_scanTimeLabel = new QLabel("-");
     summaryLayout->addWidget(m_scanTimeLabel, 1, 3);
     
+    summaryLayout->addWidget(new QLabel(tr("Inaccessible Folders:")), 2, 0);
+    m_inaccessibleLabel = new QLabel("-");
+    m_inaccessibleLabel->setStyleSheet("color: orange;");
+    summaryLayout->addWidget(m_inaccessibleLabel, 2, 1);
+    
+    summaryLayout->addWidget(new QLabel(tr("Skipped Symlinks:")), 2, 2);
+    m_symlinksLabel = new QLabel("-");
+    summaryLayout->addWidget(m_symlinksLabel, 2, 3);
+    
     layout->addWidget(summaryGroup);
     
     // Split for tables
@@ -594,6 +603,13 @@ void DiskScannerDialog::updateStatistics()
     m_totalFilesLabel->setText(QString::number(stats.totalFiles));
     m_totalDirsLabel->setText(QString::number(stats.totalDirectories));
     m_scanTimeLabel->setText(QString("%1 seconds").arg(stats.scanDurationSeconds, 0, 'f', 2));
+    
+    // Show inaccessible and skipped counts
+    m_inaccessibleLabel->setText(QString::number(stats.inaccessibleDirectories));
+    if (stats.inaccessibleDirectories > 0) {
+        m_inaccessibleLabel->setToolTip(tr("Some folders could not be scanned due to permission restrictions."));
+    }
+    m_symlinksLabel->setText(QString::number(stats.skippedSymlinks));
     
     // Size distribution
     m_sizeDistTable->setRowCount(5);

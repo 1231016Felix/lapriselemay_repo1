@@ -302,11 +302,45 @@ void ToolsWidget::createToolCards()
     connect(startupCard, &ToolCard::clicked, this, &ToolsWidget::startupManagerRequested);
     addCard(startupCard);
     
-    // === Cleaning Section ===
+    // === Services & Monitoring Section ===
     row++; col = 0;
-    auto sectionLabel2 = new QLabel(tr("🗑️ Cleaning & Maintenance"));
+    auto sectionLabel2 = new QLabel(tr("⚙️ Services & Monitoring"));
     sectionLabel2->setStyleSheet("font-size: 13px; font-weight: 600; color: #0078d7; margin-top: 20px; font-family: 'Segoe UI Emoji', 'Segoe UI'; background: transparent;");
     m_gridLayout->addWidget(sectionLabel2, row, 0, 1, maxCols);
+    row++; col = 0;
+    
+    // Services Manager (NEW)
+    auto servicesCard = createCard(
+        "⚙️", tr("Services Manager"),
+        tr("View, start, stop and manage Windows services. Monitor resource usage and crash history."),
+        "Ctrl+Shift+S", true
+    );
+    connect(servicesCard, &ToolCard::clicked, this, &ToolsWidget::servicesManagerRequested);
+    addCard(servicesCard);
+    
+    // Metrics History (NEW)
+    auto historyCard = createCard(
+        "📊", tr("Metrics History"),
+        tr("View historical performance data with interactive charts. Compare periods and export data."),
+        "Ctrl+H", false
+    );
+    connect(historyCard, &ToolCard::clicked, this, &ToolsWidget::metricsHistoryRequested);
+    addCard(historyCard);
+    
+    // Detailed Memory
+    auto memoryCard = createCard(
+        "🧠", tr("Detailed Memory"),
+        tr("Analyze RAM usage per process, detect memory leaks, view working sets."),
+        "Ctrl+M", false
+    );
+    connect(memoryCard, &ToolCard::clicked, this, &ToolsWidget::detailedMemoryRequested);
+    addCard(memoryCard);
+    
+    // === Cleaning Section ===
+    row++; col = 0;
+    auto sectionLabel3 = new QLabel(tr("🗑️ Cleaning & Maintenance"));
+    sectionLabel3->setStyleSheet("font-size: 13px; font-weight: 600; color: #0078d7; margin-top: 20px; font-family: 'Segoe UI Emoji', 'Segoe UI'; background: transparent;");
+    m_gridLayout->addWidget(sectionLabel3, row, 0, 1, maxCols);
     row++; col = 0;
     
     // System Cleaner
@@ -318,30 +352,39 @@ void ToolsWidget::createToolCards()
     connect(cleanerCard, &ToolCard::clicked, this, &ToolsWidget::systemCleanerRequested);
     addCard(cleanerCard);
     
+    // Disk Scanner
+    auto diskScannerCard = createCard(
+        "📁", tr("Disk Scanner"),
+        tr("Analyze disk usage, find large files and folders taking up space."),
+        "", false
+    );
+    connect(diskScannerCard, &ToolCard::clicked, this, &ToolsWidget::diskScannerRequested);
+    addCard(diskScannerCard);
+    
     // === Analysis Section ===
     row++; col = 0;
-    auto sectionLabel3 = new QLabel(tr("🔍 Analysis & Diagnostics"));
-    sectionLabel3->setStyleSheet("font-size: 13px; font-weight: 600; color: #0078d7; margin-top: 20px; font-family: 'Segoe UI Emoji', 'Segoe UI'; background: transparent;");
-    m_gridLayout->addWidget(sectionLabel3, row, 0, 1, maxCols);
+    auto sectionLabel4 = new QLabel(tr("🔍 Analysis & Diagnostics"));
+    sectionLabel4->setStyleSheet("font-size: 13px; font-weight: 600; color: #0078d7; margin-top: 20px; font-family: 'Segoe UI Emoji', 'Segoe UI'; background: transparent;");
+    m_gridLayout->addWidget(sectionLabel4, row, 0, 1, maxCols);
     row++; col = 0;
     
     // Storage Health
     auto storageCard = createCard(
         "💾", tr("Storage Health"),
         tr("Check SSD/HDD health using S.M.A.R.T. data and NVMe diagnostics."),
-        "Ctrl+H", true
+        "", true
     );
     connect(storageCard, &ToolCard::clicked, this, &ToolsWidget::storageHealthRequested);
     addCard(storageCard);
     
-    // Detailed Memory
-    auto memoryCard = createCard(
-        "🧠", tr("Detailed Memory"),
-        tr("Analyze RAM usage per process, detect memory leaks, view working sets."),
-        "Ctrl+M", false
+    // Network Speed Test (NEW)
+    auto speedTestCard = createCard(
+        "🌐", tr("Network Speed Test"),
+        tr("Test your internet connection speed: download, upload, and latency."),
+        "Ctrl+T", false
     );
-    connect(memoryCard, &ToolCard::clicked, this, &ToolsWidget::detailedMemoryRequested);
-    addCard(memoryCard);
+    connect(speedTestCard, &ToolCard::clicked, this, &ToolsWidget::networkSpeedTestRequested);
+    addCard(speedTestCard);
     
     // Add stretch to push cards to top
     m_gridLayout->setRowStretch(row + 1, 1);

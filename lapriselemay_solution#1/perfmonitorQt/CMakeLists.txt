@@ -14,6 +14,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets 
     Charts
     Network
+    Sql
 )
 
 # Windows-specific libraries
@@ -37,6 +38,7 @@ if(WIN32)
         psapi
         advapi32
         userenv
+        wevtapi
     )
 endif()
 
@@ -44,6 +46,7 @@ endif()
 set(SOURCES
     src/main.cpp
     src/mainwindow.cpp
+    # Monitors
     src/monitors/cpumonitor.cpp
     src/monitors/memorymonitor.cpp
     src/monitors/gpumonitor.cpp
@@ -56,6 +59,9 @@ set(SOURCES
     src/monitors/storagehealthmonitor.cpp
     src/monitors/detailedmemorymonitor.cpp
     src/monitors/diskscannermonitor.cpp
+    src/monitors/servicemonitor.cpp
+    src/monitors/networkspeedtest.cpp
+    # Widgets
     src/widgets/sparklinegraph.cpp
     src/widgets/systemtray.cpp
     src/widgets/processdialog.cpp
@@ -70,14 +76,27 @@ set(SOURCES
     src/widgets/detailedmemorydialog.cpp
     src/widgets/diskscannerdialog.cpp
     src/widgets/toolswidget.cpp
+    src/widgets/servicesdialog.cpp
+    src/widgets/historydialog.cpp
+    src/widgets/interactivechart.cpp
+    src/widgets/timerangeselector.cpp
+    src/widgets/comparisonchart.cpp
+    src/widgets/servicehistorydialog.cpp
+    src/widgets/networkspeedtestdialog.cpp
+    # Database
+    src/database/metricshistory.cpp
+    src/database/servicehistory.cpp
+    # Utils
     src/utils/systeminfo.cpp
     src/utils/energymode.cpp
     src/utils/monitorworker.cpp
+    # Cleaners
     src/cleaners/systemcleaner.cpp
 )
 
 set(HEADERS
     src/mainwindow.h
+    # Monitors
     src/monitors/cpumonitor.h
     src/monitors/memorymonitor.h
     src/monitors/gpumonitor.h
@@ -90,6 +109,9 @@ set(HEADERS
     src/monitors/storagehealthmonitor.h
     src/monitors/detailedmemorymonitor.h
     src/monitors/diskscannermonitor.h
+    src/monitors/servicemonitor.h
+    src/monitors/networkspeedtest.h
+    # Widgets
     src/widgets/sparklinegraph.h
     src/widgets/systemtray.h
     src/widgets/processdialog.h
@@ -104,9 +126,21 @@ set(HEADERS
     src/widgets/detailedmemorydialog.h
     src/widgets/diskscannerdialog.h
     src/widgets/toolswidget.h
+    src/widgets/servicesdialog.h
+    src/widgets/historydialog.h
+    src/widgets/interactivechart.h
+    src/widgets/timerangeselector.h
+    src/widgets/comparisonchart.h
+    src/widgets/servicehistorydialog.h
+    src/widgets/networkspeedtestdialog.h
+    # Database
+    src/database/metricshistory.h
+    src/database/servicehistory.h
+    # Utils
     src/utils/systeminfo.h
     src/utils/energymode.h
     src/utils/monitorworker.h
+    # Cleaners
     src/cleaners/systemcleaner.h
 )
 
@@ -129,6 +163,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Widgets
     Qt6::Charts
     Qt6::Network
+    Qt6::Sql
     ${PLATFORM_LIBS}
 )
 

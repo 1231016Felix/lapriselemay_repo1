@@ -12,9 +12,9 @@
 #endif
 
 /**
- * @brief Service information structure
+ * @brief Service information structure for Energy Mode
  */
-struct ServiceInfo {
+struct EnergyServiceInfo {
     QString name;           // Internal service name
     QString displayName;    // Friendly display name
     QString description;    // What this service does
@@ -72,8 +72,8 @@ public:
     bool toggle();
     
     /// Get list of services that will be affected
-    std::vector<ServiceInfo>& services() { return m_services; }
-    const std::vector<ServiceInfo>& services() const { return m_services; }
+    std::vector<EnergyServiceInfo>& services() { return m_services; }
+    const std::vector<EnergyServiceInfo>& services() const { return m_services; }
     
     /// Check if running as admin (required for service control)
     static bool isRunningAsAdmin();
@@ -112,7 +112,7 @@ private:
     
     void setStatus(const QString& message);
 
-    std::vector<ServiceInfo> m_services;
+    std::vector<EnergyServiceInfo> m_services;
     bool m_isActive{false};
     QString m_statusMessage;
     
