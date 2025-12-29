@@ -200,6 +200,7 @@ public:
     static QString formatBytesShort(qint64 bytes);
 
 signals:
+    void aboutToRefresh();
     void refreshed();
     void potentialLeakDetected(quint32 pid, const QString& processName, double growthRate);
     void systemMemoryLow(double usagePercent);

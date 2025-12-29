@@ -61,6 +61,7 @@ set(SOURCES
     src/monitors/diskscannermonitor.cpp
     src/monitors/servicemonitor.cpp
     src/monitors/networkspeedtest.cpp
+    src/monitors/processimpactmonitor.cpp
     # Widgets
     src/widgets/sparklinegraph.cpp
     src/widgets/systemtray.cpp
@@ -83,6 +84,9 @@ set(SOURCES
     src/widgets/comparisonchart.cpp
     src/widgets/servicehistorydialog.cpp
     src/widgets/networkspeedtestdialog.cpp
+    src/widgets/processimpactwidget.cpp
+    src/widgets/processimpactdialog.cpp
+    src/widgets/tempcleanerdialog.cpp
     # Database
     src/database/metricshistory.cpp
     src/database/servicehistory.cpp
@@ -90,6 +94,8 @@ set(SOURCES
     src/utils/systeminfo.cpp
     src/utils/energymode.cpp
     src/utils/monitorworker.cpp
+    src/utils/tempcleaner.cpp
+    src/utils/tempcleaner_paths.cpp
     # Cleaners
     src/cleaners/systemcleaner.cpp
 )
@@ -111,6 +117,7 @@ set(HEADERS
     src/monitors/diskscannermonitor.h
     src/monitors/servicemonitor.h
     src/monitors/networkspeedtest.h
+    src/monitors/processimpactmonitor.h
     # Widgets
     src/widgets/sparklinegraph.h
     src/widgets/systemtray.h
@@ -133,6 +140,9 @@ set(HEADERS
     src/widgets/comparisonchart.h
     src/widgets/servicehistorydialog.h
     src/widgets/networkspeedtestdialog.h
+    src/widgets/processimpactwidget.h
+    src/widgets/processimpactdialog.h
+    src/widgets/tempcleanerdialog.h
     # Database
     src/database/metricshistory.h
     src/database/servicehistory.h
@@ -140,6 +150,7 @@ set(HEADERS
     src/utils/systeminfo.h
     src/utils/energymode.h
     src/utils/monitorworker.h
+    src/utils/tempcleaner.h
     # Cleaners
     src/cleaners/systemcleaner.h
 )

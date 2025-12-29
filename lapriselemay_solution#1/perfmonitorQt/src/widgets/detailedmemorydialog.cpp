@@ -15,6 +15,51 @@
 #include <QClipboard>
 #include <QMenu>
 
+// ============================================================================
+// ProcessMemorySortFilterProxy Implementation
+// ============================================================================
+
+ProcessMemorySortFilterProxy::ProcessMemorySortFilterProxy(QObject* parent)
+    : QSortFilterProxyModel(parent)
+{
+}
+
+bool ProcessMemorySortFilterProxy::lessThan(const QModelIndex& left, const QModelIndex& right) const
+{
+    QVariant leftData = sourceModel()->data(left, Qt::UserRole);
+    QVariant rightData = sourceModel()->data(right, Qt::UserRole);
+    
+    if (leftData.isValid() && rightData.isValid()) {
+        if (leftData.typeId() == QMetaType::Double) {
+            return leftData.toDouble() < rightData.toDouble();
+        }
+        if (leftData.typeId() == QMetaType::LongLong) {
+            return leftData.toLongLong() < rightData.toLongLong();
+        }
+    }
+    
+    return QSortFilterProxyModel::lessThan(left, right);
+}
+
+QModelIndex ProcessMemorySortFilterProxy::findProxyIndexByPid(quint32 pid) const
+{
+    auto* model = qobject_cast<ProcessMemoryModel*>(sourceModel());
+    if (!model) return QModelIndex();
+    
+    for (int row = 0; row < model->rowCount(); ++row) {
+        const auto* proc = model->getProcess(row);
+        if (proc && proc->pid == pid) {
+            QModelIndex sourceIdx = model->index(row, 0);
+            return mapFromSource(sourceIdx);
+        }
+    }
+    return QModelIndex();
+}
+
+// ============================================================================
+// DetailedMemoryDialog Implementation
+// ============================================================================
+
 DetailedMemoryDialog::DetailedMemoryDialog(QWidget *parent)
     : QDialog(parent)
     , m_monitor(std::make_unique<DetailedMemoryMonitor>())
@@ -33,6 +78,19 @@ DetailedMemoryDialog::DetailedMemoryDialog(QWidget *parent)
             this, &DetailedMemoryDialog::onPotentialLeakDetected);
     connect(m_monitor.get(), &DetailedMemoryMonitor::systemMemoryLow,
             this, &DetailedMemoryDialog::onSystemMemoryLow);
+    
+    // Selection preservation: save before refresh
+    connect(m_monitor.get(), &DetailedMemoryMonitor::aboutToRefresh, this, [this]() {
+        quint32 selectedPid = getSelectedPid();
+        if (selectedPid > 0) {
+            m_pendingProcessSelection = selectedPid;
+        }
+    });
+    
+    // Selection preservation: restore after refresh
+    connect(m_monitor.get(), &DetailedMemoryMonitor::refreshed, this, [this]() {
+        restoreSelection();
+    });
     
     // Start monitoring
     m_monitor->startAutoRefresh(2000);
@@ -184,8 +242,8 @@ void DetailedMemoryDialog::createProcessesTab()
     m_processTable->verticalHeader()->setVisible(false);
     m_processTable->setContextMenuPolicy(Qt::CustomContextMenu);
     
-    // Setup proxy model for filtering
-    m_proxyModel = new QSortFilterProxyModel(this);
+    // Setup proxy model for filtering and proper sorting
+    m_proxyModel = new ProcessMemorySortFilterProxy(this);
     m_proxyModel->setSourceModel(m_monitor->model());
     m_proxyModel->setFilterCaseSensitivity(Qt::CaseInsensitive);
     m_proxyModel->setFilterKeyColumn(0); // Filter by name
@@ -633,4 +691,35 @@ QString DetailedMemoryDialog::formatBytes(qint64 bytes) const
 QString DetailedMemoryDialog::formatPercent(double percent) const
 {
     return QString("%1%").arg(percent, 0, 'f', 1);
+}
+
+quint32 DetailedMemoryDialog::getSelectedPid() const
+{
+    auto selection = m_processTable->selectionModel()->selectedRows();
+    if (selection.isEmpty()) return 0;
+    
+    auto proxyIndex = selection.first();
+    auto sourceIndex = m_proxyModel->mapToSource(proxyIndex);
+    auto* proc = static_cast<ProcessMemoryModel*>(m_monitor->model())->getProcess(sourceIndex.row());
+    return proc ? proc->pid : 0;
+}
+
+void DetailedMemoryDialog::restoreSelection()
+{
+    if (m_pendingProcessSelection == 0) return;
+    
+    quint32 pidToRestore = m_pendingProcessSelection;
+    
+    QTimer::singleShot(0, this, [this, pidToRestore]() {
+        quint32 currentPid = getSelectedPid();
+        if (currentPid != pidToRestore) {
+            QModelIndex proxyIndex = m_proxyModel->findProxyIndexByPid(pidToRestore);
+            if (proxyIndex.isValid()) {
+                m_processTable->selectionModel()->blockSignals(true);
+                m_processTable->setCurrentIndex(proxyIndex);
+                m_processTable->scrollTo(proxyIndex);
+                m_processTable->selectionModel()->blockSignals(false);
+            }
+        }
+    });
 }

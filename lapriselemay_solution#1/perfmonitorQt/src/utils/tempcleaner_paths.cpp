@@ -1,3 +1,11 @@
+#include "tempcleaner.h"
+
+#include <QDir>
+#include <QStringList>
+
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 
 // === Path Resolution ===
 

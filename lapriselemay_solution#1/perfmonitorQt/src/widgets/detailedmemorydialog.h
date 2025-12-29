@@ -18,6 +18,21 @@ class DetailedMemoryMonitor;
 class SparklineGraph;
 
 /**
+ * @brief Custom sort/filter proxy for process memory table
+ */
+class ProcessMemorySortFilterProxy : public QSortFilterProxyModel
+{
+    Q_OBJECT
+public:
+    explicit ProcessMemorySortFilterProxy(QObject* parent = nullptr);
+    
+    QModelIndex findProxyIndexByPid(quint32 pid) const;
+
+protected:
+    bool lessThan(const QModelIndex& left, const QModelIndex& right) const override;
+};
+
+/**
  * @brief Dialog showing detailed RAM usage and memory leak detection
  */
 class DetailedMemoryDialog : public QDialog
@@ -46,6 +61,9 @@ private:
     void updateLeakList();
     void updateComposition();
     
+    quint32 getSelectedPid() const;
+    void restoreSelection();
+    
     QString formatBytes(qint64 bytes) const;
     QString formatPercent(double percent) const;
 
@@ -72,8 +90,9 @@ private:
     QWidget* m_processesTab{nullptr};
     QLineEdit* m_filterEdit{nullptr};
     QTableView* m_processTable{nullptr};
-    QSortFilterProxyModel* m_proxyModel{nullptr};
+    ProcessMemorySortFilterProxy* m_proxyModel{nullptr};
     QLabel* m_selectedProcessLabel{nullptr};
+    quint32 m_pendingProcessSelection{0};
     
     // Leak detection tab
     QWidget* m_leakTab{nullptr};

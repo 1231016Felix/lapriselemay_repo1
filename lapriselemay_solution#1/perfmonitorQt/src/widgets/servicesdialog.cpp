@@ -22,6 +22,9 @@ ServicesDialog::ServicesDialog(QWidget* parent)
     setMinimumSize(1200, 700);
     resize(1400, 800);
     
+    // Enable maximize/minimize buttons and allow double-click to maximize
+    setWindowFlags(windowFlags() | Qt::WindowMinMaxButtonsHint);
+    
     m_monitor = std::make_unique<ServiceMonitor>();
     m_monitor->initialize();
     
@@ -36,6 +39,18 @@ ServicesDialog::ServicesDialog(QWidget* parent)
             this, [this](const QString& error) {
                 m_statusLabel->setText(tr("Error: %1").arg(error));
             });
+    
+    // Selection preservation: save before refresh
+    connect(m_monitor.get(), &ServiceMonitor::aboutToRefresh, this, [this]() {
+        if (!m_selectedService.isEmpty()) {
+            m_pendingServiceSelection = m_selectedService;
+        }
+    });
+    
+    // Selection preservation: restore after refresh
+    connect(m_monitor.get(), &ServiceMonitor::servicesRefreshed, this, [this]() {
+        restoreSelection();
+    });
     
     // Start auto-refresh
     m_refreshTimer = std::make_unique<QTimer>(this);
@@ -662,6 +677,39 @@ void ServicesDialog::showServiceProperties(const QString& serviceName)
     ServicePropertiesDialog dlg(*svc, m_monitor.get(), this);
     dlg.exec();
     onRefresh();
+}
+
+int ServicesDialog::findServiceRow(const QString& serviceName) const
+{
+    if (serviceName.isEmpty()) return -1;
+    
+    for (int row = 0; row < m_monitor->model()->rowCount(); ++row) {
+        const ServiceInfo* svc = m_monitor->model()->getService(row);
+        if (svc && svc->serviceName == serviceName) {
+            return row;
+        }
+    }
+    return -1;
+}
+
+void ServicesDialog::restoreSelection()
+{
+    if (m_pendingServiceSelection.isEmpty()) return;
+    
+    QString serviceToRestore = m_pendingServiceSelection;
+    
+    QTimer::singleShot(0, this, [this, serviceToRestore]() {
+        int row = findServiceRow(serviceToRestore);
+        if (row >= 0) {
+            QModelIndex index = m_monitor->model()->index(row, 0);
+            if (index.isValid()) {
+                m_tableView->selectionModel()->blockSignals(true);
+                m_tableView->setCurrentIndex(index);
+                m_tableView->scrollTo(index);
+                m_tableView->selectionModel()->blockSignals(false);
+            }
+        }
+    });
 }
 
 // ==================== ServicePropertiesDialog ====================

@@ -208,6 +208,8 @@ DetailedMemoryMonitor::~DetailedMemoryMonitor()
 
 void DetailedMemoryMonitor::refresh()
 {
+    emit aboutToRefresh();
+    
     querySystemMemory();
     queryProcessMemory();
     takeSnapshot();

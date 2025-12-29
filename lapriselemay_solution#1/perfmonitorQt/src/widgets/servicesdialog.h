@@ -62,6 +62,8 @@ private:
     void updateServiceDetails(const ServiceInfo* service);
     void updateActionButtons(const ServiceInfo* service);
     void showServiceProperties(const QString& serviceName);
+    void restoreSelection();
+    int findServiceRow(const QString& serviceName) const;
 
     std::unique_ptr<ServiceMonitor> m_monitor;
     
@@ -116,6 +118,7 @@ private:
     
     // Currently selected service
     QString m_selectedService;
+    QString m_pendingServiceSelection;
 };
 
 

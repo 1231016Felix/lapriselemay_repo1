@@ -24,6 +24,9 @@ HistoryDialog::HistoryDialog(MetricsHistory* history, QWidget* parent)
     setMinimumSize(1200, 800);
     resize(1400, 900);
     
+    // Enable maximize/minimize buttons and allow double-click to maximize
+    setWindowFlags(windowFlags() | Qt::WindowMinMaxButtonsHint);
+    
     setupUi();
     
     // Set default selections

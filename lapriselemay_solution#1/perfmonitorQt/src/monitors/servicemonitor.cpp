@@ -331,6 +331,8 @@ bool ServiceMonitor::isAutoRefreshing() const
 
 void ServiceMonitor::refresh()
 {
+    emit aboutToRefresh();
+    
     enumerateServices();
     updateResourceUsage();
     m_model->setServices(m_services);

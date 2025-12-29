@@ -114,6 +114,7 @@ void DiskMonitor::queryDisks()
         
         DiskInfo disk;
         disk.name = QString(QChar('A' + i)) + ":";
+        disk.driveLetter = disk.name;  // Set drive letter (e.g., "C:")
         
         // Get volume information
         wchar_t volumeName[MAX_PATH + 1] = {0};

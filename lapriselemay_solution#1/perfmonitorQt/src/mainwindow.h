@@ -62,6 +62,7 @@ private slots:
     void showMetricsHistory();
     void showDiskScanner();
     void showNetworkSpeedTest();
+    void showProcessImpact();
 
 private:
     void setupUi();

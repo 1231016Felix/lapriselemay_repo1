@@ -17,6 +17,8 @@
 #include "widgets/servicesdialog.h"
 #include "widgets/historydialog.h"
 #include "widgets/networkspeedtestdialog.h"
+#include "widgets/processimpactdialog.h"
+#include "monitors/processimpactmonitor.h"
 #include "database/metricshistory.h"
 
 #include <QVBoxLayout>
@@ -812,6 +814,7 @@ void MainWindow::createToolsTab()
     connect(toolsWidget, &ToolsWidget::metricsHistoryRequested, this, &MainWindow::showMetricsHistory);
     connect(toolsWidget, &ToolsWidget::diskScannerRequested, this, &MainWindow::showDiskScanner);
     connect(toolsWidget, &ToolsWidget::networkSpeedTestRequested, this, &MainWindow::showNetworkSpeedTest);
+    connect(toolsWidget, &ToolsWidget::processImpactRequested, this, &MainWindow::showProcessImpact);
     
     m_tabWidget->addTab(m_toolsTab, tr("🧰 Tools"));
 }
@@ -845,6 +848,12 @@ void MainWindow::showDiskScanner()
 void MainWindow::showNetworkSpeedTest()
 {
     NetworkSpeedTestDialog dialog(this);
+    dialog.exec();
+}
+
+void MainWindow::showProcessImpact()
+{
+    ProcessImpactDialog dialog(this);
     dialog.exec();
 }
 
@@ -1187,8 +1196,261 @@ void MainWindow::exportReport()
     
     if (filename.isEmpty()) return;
     
-    // TODO: Implement report export
-    QMessageBox::information(this, tr("Export"), tr("Report exported to: %1").arg(filename));
+    QFile file(filename);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, tr("Error"), 
+            tr("Cannot write to file: %1").arg(file.errorString()));
+        return;
+    }
+    
+    QTextStream out(&file);
+    bool isHtml = filename.endsWith(".html", Qt::CaseInsensitive);
+    
+    // Get current timestamp
+    QString timestamp = QDateTime::currentDateTime().toString("dd/MM/yyyy HH:mm:ss");
+    
+    if (isHtml) {
+        // HTML Report
+        out << "<!DOCTYPE html>\n";
+        out << "<html><head>\n";
+        out << "<meta charset=\"UTF-8\">\n";
+        out << "<title>PerfMonitorQt - System Report</title>\n";
+        out << "<style>\n";
+        out << "body { font-family: 'Segoe UI', Arial, sans-serif; background: #1e1e24; color: #fff; margin: 40px; }\n";
+        out << "h1 { color: #0078d7; border-bottom: 2px solid #0078d7; padding-bottom: 10px; }\n";
+        out << "h2 { color: #00c864; margin-top: 30px; }\n";
+        out << ".section { background: #2d2d35; padding: 20px; border-radius: 8px; margin: 15px 0; }\n";
+        out << ".metric { display: inline-block; margin: 10px 20px; }\n";
+        out << ".metric-label { color: #888; font-size: 12px; }\n";
+        out << ".metric-value { font-size: 24px; font-weight: bold; }\n";
+        out << ".good { color: #00c864; }\n";
+        out << ".warning { color: #ffaa00; }\n";
+        out << ".critical { color: #ff4444; }\n";
+        out << "table { width: 100%; border-collapse: collapse; margin: 15px 0; }\n";
+        out << "th, td { text-align: left; padding: 12px; border-bottom: 1px solid #3d3d45; }\n";
+        out << "th { background: #3d3d45; color: #0078d7; }\n";
+        out << "</style>\n";
+        out << "</head><body>\n";
+        out << "<h1>🖥️ PerfMonitorQt - System Report</h1>\n";
+        out << QString("<p>Generated: %1</p>\n").arg(timestamp);
+        out << QString("<p>System Uptime: %1</p>\n").arg(m_monitorData.cpu.uptime);
+        
+        // CPU Section
+        out << "<h2>⚡ CPU</h2>\n";
+        out << "<div class=\"section\">\n";
+        out << QString("<p><strong>Processor:</strong> %1</p>\n").arg(m_monitorData.cpu.name);
+        out << QString("<p><strong>Cores:</strong> %1 Physical / %2 Logical</p>\n")
+               .arg(m_monitorData.cpu.cores).arg(m_monitorData.cpu.logicalProcessors);
+        QString cpuClass = m_monitorData.cpu.usage > 80 ? "critical" : (m_monitorData.cpu.usage > 50 ? "warning" : "good");
+        out << QString("<div class=\"metric\"><div class=\"metric-label\">Usage</div><div class=\"metric-value %1\">%2%</div></div>\n")
+               .arg(cpuClass).arg(m_monitorData.cpu.usage, 0, 'f', 1);
+        out << QString("<div class=\"metric\"><div class=\"metric-label\">Speed</div><div class=\"metric-value\">%1 GHz</div></div>\n")
+               .arg(m_monitorData.cpu.currentSpeed, 0, 'f', 2);
+        out << QString("<div class=\"metric\"><div class=\"metric-label\">Processes</div><div class=\"metric-value\">%1</div></div>\n")
+               .arg(m_monitorData.cpu.processCount);
+        out << QString("<div class=\"metric\"><div class=\"metric-label\">Threads</div><div class=\"metric-value\">%1</div></div>\n")
+               .arg(m_monitorData.cpu.threadCount);
+        if (m_monitorData.temperature.hasTemperature) {
+            QString tempClass = m_monitorData.temperature.cpuTemperature > 80 ? "critical" : 
+                               (m_monitorData.temperature.cpuTemperature > 60 ? "warning" : "good");
+            out << QString("<div class=\"metric\"><div class=\"metric-label\">Temperature</div><div class=\"metric-value %1\">%2°C</div></div>\n")
+                   .arg(tempClass).arg(m_monitorData.temperature.cpuTemperature, 0, 'f', 1);
+        }
+        out << "</div>\n";
+        
+        // Memory Section
+        out << "<h2>🧠 Memory</h2>\n";
+        out << "<div class=\"section\">\n";
+        QString memClass = m_monitorData.memory.usagePercent > 85 ? "critical" : 
+                          (m_monitorData.memory.usagePercent > 70 ? "warning" : "good");
+        out << QString("<div class=\"metric\"><div class=\"metric-label\">Usage</div><div class=\"metric-value %1\">%2%</div></div>\n")
+               .arg(memClass).arg(m_monitorData.memory.usagePercent, 0, 'f', 1);
+        out << QString("<div class=\"metric\"><div class=\"metric-label\">Used</div><div class=\"metric-value\">%1 GB</div></div>\n")
+               .arg(m_monitorData.memory.usedGB, 0, 'f', 1);
+        out << QString("<div class=\"metric\"><div class=\"metric-label\">Available</div><div class=\"metric-value\">%1 GB</div></div>\n")
+               .arg(m_monitorData.memory.availableGB, 0, 'f', 1);
+        out << QString("<div class=\"metric\"><div class=\"metric-label\">Total</div><div class=\"metric-value\">%1 GB</div></div>\n")
+               .arg(m_monitorData.memory.totalGB, 0, 'f', 1);
+        out << "</div>\n";
+        
+        // GPU Section
+        out << "<h2>🎮 GPU</h2>\n";
+        out << "<div class=\"section\">\n";
+        out << QString("<p><strong>Graphics Card:</strong> %1</p>\n").arg(m_monitorData.primaryGpu.name);
+        out << QString("<p><strong>Vendor:</strong> %1</p>\n").arg(m_monitorData.primaryGpu.vendor);
+        out << QString("<div class=\"metric\"><div class=\"metric-label\">GPU Usage</div><div class=\"metric-value\">%1%</div></div>\n")
+               .arg(m_monitorData.primaryGpu.usage, 0, 'f', 1);
+        out << QString("<div class=\"metric\"><div class=\"metric-label\">VRAM Used</div><div class=\"metric-value\">%1</div></div>\n")
+               .arg(GpuMonitor::formatMemory(m_monitorData.primaryGpu.dedicatedMemoryUsed));
+        if (m_monitorData.primaryGpu.temperature > -900) {
+            out << QString("<div class=\"metric\"><div class=\"metric-label\">Temperature</div><div class=\"metric-value\">%1°C</div></div>\n")
+                   .arg(m_monitorData.primaryGpu.temperature, 0, 'f', 0);
+        }
+        out << "</div>\n";
+        
+        // Disk Section
+        out << "<h2>💾 Disks</h2>\n";
+        out << "<div class=\"section\">\n";
+        out << "<table><tr><th>Drive</th><th>Label</th><th>Type</th><th>Used</th><th>Free</th><th>Total</th><th>Usage</th></tr>\n";
+        for (const auto& disk : m_monitorData.disks) {
+            QString usageClass = disk.usagePercent > 90 ? "critical" : (disk.usagePercent > 75 ? "warning" : "good");
+            out << QString("<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td><td>%5</td><td>%6</td><td class=\"%7\">%8%</td></tr>\n")
+                   .arg(disk.driveLetter)
+                   .arg(disk.label.isEmpty() ? "-" : disk.label)
+                   .arg(disk.fileSystem)
+                   .arg(formatBytes(disk.usedBytes))
+                   .arg(formatBytes(disk.freeBytes))
+                   .arg(formatBytes(disk.totalBytes))
+                   .arg(usageClass)
+                   .arg(disk.usagePercent, 0, 'f', 1);
+        }
+        out << "</table>\n";
+        out << "</div>\n";
+        
+        // Network Section
+        out << "<h2>🌐 Network</h2>\n";
+        out << "<div class=\"section\">\n";
+        out << "<table><tr><th>Adapter</th><th>Status</th><th>IPv4</th><th>Speed</th></tr>\n";
+        for (const auto& adapter : m_monitorData.networkAdapters) {
+            QString statusClass = adapter.isConnected ? "good" : "critical";
+            out << QString("<tr><td>%1</td><td class=\"%2\">%3</td><td>%4</td><td>%5</td></tr>\n")
+                   .arg(adapter.description)
+                   .arg(statusClass)
+                   .arg(adapter.isConnected ? tr("Connected") : tr("Disconnected"))
+                   .arg(adapter.ipv4Address.isEmpty() ? "-" : adapter.ipv4Address)
+                   .arg(adapter.speed > 0 ? QString("%1 Mbps").arg(adapter.speed / 1000000) : "-");
+        }
+        out << "</table>\n";
+        out << "</div>\n";
+        
+        // Battery Section (if available)
+        if (m_monitorData.battery.hasBattery) {
+            out << "<h2>🔋 Battery</h2>\n";
+            out << "<div class=\"section\">\n";
+            QString batClass = m_monitorData.battery.percentage < 20 ? "critical" : 
+                              (m_monitorData.battery.percentage < 50 ? "warning" : "good");
+            out << QString("<div class=\"metric\"><div class=\"metric-label\">Charge</div><div class=\"metric-value %1\">%2%</div></div>\n")
+                   .arg(batClass).arg(m_monitorData.battery.percentage);
+            out << QString("<div class=\"metric\"><div class=\"metric-label\">Status</div><div class=\"metric-value\">%1</div></div>\n")
+                   .arg(m_monitorData.battery.status);
+            out << QString("<div class=\"metric\"><div class=\"metric-label\">Health</div><div class=\"metric-value\">%1%</div></div>\n")
+                   .arg(m_monitorData.battery.healthPercent, 0, 'f', 1);
+            out << QString("<div class=\"metric\"><div class=\"metric-label\">Cycles</div><div class=\"metric-value\">%1</div></div>\n")
+                   .arg(m_monitorData.battery.cycleCount);
+            out << "</div>\n";
+        }
+        
+        out << "<hr style=\"border-color: #3d3d45; margin-top: 40px;\">\n";
+        out << "<p style=\"color: #666; font-size: 12px;\">Generated by PerfMonitorQt v1.0.0</p>\n";
+        out << "</body></html>\n";
+    } else {
+        // Plain Text Report
+        out << "═══════════════════════════════════════════════════════════════\n";
+        out << "           PERFMONITORQT - SYSTEM REPORT\n";
+        out << "═══════════════════════════════════════════════════════════════\n\n";
+        out << QString("Generated: %1\n").arg(timestamp);
+        out << QString("System Uptime: %1\n\n").arg(m_monitorData.cpu.uptime);
+        
+        // CPU
+        out << "───────────────────────────────────────────────────────────────\n";
+        out << "  CPU\n";
+        out << "───────────────────────────────────────────────────────────────\n";
+        out << QString("  Processor:     %1\n").arg(m_monitorData.cpu.name);
+        out << QString("  Cores:         %1 Physical / %2 Logical\n")
+               .arg(m_monitorData.cpu.cores).arg(m_monitorData.cpu.logicalProcessors);
+        out << QString("  Usage:         %1%\n").arg(m_monitorData.cpu.usage, 0, 'f', 1);
+        out << QString("  Speed:         %1 GHz\n").arg(m_monitorData.cpu.currentSpeed, 0, 'f', 2);
+        out << QString("  Processes:     %1\n").arg(m_monitorData.cpu.processCount);
+        out << QString("  Threads:       %1\n").arg(m_monitorData.cpu.threadCount);
+        if (m_monitorData.temperature.hasTemperature) {
+            out << QString("  Temperature:   %1°C\n").arg(m_monitorData.temperature.cpuTemperature, 0, 'f', 1);
+        }
+        out << "\n";
+        
+        // Memory
+        out << "───────────────────────────────────────────────────────────────\n";
+        out << "  MEMORY\n";
+        out << "───────────────────────────────────────────────────────────────\n";
+        out << QString("  Usage:         %1%\n").arg(m_monitorData.memory.usagePercent, 0, 'f', 1);
+        out << QString("  Used:          %1 GB\n").arg(m_monitorData.memory.usedGB, 0, 'f', 1);
+        out << QString("  Available:     %1 GB\n").arg(m_monitorData.memory.availableGB, 0, 'f', 1);
+        out << QString("  Total:         %1 GB\n").arg(m_monitorData.memory.totalGB, 0, 'f', 1);
+        out << "\n";
+        
+        // GPU
+        out << "───────────────────────────────────────────────────────────────\n";
+        out << "  GPU\n";
+        out << "───────────────────────────────────────────────────────────────\n";
+        out << QString("  Graphics Card: %1\n").arg(m_monitorData.primaryGpu.name);
+        out << QString("  Vendor:        %1\n").arg(m_monitorData.primaryGpu.vendor);
+        out << QString("  Usage:         %1%\n").arg(m_monitorData.primaryGpu.usage, 0, 'f', 1);
+        out << QString("  VRAM Used:     %1\n").arg(GpuMonitor::formatMemory(m_monitorData.primaryGpu.dedicatedMemoryUsed));
+        if (m_monitorData.primaryGpu.temperature > -900) {
+            out << QString("  Temperature:   %1°C\n").arg(m_monitorData.primaryGpu.temperature, 0, 'f', 0);
+        }
+        out << "\n";
+        
+        // Disks
+        out << "───────────────────────────────────────────────────────────────\n";
+        out << "  DISKS\n";
+        out << "───────────────────────────────────────────────────────────────\n";
+        for (const auto& disk : m_monitorData.disks) {
+            out << QString("  %1 %2\n").arg(disk.driveLetter).arg(disk.label.isEmpty() ? "" : QString("(%1)").arg(disk.label));
+            out << QString("      Type:      %1\n").arg(disk.fileSystem);
+            out << QString("      Used:      %1 / %2 (%3%)\n")
+                   .arg(formatBytes(disk.usedBytes))
+                   .arg(formatBytes(disk.totalBytes))
+                   .arg(disk.usagePercent, 0, 'f', 1);
+            out << QString("      Free:      %1\n").arg(formatBytes(disk.freeBytes));
+        }
+        out << "\n";
+        
+        // Network
+        out << "───────────────────────────────────────────────────────────────\n";
+        out << "  NETWORK\n";
+        out << "───────────────────────────────────────────────────────────────\n";
+        for (const auto& adapter : m_monitorData.networkAdapters) {
+            out << QString("  %1\n").arg(adapter.description);
+            out << QString("      Status:    %1\n").arg(adapter.isConnected ? tr("Connected") : tr("Disconnected"));
+            if (!adapter.ipv4Address.isEmpty()) {
+                out << QString("      IPv4:      %1\n").arg(adapter.ipv4Address);
+            }
+            if (adapter.speed > 0) {
+                out << QString("      Speed:     %1 Mbps\n").arg(adapter.speed / 1000000);
+            }
+        }
+        out << "\n";
+        
+        // Battery
+        if (m_monitorData.battery.hasBattery) {
+            out << "───────────────────────────────────────────────────────────────\n";
+            out << "  BATTERY\n";
+            out << "───────────────────────────────────────────────────────────────\n";
+            out << QString("  Charge:        %1%\n").arg(m_monitorData.battery.percentage);
+            out << QString("  Status:        %1\n").arg(m_monitorData.battery.status);
+            out << QString("  Health:        %1%\n").arg(m_monitorData.battery.healthPercent, 0, 'f', 1);
+            out << QString("  Cycles:        %1\n").arg(m_monitorData.battery.cycleCount);
+            out << "\n";
+        }
+        
+        out << "═══════════════════════════════════════════════════════════════\n";
+        out << "  Generated by PerfMonitorQt v1.0.0\n";
+        out << "═══════════════════════════════════════════════════════════════\n";
+    }
+    
+    file.close();
+    
+    QMessageBox::information(this, tr("Export Complete"), 
+        tr("System report exported successfully to:\n%1").arg(filename));
+    
+    // Offer to open the file
+    auto reply = QMessageBox::question(this, tr("Open Report"),
+        tr("Do you want to open the exported report?"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    
+    if (reply == QMessageBox::Yes) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(filename));
+    }
 }
 
 void MainWindow::loadSettings()

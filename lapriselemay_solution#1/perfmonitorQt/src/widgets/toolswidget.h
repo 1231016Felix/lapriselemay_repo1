@@ -73,6 +73,7 @@ signals:
     void metricsHistoryRequested();
     void diskScannerRequested();
     void networkSpeedTestRequested();
+    void processImpactRequested();
 
 private:
     void setupUi();

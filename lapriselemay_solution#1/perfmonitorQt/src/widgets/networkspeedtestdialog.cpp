@@ -38,15 +38,24 @@ void SpeedGauge::paintEvent(QPaintEvent* event)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
     
-    int side = qMin(width(), height());
-    int margin = 20;
-    QRect gaugeRect(margin, margin, side - 2 * margin, side - 2 * margin);
+    // Reserve more space for title at bottom
+    int titleHeight = 50;
+    int availableHeight = height() - titleHeight;
     
-    // Center the gauge
-    gaugeRect.moveCenter(rect().center());
+    // Calculate responsive sizes - use smaller of width or available height
+    int side = qMin(width(), availableHeight);
+    int margin = qMax(15, side / 12);
+    int arcThickness = qMax(10, side / 12);
+    
+    // Make gauge rect smaller to fit
+    int gaugeSize = side - 2 * margin;
+    QRect gaugeRect(0, 0, gaugeSize, gaugeSize);
+    
+    // Center the gauge horizontally and in the top area (above title)
+    gaugeRect.moveCenter(QPoint(width() / 2, availableHeight / 2));
     
     // Draw background arc
-    painter.setPen(QPen(QColor(60, 60, 60), 15, Qt::SolidLine, Qt::RoundCap));
+    painter.setPen(QPen(QColor(60, 60, 60), arcThickness, Qt::SolidLine, Qt::RoundCap));
     painter.drawArc(gaugeRect, 225 * 16, -270 * 16);
     
     // Draw value arc
@@ -57,26 +66,30 @@ void SpeedGauge::paintEvent(QPaintEvent* event)
     gradient.setColorAt(0, m_color.lighter(150));
     gradient.setColorAt(1, m_color);
     
-    painter.setPen(QPen(QBrush(gradient), 15, Qt::SolidLine, Qt::RoundCap));
+    painter.setPen(QPen(QBrush(gradient), arcThickness, Qt::SolidLine, Qt::RoundCap));
     painter.drawArc(gaugeRect, 225 * 16, spanAngle);
     
     // Draw center circle
-    int centerRadius = side / 4;
-    QRect centerRect = gaugeRect.adjusted(
-        gaugeRect.width() / 2 - centerRadius,
-        gaugeRect.height() / 2 - centerRadius,
-        -(gaugeRect.width() / 2 - centerRadius),
-        -(gaugeRect.height() / 2 - centerRadius)
+    int centerRadius = gaugeRect.width() / 4;
+    QRect centerRect(
+        gaugeRect.center().x() - centerRadius,
+        gaugeRect.center().y() - centerRadius,
+        centerRadius * 2,
+        centerRadius * 2
     );
     
     painter.setPen(Qt::NoPen);
     painter.setBrush(QColor(40, 40, 45));
     painter.drawEllipse(centerRect);
     
+    // Responsive font sizes
+    int valueFontSize = qMax(14, gaugeSize / 6);
+    int unitFontSize = qMax(9, gaugeSize / 14);
+    
     // Draw value text
     painter.setPen(Qt::white);
     QFont valueFont = font();
-    valueFont.setPointSize(24);
+    valueFont.setPixelSize(valueFontSize);
     valueFont.setBold(true);
     painter.setFont(valueFont);
     
@@ -91,29 +104,30 @@ void SpeedGauge::paintEvent(QPaintEvent* event)
         valueText = QString::number(m_value, 'f', 2);
     }
     
-    QRect textRect = centerRect;
-    textRect.adjust(0, -15, 0, -15);
-    painter.drawText(textRect, Qt::AlignCenter, valueText);
+    QRect valueTextRect = centerRect.adjusted(0, -valueFontSize / 3, 0, -valueFontSize / 3);
+    painter.drawText(valueTextRect, Qt::AlignCenter, valueText);
     
     // Draw unit text
     QFont unitFont = font();
-    unitFont.setPointSize(10);
+    unitFont.setPixelSize(unitFontSize);
     painter.setFont(unitFont);
     painter.setPen(QColor(150, 150, 150));
     
     QString unitText = (m_value >= 1000) ? "Gbps" : m_unit;
-    textRect = centerRect;
-    textRect.adjust(0, 20, 0, 20);
-    painter.drawText(textRect, Qt::AlignCenter, unitText);
+    QRect unitTextRect = centerRect.adjusted(0, valueFontSize / 2, 0, valueFontSize / 2);
+    painter.drawText(unitTextRect, Qt::AlignCenter, unitText);
     
-    // Draw title
-    painter.setPen(Qt::white);
-    unitFont.setPointSize(12);
-    unitFont.setBold(true);
-    painter.setFont(unitFont);
+    // Draw title in the reserved bottom area
+    painter.setPen(m_color.lighter(130));
+    QFont titleFont = font();
+    titleFont.setPixelSize(16);
+    titleFont.setBold(true);
+    titleFont.setLetterSpacing(QFont::AbsoluteSpacing, 3);
+    painter.setFont(titleFont);
     
-    QRect titleRect(0, height() - 30, width(), 30);
-    painter.drawText(titleRect, Qt::AlignCenter, m_title);
+    // Title rect starts after the gauge area
+    QRect titleRect(0, availableHeight, width(), titleHeight);
+    painter.drawText(titleRect, Qt::AlignHCenter | Qt::AlignTop, m_title);
 }
 
 // ============== NetworkSpeedTestDialog Implementation ==============

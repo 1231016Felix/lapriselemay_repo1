@@ -73,7 +73,9 @@ private:
     
     QString getRiskStyleSheet(CleanRiskLevel level);
     QString getRiskText(CleanRiskLevel level);
+    QColor getRiskColor(CleanRiskLevel level);
     QIcon getCategoryIcon(const QString& iconStr);
+    int countTotalFiles();
     
     // UI Components
     QStackedWidget* m_stackedWidget{nullptr};

@@ -8,6 +8,7 @@
 
 struct DiskInfo {
     QString name;
+    QString driveLetter;    // Drive letter (e.g., "C:")
     QString label;
     QString fileSystem;
     qint64 totalBytes{0};

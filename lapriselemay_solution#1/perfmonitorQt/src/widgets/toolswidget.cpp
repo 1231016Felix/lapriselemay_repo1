@@ -386,6 +386,15 @@ void ToolsWidget::createToolCards()
     connect(speedTestCard, &ToolCard::clicked, this, &ToolsWidget::networkSpeedTestRequested);
     addCard(speedTestCard);
     
+    // Process Impact Analysis (NEW)
+    auto processImpactCard = createCard(
+        "⚡", tr("Process Impact"),
+        tr("Analyze which processes drain battery, use disk, CPU and memory the most."),
+        "Ctrl+I", false
+    );
+    connect(processImpactCard, &ToolCard::clicked, this, &ToolsWidget::processImpactRequested);
+    addCard(processImpactCard);
+    
     // Add stretch to push cards to top
     m_gridLayout->setRowStretch(row + 1, 1);
 }

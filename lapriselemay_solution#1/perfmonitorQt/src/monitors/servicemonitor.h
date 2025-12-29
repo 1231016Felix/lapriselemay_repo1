@@ -289,6 +289,7 @@ public:
     QString lastError() const { return m_lastError; }
 
 signals:
+    void aboutToRefresh();
     void servicesRefreshed();
     void serviceStateChanged(const QString& serviceName, ServiceState oldState, ServiceState newState);
     void serviceStarted(const QString& serviceName);
