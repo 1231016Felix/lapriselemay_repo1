@@ -1,0 +1,430 @@
+<Window x:Class="QuickLauncher.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="QuickLauncher - Paramètres"
+        Width="800" Height="700"
+        WindowStartupLocation="CenterScreen"
+        Background="#1E1E1E"
+        ResizeMode="CanResizeWithGrip">
+    
+    <Window.Resources>
+        <!-- Style pour les CheckBox -->
+        <Style x:Key="SettingsCheckBox" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Margin" Value="0,8"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        
+        <!-- Style pour les Labels de section -->
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#0078D4"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Margin" Value="0,15,0,8"/>
+        </Style>
+        
+        <!-- Style pour les boutons -->
+        <Style x:Key="ActionButton" TargetType="Button">
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="Background" Value="#3E3E3E"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#4E4E4E"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
+            <Setter Property="Background" Value="#0078D4"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#1084D8"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        
+        <!-- Style TabItem -->
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="#AAA"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Border" 
+                                Background="{TemplateBinding Background}" 
+                                BorderThickness="0" 
+                                Padding="{TemplateBinding Padding}"
+                                CornerRadius="6,6,0,0"
+                                Margin="{TemplateBinding Margin}">
+                            <ContentPresenter x:Name="ContentSite"
+                                              ContentSource="Header"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#3E3E3E"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Border" Property="Background" Value="#333"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Titre -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,15">
+            <TextBlock Text="⚙️" FontSize="28" VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="Paramètres" FontSize="26" FontWeight="Bold" Foreground="White"/>
+                <TextBlock Text="Personnalisez QuickLauncher selon vos préférences" Foreground="#888" FontSize="11"/>
+            </StackPanel>
+        </StackPanel>
+        
+        <!-- Onglets -->
+        <TabControl Grid.Row="1" Background="#252525" BorderThickness="0">
+            
+            <!-- ═══════════════ ONGLET GÉNÉRAL ═══════════════ -->
+            <TabItem Header="🏠 Général">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="Démarrage" Style="{StaticResource SectionLabel}"/>
+                        <CheckBox x:Name="StartWithWindowsCheck" Content="Démarrer QuickLauncher avec Windows" Style="{StaticResource SettingsCheckBox}"/>
+                        <CheckBox x:Name="MinimizeOnStartupCheck" Content="Démarrer minimisé dans la zone de notification" Style="{StaticResource SettingsCheckBox}"/>
+                        <CheckBox x:Name="ShowInTaskbarCheck" Content="Afficher l'icône dans la barre des tâches" Style="{StaticResource SettingsCheckBox}"/>
+                        
+                        <TextBlock Text="Comportement" Style="{StaticResource SectionLabel}"/>
+                        <CheckBox x:Name="CloseAfterLaunchCheck" Content="Fermer la fenêtre après le lancement d'un élément" Style="{StaticResource SettingsCheckBox}"/>
+                        <CheckBox x:Name="ShowIndexingStatusCheck" Content="Afficher le statut d'indexation" Style="{StaticResource SettingsCheckBox}"/>
+                        <CheckBox x:Name="ShowSettingsButtonCheck" Content="Afficher le bouton ⚙️ dans la barre de recherche" Style="{StaticResource SettingsCheckBox}"/>
+                        
+                        <TextBlock Text="Position de la fenêtre" Style="{StaticResource SectionLabel}"/>
+                        <ComboBox x:Name="WindowPositionCombo" Width="250" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Centré sur l'écran" Tag="Center"/>
+                            <ComboBoxItem Content="En haut de l'écran" Tag="Top"/>
+                            <ComboBoxItem Content="Mémoriser la dernière position" Tag="Remember"/>
+                        </ComboBox>
+                        
+                        <TextBlock Text="Résultats de recherche" Style="{StaticResource SectionLabel}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <TextBlock Text="Nombre maximum de résultats: " Foreground="White" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="MaxResultsValue" Text="8" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="30"/>
+                        </StackPanel>
+                        <Slider x:Name="MaxResultsSlider" Minimum="3" Maximum="15" Value="8" Width="300" HorizontalAlignment="Left" ValueChanged="MaxResultsSlider_ValueChanged"/>
+                        
+                        <TextBlock Text="Historique de recherche" Style="{StaticResource SectionLabel}"/>
+                        <CheckBox x:Name="EnableSearchHistoryCheck" Content="Activer l'historique de recherche" Style="{StaticResource SettingsCheckBox}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <TextBlock Text="Nombre max d'entrées: " Foreground="White" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="MaxHistoryValue" Text="10" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="30"/>
+                        </StackPanel>
+                        <Slider x:Name="MaxHistorySlider" Minimum="5" Maximum="30" Value="10" Width="300" HorizontalAlignment="Left" ValueChanged="MaxHistorySlider_ValueChanged"/>
+                        <Button Content="🗑️ Effacer l'historique" Click="ClearHistory_Click" Style="{StaticResource ActionButton}" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- ═══════════════ ONGLET APPARENCE ═══════════════ -->
+            <TabItem Header="🎨 Apparence">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="Thème" Style="{StaticResource SectionLabel}"/>
+                        <ComboBox x:Name="ThemeCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="ThemeCombo_SelectionChanged">
+                            <ComboBoxItem Content="🌙 Sombre" Tag="Dark"/>
+                            <ComboBoxItem Content="☀️ Clair" Tag="Light"/>
+                            <ComboBoxItem Content="💻 Système" Tag="System"/>
+                        </ComboBox>
+                        <TextBlock Text="Note: Le thème clair sera disponible dans une prochaine version" Foreground="#666" FontSize="10" FontStyle="Italic" Margin="0,5,0,0"/>
+                        
+                        <TextBlock Text="Transparence" Style="{StaticResource SectionLabel}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <TextBlock Text="Opacité de la fenêtre: " Foreground="White" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="OpacityValue" Text="100%" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Slider x:Name="OpacitySlider" Minimum="0.5" Maximum="1.0" Value="1.0" Width="300" HorizontalAlignment="Left" ValueChanged="OpacitySlider_ValueChanged"/>
+                        
+                        <TextBlock Text="Couleur d'accent" Style="{StaticResource SectionLabel}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <Border x:Name="ColorPreview" Width="30" Height="30" CornerRadius="4" Background="#0078D4" Margin="0,0,10,0"/>
+                            <ComboBox x:Name="AccentColorCombo" Width="200" SelectionChanged="AccentColorCombo_SelectionChanged">
+                                <ComboBoxItem Content="Bleu (par défaut)" Tag="#0078D4"/>
+                                <ComboBoxItem Content="Vert" Tag="#107C10"/>
+                                <ComboBoxItem Content="Rouge" Tag="#E81123"/>
+                                <ComboBoxItem Content="Orange" Tag="#FF8C00"/>
+                                <ComboBoxItem Content="Violet" Tag="#881798"/>
+                                <ComboBoxItem Content="Rose" Tag="#E3008C"/>
+                                <ComboBoxItem Content="Turquoise" Tag="#00B7C3"/>
+                            </ComboBox>
+                        </StackPanel>
+                        
+                        <TextBlock Text="Animations" Style="{StaticResource SectionLabel}"/>
+                        <CheckBox x:Name="EnableAnimationsCheck" Content="Activer les animations de transition" Style="{StaticResource SettingsCheckBox}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- ═══════════════ ONGLET RACCOURCI ═══════════════ -->
+            <TabItem Header="⌨️ Raccourcis">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="Raccourci clavier global" Style="{StaticResource SectionLabel}"/>
+                        <TextBlock Text="Ce raccourci permet d'ouvrir QuickLauncher depuis n'importe quelle application." Foreground="#888" TextWrapping="Wrap" Margin="0,0,0,15"/>
+                        
+                        <Border Background="#2D2D2D" CornerRadius="8" Padding="20" Margin="0,10">
+                            <StackPanel>
+                                <TextBlock Text="Raccourci actuel:" Foreground="#888" Margin="0,0,0,8"/>
+                                <TextBlock x:Name="CurrentHotkeyDisplay" Text="Alt + Space" FontSize="20" FontWeight="Bold" Foreground="#0078D4" Margin="0,0,0,15"/>
+                                
+                                <TextBlock Text="Modificateurs:" Foreground="White" Margin="0,10,0,5"/>
+                                <WrapPanel>
+                                    <CheckBox x:Name="HotkeyAltCheck" Content="Alt" Style="{StaticResource SettingsCheckBox}" Margin="0,0,20,0" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
+                                    <CheckBox x:Name="HotkeyCtrlCheck" Content="Ctrl" Style="{StaticResource SettingsCheckBox}" Margin="0,0,20,0" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
+                                    <CheckBox x:Name="HotkeyShiftCheck" Content="Shift" Style="{StaticResource SettingsCheckBox}" Margin="0,0,20,0" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
+                                    <CheckBox x:Name="HotkeyWinCheck" Content="Win" Style="{StaticResource SettingsCheckBox}" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
+                                </WrapPanel>
+                                
+                                <TextBlock Text="Touche:" Foreground="White" Margin="0,10,0,5"/>
+                                <ComboBox x:Name="HotkeyKeyCombo" Width="150" HorizontalAlignment="Left" SelectionChanged="HotkeyKeyCombo_SelectionChanged">
+                                    <ComboBoxItem Content="Space" Tag="Space"/>
+                                    <ComboBoxItem Content="Enter" Tag="Enter"/>
+                                    <ComboBoxItem Content="Tab" Tag="Tab"/>
+                                    <ComboBoxItem Content="Q" Tag="Q"/>
+                                    <ComboBoxItem Content="L" Tag="L"/>
+                                    <ComboBoxItem Content="R" Tag="R"/>
+                                    <ComboBoxItem Content="F1" Tag="F1"/>
+                                    <ComboBoxItem Content="F2" Tag="F2"/>
+                                    <ComboBoxItem Content="F12" Tag="F12"/>
+                                </ComboBox>
+                            </StackPanel>
+                        </Border>
+                        
+                        <TextBlock Text="⚠️ Note: Le changement de raccourci prendra effet au prochain redémarrage de l'application." Foreground="#FFB900" FontStyle="Italic" TextWrapping="Wrap" Margin="0,15,0,0"/>
+                        
+                        <TextBlock Text="Raccourcis intégrés" Style="{StaticResource SectionLabel}"/>
+                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,10">
+                            <StackPanel>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Ctrl + ," Foreground="#0078D4" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="Ouvrir les paramètres" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Ctrl + R" Foreground="#0078D4" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="Réindexer les fichiers" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Ctrl + Q" Foreground="#0078D4" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="Quitter l'application" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Échap" Foreground="#0078D4" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="Fermer la fenêtre de recherche" Foreground="#888"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- ═══════════════ ONGLET INDEXATION ═══════════════ -->
+            <TabItem Header="📁 Indexation">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="Dossiers indexés" Style="{StaticResource SectionLabel}"/>
+                        <ListBox x:Name="IndexedFoldersList" Height="120" Background="#2D2D2D" Foreground="White" BorderThickness="0" Margin="0,5"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                            <Button Content="➕ Ajouter" Click="AddFolder_Click" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
+                            <Button Content="➖ Supprimer" Click="RemoveFolder_Click" Style="{StaticResource ActionButton}"/>
+                        </StackPanel>
+                        
+                        <TextBlock Text="Extensions de fichiers" Style="{StaticResource SectionLabel}"/>
+                        <TextBlock Text="Extensions à indexer (séparées par des virgules):" Foreground="#888" Margin="0,0,0,5"/>
+                        <TextBox x:Name="FileExtensionsBox" Background="#2D2D2D" Foreground="White" BorderThickness="0" Padding="10" FontFamily="Consolas" TextWrapping="Wrap" Height="60" AcceptsReturn="False"/>
+                        
+                        <TextBlock Text="Options d'indexation" Style="{StaticResource SectionLabel}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,5">
+                            <TextBlock Text="Profondeur de recherche: " Foreground="White" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="SearchDepthValue" Text="5" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="30"/>
+                            <TextBlock Text="niveaux" Foreground="#888" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Slider x:Name="SearchDepthSlider" Minimum="1" Maximum="10" Value="5" Width="300" HorizontalAlignment="Left" ValueChanged="SearchDepthSlider_ValueChanged"/>
+                        
+                        <CheckBox x:Name="IndexHiddenFoldersCheck" Content="Indexer les dossiers cachés" Style="{StaticResource SettingsCheckBox}"/>
+                        
+                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,20,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🔄" FontSize="18" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Réindexer maintenant" Foreground="White" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Reconstruit l'index de recherche complet" Foreground="#888" FontSize="11"/>
+                                </StackPanel>
+                                <Button Content="Réindexer" Click="Reindex_Click" Style="{StaticResource ActionButton}" VerticalAlignment="Center" Margin="20,0,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- ═══════════════ ONGLET RECHERCHE WEB ═══════════════ -->
+            <TabItem Header="🌐 Recherche Web">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="Moteurs de recherche" Style="{StaticResource SectionLabel}"/>
+                        <TextBlock Text="Tapez le préfixe suivi d'un espace et votre recherche (ex: 'g pizza')" Foreground="#888" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                        
+                        <ListBox x:Name="SearchEnginesList" Height="200" Background="#2D2D2D" Foreground="White" BorderThickness="0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="5">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="50"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Background="#0078D4" CornerRadius="4" Padding="8,4" HorizontalAlignment="Left">
+                                            <TextBlock Text="{Binding Prefix}" FontWeight="Bold" Foreground="White"/>
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" Margin="10,0"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding UrlTemplate}" Foreground="#666" FontSize="10" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        
+                        <TextBlock Text="Commandes spéciales" Style="{StaticResource SectionLabel}"/>
+                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15">
+                            <StackPanel>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text=":settings" Foreground="#0078D4" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="Ouvrir les paramètres" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text=":reload" Foreground="#0078D4" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="Réindexer les fichiers" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text=":history" Foreground="#0078D4" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="Voir l'historique de recherche" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text=":clear" Foreground="#0078D4" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="Effacer l'historique" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text=":help ou ?" Foreground="#0078D4" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="Afficher l'aide" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,3">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="100"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text=":quit" Foreground="#0078D4" FontFamily="Consolas"/>
+                                    <TextBlock Grid.Column="1" Text="Quitter QuickLauncher" Foreground="#888"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- ═══════════════ ONGLET À PROPOS ═══════════════ -->
+            <TabItem Header="ℹ️ À propos">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                    <StackPanel>
+                        <StackPanel HorizontalAlignment="Center" Margin="0,20">
+                            <TextBlock Text="🚀" FontSize="48" HorizontalAlignment="Center"/>
+                            <TextBlock Text="QuickLauncher" FontSize="28" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                            <TextBlock Text="Version 1.0.0" Foreground="#888" HorizontalAlignment="Center"/>
+                            <TextBlock Text="Par Felix-Antoine" Foreground="#0078D4" HorizontalAlignment="Center" Margin="0,5,0,20"/>
+                        </StackPanel>
+                        
+                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,10">
+                            <StackPanel>
+                                <TextBlock Text="📊 Statistiques" Foreground="#0078D4" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                <TextBlock x:Name="StatsText" Text="Chargement..." Foreground="#888"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,10">
+                            <StackPanel>
+                                <TextBlock Text="📂 Emplacement des données" Foreground="#0078D4" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                <TextBlock x:Name="DataPathText" Text="" Foreground="#888" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
+                                <Button Content="📂 Ouvrir le dossier" Click="OpenDataFolder_Click" Style="{StaticResource ActionButton}" Margin="0,10,0,0" HorizontalAlignment="Left"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <Border Background="#3D2020" CornerRadius="8" Padding="15" Margin="0,20,0,0" BorderBrush="#E81123" BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock Text="⚠️ Zone dangereuse" Foreground="#E81123" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                <TextBlock Text="Réinitialiser tous les paramètres aux valeurs par défaut. Cette action est irréversible." Foreground="#888" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                <Button Content="🗑️ Réinitialiser les paramètres" Click="ResetSettings_Click" Background="#E81123" Foreground="White" Padding="12,8" BorderThickness="0" HorizontalAlignment="Left" Cursor="Hand"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+        
+        <!-- Boutons d'action -->
+        <Border Grid.Row="2" BorderBrush="#3E3E3E" BorderThickness="0,1,0,0" Padding="0,15,0,0" Margin="0,15,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Annuler" Click="CancelButton_Click" Style="{StaticResource ActionButton}" Margin="0,0,10,0"/>
+                <Button Content="💾 Sauvegarder" Click="SaveButton_Click" Style="{StaticResource PrimaryButton}"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

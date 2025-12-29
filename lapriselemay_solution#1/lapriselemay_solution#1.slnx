@@ -2,9 +2,12 @@
   <Configurations>
     <Platform Name="x64" />
     <Platform Name="x86" />
+    <Platform Name="Any CPU" />
   </Configurations>
   <Project Path="perfmonitorQt/build/PerfMonitorQt.vcxproj" Id="0a2f712e-2b3c-3474-9b6a-330dde77bbfb">
     <Platform Project="x64" />
   </Project>
   <Project Path="SurfaceBatteryMonitor/SurfaceBatteryMonitor.vcxproj" Id="82e8d4af-341f-4463-b32b-3cdbe70d9d1b" />
+  <Project Path="QuickLauncher/QuickLauncher.csproj" Id="a1b2c3d4-e5f6-7890-abcd-ef1234567890" />
+  <Project Path="TempCleaner/TempCleaner.csproj" Id="b2c3d4e5-f6a7-8901-bcde-f23456789012" />
 </Solution>
