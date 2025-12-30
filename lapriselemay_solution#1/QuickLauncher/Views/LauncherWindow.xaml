@@ -21,6 +21,23 @@
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         
+        <!-- Style bouton clear discret -->
+        <Style x:Key="ClearButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="#555"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="ToolTip" Value="Effacer la recherche"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="#AAA"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        
         <!-- Style bouton settings discret -->
         <Style x:Key="SettingsButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
@@ -66,6 +83,7 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     
                     <TextBlock Grid.Column="0"
@@ -84,9 +102,17 @@
                              CaretBrush="White"
                              VerticalAlignment="Center"/>
                     
+                    <!-- Bouton Clear -->
+                    <Button x:Name="ClearButton"
+                            Grid.Column="2"
+                            Content="✕"
+                            Style="{StaticResource ClearButtonStyle}"
+                            Click="ClearButton_Click"
+                            Visibility="Collapsed"/>
+                    
                     <!-- Bouton Settings discret -->
                     <Button x:Name="SettingsButton"
-                            Grid.Column="2"
+                            Grid.Column="3"
                             Content="⚙️"
                             Style="{StaticResource SettingsButtonStyle}"
                             Click="SettingsButton_Click"

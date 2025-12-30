@@ -59,6 +59,13 @@ public partial class CleanerProfile : ObservableObject
     {
         var warning = new System.Text.StringBuilder();
         
+        // Avertissement personnalisé en premier (très visible)
+        if (!string.IsNullOrWhiteSpace(DetailedWarning))
+        {
+            warning.AppendLine(DetailedWarning.Trim());
+            warning.AppendLine();
+        }
+        
         warning.AppendLine($"📁 {Name}");
         warning.AppendLine(new string('═', 50));
         warning.AppendLine();
@@ -1122,8 +1129,10 @@ public partial class CleanerProfile : ObservableObject
             new CleanerProfile
             {
                 Name = "Documents récents",
-                Description = "Liste des fichiers récemment ouverts",
+                Description = "Liste des fichiers récemment ouverts (raccourcis .lnk)",
                 FolderPath = Environment.GetFolderPath(Environment.SpecialFolder.Recent),
+                SearchPattern = "*.lnk",
+                IncludeSubdirectories = false,  // IMPORTANT: Ne pas toucher aux sous-dossiers Jump Lists!
                 Icon = "📂",
                 IsPrivacy = true,
                 Category = CleanerCategory.RecentDocs
@@ -1141,8 +1150,24 @@ public partial class CleanerProfile : ObservableObject
             {
                 Name = "Jump Lists personnalisées",
                 Description = "Listes de raccourcis personnalisées",
+                DetailedWarning = """
+                    ╔══════════════════════════════════════════════════════════════╗
+                    ║           ⚠️  ATTENTION - ACCÈS RAPIDE  ⚠️                  ║
+                    ╠══════════════════════════════════════════════════════════════╣
+                    ║                                                              ║
+                    ║  Cette option va SUPPRIMER tous les dossiers et fichiers    ║
+                    ║  que vous avez ÉPINGLÉS MANUELLEMENT dans l'Accès rapide    ║
+                    ║  de l'Explorateur Windows !                                  ║
+                    ║                                                              ║
+                    ║  📌 Dossiers épinglés → SUPPRIMÉS                           ║
+                    ║  📌 Fichiers épinglés → SUPPRIMÉS                           ║
+                    ║                                                              ║
+                    ║  Vous devrez ré-épingler manuellement tous vos favoris.     ║
+                    ║                                                              ║
+                    ╚══════════════════════════════════════════════════════════════╝
+                    """,
                 FolderPath = Path.Combine(appData, "Microsoft", "Windows", "Recent", "CustomDestinations"),
-                Icon = "📂",
+                Icon = "📌",
                 IsPrivacy = true,
                 Category = CleanerCategory.RecentDocs
             },

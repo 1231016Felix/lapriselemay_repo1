@@ -20,6 +20,15 @@ public partial class MainWindow : Window
             Top = (workArea.Height - Height) / 2 + workArea.Top;
             if (Top < 0) Top = 10;
         };
+        
+        // Sauvegarder les préférences à la fermeture
+        Closing += (s, e) =>
+        {
+            if (DataContext is MainViewModel viewModel)
+            {
+                viewModel.SaveSettings();
+            }
+        };
     }
 
     private void CheckBox_Changed(object sender, RoutedEventArgs e)
@@ -38,12 +47,10 @@ public partial class MainWindow : Window
         {
             if (DataContext is MainViewModel viewModel)
             {
-                // Afficher l'avertissement
                 bool confirmed = viewModel.ShowProfileWarning(profile);
                 
                 if (!confirmed)
                 {
-                    // L'utilisateur a annulé, décocher la case
                     _suppressWarning = true;
                     checkBox.IsChecked = false;
                     profile.IsEnabled = false;

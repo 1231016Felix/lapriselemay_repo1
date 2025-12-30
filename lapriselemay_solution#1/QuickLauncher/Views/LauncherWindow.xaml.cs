@@ -31,6 +31,17 @@ public partial class LauncherWindow : Window
         _viewModel.RequestQuit += (_, _) => RequestQuit?.Invoke(this, EventArgs.Empty);
         _viewModel.RequestReindex += (_, _) => RequestReindex?.Invoke(this, EventArgs.Empty);
         
+        // Gérer la visibilité du bouton Clear
+        _viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(_viewModel.SearchText))
+            {
+                ClearButton.Visibility = string.IsNullOrEmpty(_viewModel.SearchText) 
+                    ? Visibility.Collapsed 
+                    : Visibility.Visible;
+            }
+        };
+        
         ResultsList.MouseDoubleClick += (_, _) => _viewModel.ExecuteCommand.Execute(null);
         
         // Appliquer l'opacité de la fenêtre
@@ -138,6 +149,12 @@ public partial class LauncherWindow : Window
     {
         HideWindow();
         RequestOpenSettings?.Invoke(this, EventArgs.Empty);
+    }
+    
+    private void ClearButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.SearchText = string.Empty;
+        SearchBox.Focus();
     }
     
     protected override void OnSourceInitialized(EventArgs e)

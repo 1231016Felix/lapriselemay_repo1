@@ -12,6 +12,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ScannerService _scannerService = new();
     private readonly CleanerService _cleanerService = new();
     private readonly SystemCleanerService _systemCleaner = new();
+    private readonly SettingsService _settingsService = new();
     private CancellationTokenSource? _cts;
 
     #region Observable Properties
@@ -53,8 +54,20 @@ public partial class MainViewModel : ObservableObject
     {
         IsAdmin = AdminService.IsRunningAsAdmin();
         Profiles = new ObservableCollection<CleanerProfile>(CleanerProfile.GetDefaultProfiles());
+        
+        // Charger les préférences sauvegardées
+        _settingsService.ApplyToProfiles(Profiles);
+        
         AdminProfileCount = Profiles.Count(p => p.RequiresAdmin);
         UpdateRecycleBinStats();
+    }
+
+    /// <summary>
+    /// Sauvegarder les préférences (appelé à la fermeture)
+    /// </summary>
+    public void SaveSettings()
+    {
+        _settingsService.SaveProfiles(Profiles);
     }
 
     #endregion
