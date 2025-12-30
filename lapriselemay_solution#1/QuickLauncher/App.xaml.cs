@@ -1,8 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Windows;
 using QuickLauncher.Services;
 using QuickLauncher.Views;
@@ -83,7 +81,7 @@ public partial class App : System.Windows.Application
             var settings = Models.AppSettings.Load();
             
             // Créer/charger l'icône
-            var icon = GetOrCreateAppIcon();
+            var icon = GetAppIcon();
             
             _trayIcon = new TaskbarIcon
             {
@@ -105,94 +103,25 @@ public partial class App : System.Windows.Application
         }
     }
     
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool DestroyIcon(IntPtr hIcon);
-    
-    private static Icon GetOrCreateAppIcon()
+    private static Icon GetAppIcon()
     {
         try
         {
-            // Chemin du fichier ICO dans AppData
-            var appDataPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "QuickLauncher");
-            Directory.CreateDirectory(appDataPath);
-            var icoPath = Path.Combine(appDataPath, "app.ico");
-            
-            // Si le fichier existe et est valide, le charger
-            if (File.Exists(icoPath))
+            // Charger l'icône intégrée dans les ressources
+            var uri = new Uri("pack://application:,,,/Resources/app.ico", UriKind.Absolute);
+            var streamInfo = System.Windows.Application.GetResourceStream(uri);
+            if (streamInfo != null)
             {
-                try
-                {
-                    return new Icon(icoPath);
-                }
-                catch
-                {
-                    // Fichier corrompu, le recréer
-                    File.Delete(icoPath);
-                }
-            }
-            
-            // Créer le fichier ICO
-            CreateIcoFile(icoPath);
-            
-            // Charger l'icône créée
-            if (File.Exists(icoPath))
-            {
-                return new Icon(icoPath);
+                using var stream = streamInfo.Stream;
+                return new Icon(stream);
             }
         }
         catch (Exception ex)
         {
-            Log($"Erreur création icône: {ex.Message}");
+            Log($"Erreur chargement icône ressource: {ex.Message}");
         }
         
         return SystemIcons.Application;
-    }
-    
-    private static void CreateIcoFile(string path)
-    {
-        // Créer un bitmap 32x32
-        using var bitmap = new Bitmap(32, 32, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-        using var g = Graphics.FromImage(bitmap);
-        
-        g.SmoothingMode = SmoothingMode.AntiAlias;
-        g.Clear(System.Drawing.Color.Transparent);
-        
-        // Cercle bleu
-        using var blueBrush = new SolidBrush(System.Drawing.Color.FromArgb(255, 0, 120, 212));
-        g.FillEllipse(blueBrush, 1, 1, 29, 29);
-        
-        // Loupe blanche
-        using var whitePen = new Pen(System.Drawing.Color.White, 2.5f);
-        whitePen.StartCap = LineCap.Round;
-        whitePen.EndCap = LineCap.Round;
-        g.DrawEllipse(whitePen, 8, 6, 12, 12);
-        g.DrawLine(whitePen, 18, 16, 24, 22);
-        
-        // Sauvegarder comme fichier ICO
-        using var fs = new FileStream(path, FileMode.Create);
-        
-        // Header ICO (6 bytes)
-        fs.Write(new byte[] { 0, 0, 1, 0, 1, 0 }, 0, 6);
-        
-        // Convertir bitmap en données PNG
-        using var pngStream = new MemoryStream();
-        bitmap.Save(pngStream, System.Drawing.Imaging.ImageFormat.Png);
-        var pngData = pngStream.ToArray();
-        
-        // Directory entry (16 bytes)
-        fs.WriteByte(32);  // Width
-        fs.WriteByte(32);  // Height
-        fs.WriteByte(0);   // Color palette
-        fs.WriteByte(0);   // Reserved
-        fs.Write(BitConverter.GetBytes((ushort)1), 0, 2);  // Color planes
-        fs.Write(BitConverter.GetBytes((ushort)32), 0, 2); // Bits per pixel
-        fs.Write(BitConverter.GetBytes(pngData.Length), 0, 4); // Size of image data
-        fs.Write(BitConverter.GetBytes(22), 0, 4); // Offset to image data (6 + 16 = 22)
-        
-        // Image data (PNG)
-        fs.Write(pngData, 0, pngData.Length);
     }
 
     private System.Windows.Controls.ContextMenu CreateContextMenu()

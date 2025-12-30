@@ -47,13 +47,13 @@ public partial class MainViewModel : ObservableObject
     private int _selectedCount;
 
     [ObservableProperty]
-    private string _searchFilter = string.Empty;
-
-    [ObservableProperty]
-    private CleanerProfile? _selectedCategory;
-
-    [ObservableProperty]
     private string _scanDuration = string.Empty;
+
+    [ObservableProperty]
+    private bool _isAdmin;
+
+    [ObservableProperty]
+    private int _adminProfileCount;
 
     public string TotalSizeFormatted => FormatSize(TotalSize);
     public string SelectedSizeFormatted => FormatSize(SelectedSize);
@@ -65,12 +65,23 @@ public partial class MainViewModel : ObservableObject
 
     public MainViewModel()
     {
+        IsAdmin = AdminService.IsRunningAsAdmin();
         LoadProfiles();
+        AdminProfileCount = Profiles.Count(p => p.RequiresAdmin);
     }
 
     private void LoadProfiles()
     {
         Profiles = new ObservableCollection<CleanerProfile>(CleanerProfile.GetDefaultProfiles());
+    }
+
+    [RelayCommand]
+    private void RestartAsAdmin()
+    {
+        if (AdminService.RestartAsAdmin())
+        {
+            Application.Current.Shutdown();
+        }
     }
 
     partial void OnIsScanningChanged(bool value) => OnPropertyChanged(nameof(IsWorking));
@@ -158,8 +169,12 @@ public partial class MainViewModel : ObservableObject
                 .Select(f => f.FullPath)
                 .ToHashSet();
 
+            // Mettre à jour la collection principale
             var remainingFiles = Files.Where(f => !deletedPaths.Contains(f.FullPath)).ToList();
             Files = new ObservableCollection<TempFileInfo>(remainingFiles);
+
+            // Mettre à jour les stats des profils
+            UpdateProfileStats();
 
             ApplyFilter();
             UpdateSelectedStats();
@@ -228,36 +243,24 @@ public partial class MainViewModel : ObservableObject
         UpdateSelectedStats();
     }
 
-    partial void OnSearchFilterChanged(string value)
-    {
-        ApplyFilter();
-    }
-
-    partial void OnSelectedCategoryChanged(CleanerProfile? value)
-    {
-        ApplyFilter();
-    }
-
     private void ApplyFilter()
     {
-        var filtered = Files.AsEnumerable();
-
-        if (!string.IsNullOrWhiteSpace(SearchFilter))
-        {
-            filtered = filtered.Where(f =>
-                f.FileName.Contains(SearchFilter, StringComparison.OrdinalIgnoreCase) ||
-                f.FullPath.Contains(SearchFilter, StringComparison.OrdinalIgnoreCase));
-        }
-
-        if (SelectedCategory != null)
-        {
-            filtered = filtered.Where(f => f.Category == SelectedCategory.Name);
-        }
-
-        FilteredFiles = new ObservableCollection<TempFileInfo>(filtered);
+        // Afficher tous les fichiers (filtrage supprimé de l'interface)
+        FilteredFiles = new ObservableCollection<TempFileInfo>(Files);
         TotalCount = FilteredFiles.Count;
         TotalSize = FilteredFiles.Sum(f => f.Size);
         OnPropertyChanged(nameof(TotalSizeFormatted));
+    }
+
+    private void UpdateProfileStats()
+    {
+        // Recalculer les stats de chaque profil basé sur les fichiers restants
+        foreach (var profile in Profiles)
+        {
+            var profileFiles = Files.Where(f => f.Category == profile.Name).ToList();
+            profile.FileCount = profileFiles.Count;
+            profile.TotalSize = profileFiles.Sum(f => f.Size);
+        }
     }
 
     public void UpdateSelectedStats()
