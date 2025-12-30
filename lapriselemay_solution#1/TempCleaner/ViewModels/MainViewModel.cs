@@ -11,87 +11,100 @@ public partial class MainViewModel : ObservableObject
 {
     private readonly ScannerService _scannerService = new();
     private readonly CleanerService _cleanerService = new();
-    private CancellationTokenSource? _cancellationTokenSource;
+    private readonly SystemCleanerService _systemCleaner = new();
+    private CancellationTokenSource? _cts;
 
-    [ObservableProperty]
-    private ObservableCollection<CleanerProfile> _profiles = [];
+    #region Observable Properties
 
-    [ObservableProperty]
-    private ObservableCollection<TempFileInfo> _files = [];
+    [ObservableProperty] private ObservableCollection<CleanerProfile> _profiles = [];
+    [ObservableProperty] private ObservableCollection<TempFileInfo> _files = [];
+    [ObservableProperty] private ObservableCollection<TempFileInfo> _filteredFiles = [];
+    [ObservableProperty] private bool _isScanning;
+    [ObservableProperty] private bool _isCleaning;
+    [ObservableProperty] private string _statusMessage = "Prêt";
+    [ObservableProperty] private int _progressPercent;
+    [ObservableProperty] private long _totalSize;
+    [ObservableProperty] private long _selectedSize;
+    [ObservableProperty] private int _totalCount;
+    [ObservableProperty] private int _selectedCount;
+    [ObservableProperty] private string _scanDuration = string.Empty;
+    [ObservableProperty] private bool _isAdmin;
+    [ObservableProperty] private int _adminProfileCount;
+    [ObservableProperty] private long _recycleBinSize;
+    [ObservableProperty] private int _recycleBinCount;
 
-    [ObservableProperty]
-    private ObservableCollection<TempFileInfo> _filteredFiles = [];
+    #endregion
 
-    [ObservableProperty]
-    private bool _isScanning;
-
-    [ObservableProperty]
-    private bool _isCleaning;
-
-    [ObservableProperty]
-    private string _statusMessage = "Prêt";
-
-    [ObservableProperty]
-    private int _progressPercent;
-
-    [ObservableProperty]
-    private long _totalSize;
-
-    [ObservableProperty]
-    private long _selectedSize;
-
-    [ObservableProperty]
-    private int _totalCount;
-
-    [ObservableProperty]
-    private int _selectedCount;
-
-    [ObservableProperty]
-    private string _scanDuration = string.Empty;
-
-    [ObservableProperty]
-    private bool _isAdmin;
-
-    [ObservableProperty]
-    private int _adminProfileCount;
+    #region Computed Properties
 
     public string TotalSizeFormatted => FormatSize(TotalSize);
     public string SelectedSizeFormatted => FormatSize(SelectedSize);
-
+    public string RecycleBinSizeFormatted => FormatSize(RecycleBinSize);
     public bool IsWorking => IsScanning || IsCleaning;
-    public bool CanClean => !IsScanning && !IsCleaning && SelectedCount > 0;
-    public bool CanScan => !IsScanning && !IsCleaning;
-    public bool CanCancel => IsScanning || IsCleaning;
+    public bool CanClean => !IsWorking && SelectedCount > 0;
+    public bool CanScan => !IsWorking;
+    public bool CanCancel => IsWorking;
+
+    #endregion
+
+    #region Constructor
 
     public MainViewModel()
     {
         IsAdmin = AdminService.IsRunningAsAdmin();
-        LoadProfiles();
-        AdminProfileCount = Profiles.Count(p => p.RequiresAdmin);
-    }
-
-    private void LoadProfiles()
-    {
         Profiles = new ObservableCollection<CleanerProfile>(CleanerProfile.GetDefaultProfiles());
+        AdminProfileCount = Profiles.Count(p => p.RequiresAdmin);
+        UpdateRecycleBinStats();
     }
 
-    [RelayCommand]
-    private void RestartAsAdmin()
+    #endregion
+
+    #region Profile Warning
+
+    /// <summary>
+    /// Affiche un avertissement détaillé lors de l'activation d'un profil
+    /// Retourne true si l'utilisateur confirme, false sinon
+    /// </summary>
+    public bool ShowProfileWarning(CleanerProfile profile)
     {
-        if (AdminService.RestartAsAdmin())
-        {
-            Application.Current.Shutdown();
-        }
+        var warning = profile.GetDetailedWarning();
+        
+        var result = MessageBox.Show(
+            warning + "\n\nVoulez-vous activer cette catégorie ?",
+            $"⚠️ Avertissement - {profile.Name}",
+            MessageBoxButton.YesNo,
+            profile.IsSafe ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        
+        return result == MessageBoxResult.Yes;
     }
 
-    partial void OnIsScanningChanged(bool value) => OnPropertyChanged(nameof(IsWorking));
-    partial void OnIsCleaningChanged(bool value) => OnPropertyChanged(nameof(IsWorking));
+    #endregion
+
+    #region Property Changed Handlers
+
+    partial void OnIsScanningChanged(bool value) => NotifyStateChanged();
+    partial void OnIsCleaningChanged(bool value) => NotifyStateChanged();
+
+    private void NotifyStateChanged()
+    {
+        OnPropertyChanged(nameof(IsWorking));
+        OnPropertyChanged(nameof(CanScan));
+        OnPropertyChanged(nameof(CanClean));
+        OnPropertyChanged(nameof(CanCancel));
+        ScanCommand.NotifyCanExecuteChanged();
+        CleanCommand.NotifyCanExecuteChanged();
+        CancelCommand.NotifyCanExecuteChanged();
+    }
+
+    #endregion
+
+    #region Scan Command
 
     [RelayCommand(CanExecute = nameof(CanScan))]
     private async Task ScanAsync()
     {
         IsScanning = true;
-        _cancellationTokenSource = new CancellationTokenSource();
+        _cts = new CancellationTokenSource();
 
         try
         {
@@ -101,10 +114,7 @@ public partial class MainViewModel : ObservableObject
                 ProgressPercent = p.percent;
             });
 
-            var result = await _scannerService.ScanAsync(
-                Profiles,
-                progress,
-                _cancellationTokenSource.Token);
+            var result = await _scannerService.ScanAsync(Profiles, progress, _cts.Token);
 
             Files = new ObservableCollection<TempFileInfo>(result.Files);
             TotalSize = result.TotalSize;
@@ -113,8 +123,9 @@ public partial class MainViewModel : ObservableObject
 
             ApplyFilter();
             UpdateSelectedStats();
+            UpdateRecycleBinStats();
 
-            StatusMessage = $"Analyse terminée: {TotalCount} fichiers trouvés ({TotalSizeFormatted})";
+            StatusMessage = $"Analyse: {TotalCount} fichiers ({TotalSizeFormatted})";
         }
         catch (OperationCanceledException)
         {
@@ -129,26 +140,26 @@ public partial class MainViewModel : ObservableObject
         {
             IsScanning = false;
             ProgressPercent = 0;
-            NotifyCanExecuteChanged();
         }
     }
+
+    #endregion
+
+    #region Clean Command
 
     [RelayCommand(CanExecute = nameof(CanClean))]
     private async Task CleanAsync()
     {
         var selectedFiles = Files.Where(f => f.IsSelected && f.IsAccessible).ToList();
 
-        var confirmResult = MessageBox.Show(
-            $"Voulez-vous supprimer {selectedFiles.Count} fichiers ({FormatSize(selectedFiles.Sum(f => f.Size))}) ?\n\nCette action est irréversible.",
-            "Confirmation",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
+        var confirm = MessageBox.Show(
+            $"Supprimer {selectedFiles.Count} fichiers ({FormatSize(selectedFiles.Sum(f => f.Size))}) ?\n\nCette action est irréversible.",
+            "Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Warning);
 
-        if (confirmResult != MessageBoxResult.Yes)
-            return;
+        if (confirm != MessageBoxResult.Yes) return;
 
         IsCleaning = true;
-        _cancellationTokenSource = new CancellationTokenSource();
+        _cts = new CancellationTokenSource();
 
         try
         {
@@ -158,37 +169,25 @@ public partial class MainViewModel : ObservableObject
                 ProgressPercent = p.percent;
             });
 
-            var result = await _cleanerService.CleanAsync(
-                selectedFiles,
-                progress,
-                _cancellationTokenSource.Token);
+            var result = await _cleanerService.CleanAsync(selectedFiles, progress, _cts.Token);
 
-            // Retirer les fichiers supprimés de la liste
+            // Retirer les fichiers supprimés
             var deletedPaths = selectedFiles
                 .Where(f => !result.Errors.Any(e => e.FilePath == f.FullPath))
                 .Select(f => f.FullPath)
                 .ToHashSet();
 
-            // Mettre à jour la collection principale
-            var remainingFiles = Files.Where(f => !deletedPaths.Contains(f.FullPath)).ToList();
-            Files = new ObservableCollection<TempFileInfo>(remainingFiles);
+            Files = new ObservableCollection<TempFileInfo>(Files.Where(f => !deletedPaths.Contains(f.FullPath)));
 
-            // Mettre à jour les stats des profils
             UpdateProfileStats();
-
             ApplyFilter();
             UpdateSelectedStats();
 
-            StatusMessage = $"Nettoyage terminé: {result.DeletedCount} fichiers supprimés ({result.FreedBytesFormatted} libérés)";
+            StatusMessage = $"Nettoyage: {result.DeletedCount} fichiers ({result.FreedBytesFormatted} libérés)";
 
             if (result.FailedCount > 0)
-            {
-                MessageBox.Show(
-                    $"{result.FailedCount} fichier(s) n'ont pas pu être supprimés.",
-                    "Avertissement",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-            }
+                MessageBox.Show($"{result.FailedCount} fichier(s) non supprimés.", "Avertissement",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         catch (OperationCanceledException)
         {
@@ -203,49 +202,343 @@ public partial class MainViewModel : ObservableObject
         {
             IsCleaning = false;
             ProgressPercent = 0;
-            NotifyCanExecuteChanged();
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanCancel))]
-    private void Cancel()
+    #endregion
+
+    #region System Cleaning Commands
+
+    [RelayCommand]
+    private async Task EmptyRecycleBinAsync()
     {
-        _cancellationTokenSource?.Cancel();
+        if (RecycleBinCount == 0)
+        {
+            MessageBox.Show("La corbeille est déjà vide.", "Information",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            $"Vider la corbeille ?\n\n{RecycleBinCount} éléments ({RecycleBinSizeFormatted})",
+            "Corbeille", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        StatusMessage = "Vidage de la corbeille...";
+        var (success, message) = await _systemCleaner.EmptyRecycleBinAsync();
+        UpdateRecycleBinStats();
+        StatusMessage = message;
+
+        if (!success)
+            MessageBox.Show(message, "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
     }
+
+    [RelayCommand]
+    private async Task FlushDnsCacheAsync()
+    {
+        StatusMessage = "Vidage du cache DNS...";
+        var (success, message) = await _systemCleaner.FlushDnsCacheAsync();
+        StatusMessage = message;
+        MessageBox.Show(message, success ? "Succès" : "Erreur",
+            MessageBoxButton.OK, success ? MessageBoxImage.Information : MessageBoxImage.Error);
+    }
+
+    [RelayCommand]
+    private void ClearClipboard()
+    {
+        var (_, message) = _systemCleaner.ClearClipboard();
+        StatusMessage = message;
+    }
+
+    [RelayCommand]
+    private async Task ClearRecentDocumentsAsync()
+    {
+        var confirm = MessageBox.Show(
+            "Effacer la liste des documents récents ?",
+            "Documents récents", MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        StatusMessage = "Effacement des documents récents...";
+        var (success, message, _) = await _systemCleaner.ClearRecentDocumentsAsync();
+        StatusMessage = message;
+
+        if (!success)
+            MessageBox.Show(message, "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
+
+    #endregion
+
+    #region Memory Purge Commands
+
+    [RelayCommand]
+    private async Task PurgeWorkingSetAsync()
+    {
+        StatusMessage = "Purge du Working Set...";
+        var result = await _systemCleaner.PurgeWorkingSetAsync();
+        StatusMessage = result.Message;
+        ShowMemoryPurgeResult(result, "Working Set");
+    }
+
+    [RelayCommand]
+    private async Task PurgeStandbyListAsync()
+    {
+        if (!IsAdmin)
+        {
+            MessageBox.Show("Droits administrateur requis.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        StatusMessage = "Purge du Standby List...";
+        var result = await _systemCleaner.PurgeStandbyListAsync();
+        StatusMessage = result.Message;
+        ShowMemoryPurgeResult(result, "Standby List");
+    }
+
+    [RelayCommand]
+    private async Task PurgeAllMemoryAsync()
+    {
+        StatusMessage = "Purge de la mémoire...";
+        var result = await _systemCleaner.PurgeAllMemoryAsync();
+        StatusMessage = result.Message;
+        ShowMemoryPurgeResult(result, "Mémoire");
+    }
+
+    [RelayCommand]
+    private async Task PurgeMaxMemoryAsync()
+    {
+        StatusMessage = "Purge MAXIMALE de la mémoire...";
+        var result = await _systemCleaner.PurgeMaxMemoryAsync();
+        StatusMessage = result.Message;
+        ShowMemoryPurgeResult(result, "Purge Maximale");
+    }
+
+    [RelayCommand]
+    private async Task PurgeModifiedPageListAsync()
+    {
+        if (!IsAdmin)
+        {
+            MessageBox.Show("Droits administrateur requis.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        StatusMessage = "Purge du Modified Page List...";
+        var result = await _systemCleaner.PurgeModifiedPageListAsync();
+        StatusMessage = result.Message;
+        ShowMemoryPurgeResult(result, "Modified Page List");
+    }
+
+    [RelayCommand]
+    private async Task PurgeLowPriorityStandbyAsync()
+    {
+        if (!IsAdmin)
+        {
+            MessageBox.Show("Droits administrateur requis.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        StatusMessage = "Purge du Low-Priority Standby...";
+        var result = await _systemCleaner.PurgeLowPriorityStandbyListAsync();
+        StatusMessage = result.Message;
+        ShowMemoryPurgeResult(result, "Low-Priority Standby");
+    }
+
+    private void ShowMemoryPurgeResult(SystemCleanerService.MemoryPurgeResult result, string title)
+    {
+        if (!result.Success && result.TotalMemory == 0)
+        {
+            MessageBox.Show(result.Message, "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        var message = $"""
+            ══════════════════════════════════
+                      STATISTIQUES MÉMOIRE
+            ══════════════════════════════════
+
+            📊 Mémoire totale:     {FormatSize(result.TotalMemory)}
+
+            ▬▬▬ AVANT LA PURGE ▬▬▬
+            💾 Utilisée:           {FormatSize(result.UsedBefore)}
+            ✅ Disponible:         {FormatSize(result.AvailableBefore)}
+            📈 Charge:             {result.MemoryLoadBefore:F0}%
+
+            ▬▬▬ APRÈS LA PURGE ▬▬▬
+            💾 Utilisée:           {FormatSize(result.UsedAfter)}
+            ✅ Disponible:         {FormatSize(result.AvailableAfter)}
+            📈 Charge:             {result.MemoryLoadAfter:F0}%
+
+            ══════════════════════════════════
+            🎯 MÉMOIRE LIBÉRÉE:    {FormatSize(result.Freed)}
+            ══════════════════════════════════
+            """;
+
+        if (result.ProcessCount > 0)
+            message += $"\n\n🔧 Processus traités: {result.SuccessCount}/{result.ProcessCount}";
+
+        MessageBox.Show(message, $"Purge {title} - {(result.Success ? "Succès" : "Partiel")}",
+            MessageBoxButton.OK, result.Success ? MessageBoxImage.Information : MessageBoxImage.Warning);
+    }
+
+    #endregion
+
+    #region System Commands
+
+    [RelayCommand]
+    private async Task CleanupWinSxSAsync()
+    {
+        if (!IsAdmin)
+        {
+            MessageBox.Show("Droits administrateur requis pour nettoyer WinSxS.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            "Nettoyer les composants Windows obsolètes (WinSxS) ?\n\n⚠️ Cette opération peut prendre plusieurs minutes et ne peut pas être annulée.\n\nCela libérera de l'espace en supprimant les anciennes versions des composants système.",
+            "Nettoyage WinSxS", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        StatusMessage = "Nettoyage WinSxS en cours (peut prendre plusieurs minutes)...";
+        var (success, message) = await _systemCleaner.CleanupWinSxSAsync();
+        StatusMessage = message;
+
+        MessageBox.Show(message, success ? "Succès" : "Erreur",
+            MessageBoxButton.OK, success ? MessageBoxImage.Information : MessageBoxImage.Error);
+    }
+
+    [RelayCommand]
+    private async Task ToggleHibernationAsync()
+    {
+        if (!IsAdmin)
+        {
+            MessageBox.Show("Droits administrateur requis.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        bool isEnabled = _systemCleaner.IsHibernationEnabled();
+
+        if (isEnabled)
+        {
+            var confirm = MessageBox.Show(
+                "Désactiver l'hibernation ?\n\n💾 Cela supprimera hiberfil.sys et libérera plusieurs GB d'espace (équivalent à votre RAM).\n\n⚠️ Vous ne pourrez plus utiliser l'hibernation.",
+                "Désactiver l'hibernation", MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+            if (confirm != MessageBoxResult.Yes) return;
+
+            StatusMessage = "Désactivation de l'hibernation...";
+            var (success, message, freed) = await _systemCleaner.DisableHibernationAsync();
+            StatusMessage = message;
+
+            MessageBox.Show(message, success ? "Succès" : "Erreur",
+                MessageBoxButton.OK, success ? MessageBoxImage.Information : MessageBoxImage.Error);
+        }
+        else
+        {
+            var confirm = MessageBox.Show(
+                "Réactiver l'hibernation ?",
+                "Activer l'hibernation", MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+            if (confirm != MessageBoxResult.Yes) return;
+
+            StatusMessage = "Activation de l'hibernation...";
+            var (success, message) = await _systemCleaner.EnableHibernationAsync();
+            StatusMessage = message;
+
+            MessageBox.Show(message, success ? "Succès" : "Erreur",
+                MessageBoxButton.OK, success ? MessageBoxImage.Information : MessageBoxImage.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ClearWindowsStoreCacheAsync()
+    {
+        StatusMessage = "Nettoyage du cache Windows Store...";
+        var (success, message) = await _systemCleaner.ClearWindowsStoreCacheAsync();
+        StatusMessage = message;
+
+        MessageBox.Show(message, success ? "Succès" : "Erreur",
+            MessageBoxButton.OK, success ? MessageBoxImage.Information : MessageBoxImage.Error);
+    }
+
+    [RelayCommand]
+    private async Task RunDiskCleanupAsync()
+    {
+        if (!IsAdmin)
+        {
+            MessageBox.Show("Droits administrateur requis pour le nettoyage complet.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        StatusMessage = "Lancement du nettoyage de disque Windows...";
+        var (success, message) = await _systemCleaner.RunDiskCleanupAsync();
+        StatusMessage = message;
+    }
+
+    #endregion
+
+    #region Selection Commands
+
+    [RelayCommand(CanExecute = nameof(CanCancel))]
+    private void Cancel() => _cts?.Cancel();
 
     [RelayCommand]
     private void SelectAll()
     {
-        foreach (var file in FilteredFiles)
-        {
-            file.IsSelected = true;
-        }
+        foreach (var file in FilteredFiles) file.IsSelected = true;
         UpdateSelectedStats();
     }
 
     [RelayCommand]
     private void DeselectAll()
     {
-        foreach (var file in FilteredFiles)
-        {
-            file.IsSelected = false;
-        }
+        foreach (var file in FilteredFiles) file.IsSelected = false;
         UpdateSelectedStats();
     }
 
     [RelayCommand]
     private void InvertSelection()
     {
-        foreach (var file in FilteredFiles)
-        {
-            file.IsSelected = !file.IsSelected;
-        }
+        foreach (var file in FilteredFiles) file.IsSelected = !file.IsSelected;
         UpdateSelectedStats();
+    }
+
+    [RelayCommand]
+    private void SelectPrivacyItems()
+    {
+        foreach (var profile in Profiles.Where(p => p.IsPrivacy))
+            profile.IsEnabled = true;
+    }
+
+    [RelayCommand]
+    private void DeselectPrivacyItems()
+    {
+        foreach (var profile in Profiles.Where(p => p.IsPrivacy))
+            profile.IsEnabled = false;
+    }
+
+    [RelayCommand]
+    private void RestartAsAdmin()
+    {
+        if (AdminService.RestartAsAdmin())
+            Application.Current.Shutdown();
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    private void UpdateRecycleBinStats()
+    {
+        var (size, count) = _systemCleaner.GetRecycleBinInfo();
+        RecycleBinSize = size;
+        RecycleBinCount = count;
+        OnPropertyChanged(nameof(RecycleBinSizeFormatted));
     }
 
     private void ApplyFilter()
     {
-        // Afficher tous les fichiers (filtrage supprimé de l'interface)
         FilteredFiles = new ObservableCollection<TempFileInfo>(Files);
         TotalCount = FilteredFiles.Count;
         TotalSize = FilteredFiles.Sum(f => f.Size);
@@ -254,7 +547,6 @@ public partial class MainViewModel : ObservableObject
 
     private void UpdateProfileStats()
     {
-        // Recalculer les stats de chaque profil basé sur les fichiers restants
         foreach (var profile in Profiles)
         {
             var profileFiles = Files.Where(f => f.Category == profile.Name).ToList();
@@ -269,29 +561,25 @@ public partial class MainViewModel : ObservableObject
         SelectedCount = selected.Count();
         SelectedSize = selected.Sum(f => f.Size);
         OnPropertyChanged(nameof(SelectedSizeFormatted));
-        NotifyCanExecuteChanged();
-    }
-
-    private void NotifyCanExecuteChanged()
-    {
-        ScanCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanClean));
         CleanCommand.NotifyCanExecuteChanged();
-        CancelCommand.NotifyCanExecuteChanged();
     }
 
     private static string FormatSize(long bytes)
     {
         if (bytes == 0) return "0 B";
         string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
-        int suffixIndex = 0;
+        int i = 0;
         double size = bytes;
 
-        while (size >= 1024 && suffixIndex < suffixes.Length - 1)
+        while (size >= 1024 && i < suffixes.Length - 1)
         {
             size /= 1024;
-            suffixIndex++;
+            i++;
         }
 
-        return $"{size:N2} {suffixes[suffixIndex]}";
+        return $"{size:N2} {suffixes[i]}";
     }
+
+    #endregion
 }

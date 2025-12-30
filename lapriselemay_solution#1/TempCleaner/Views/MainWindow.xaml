@@ -51,13 +51,46 @@
                            FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
             </StackPanel>
             
-            <!-- Bouton Relancer en Admin -->
-            <Button Grid.Column="1" 
-                    Command="{Binding RestartAsAdminCommand}"
-                    Visibility="{Binding IsAdmin, Converter={StaticResource InverseBoolToVis}}"
-                    Background="#FF5722" Foreground="White"
-                    Padding="16,10" FontWeight="SemiBold"
-                    Cursor="Hand">
+            <!-- Menu Outils système -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Menu Background="Transparent" VerticalAlignment="Center" Margin="0,0,12,0">
+                    <MenuItem Header="🔧 Outils" FontWeight="SemiBold" Padding="12,8">
+                        <!-- Purge Mémoire -->
+                        <MenuItem Header="💾 Purge Mémoire">
+                            <MenuItem Header="🚀 Purge MAXIMALE (tout)" Command="{Binding PurgeMaxMemoryCommand}"/>
+                            <MenuItem Header="💾 Purge standard" Command="{Binding PurgeAllMemoryCommand}"/>
+                            <Separator/>
+                            <MenuItem Header="📊 Working Set uniquement" Command="{Binding PurgeWorkingSetCommand}"/>
+                            <MenuItem Header="📋 Standby List (admin)" Command="{Binding PurgeStandbyListCommand}"/>
+                            <MenuItem Header="📝 Modified Page List (admin)" Command="{Binding PurgeModifiedPageListCommand}"/>
+                            <MenuItem Header="⬇️ Low-Priority Standby (admin)" Command="{Binding PurgeLowPriorityStandbyCommand}"/>
+                        </MenuItem>
+                        <Separator/>
+                        <!-- Nettoyage système -->
+                        <MenuItem Header="🧹 Nettoyage Système">
+                            <MenuItem Header="🗑️ Vider la corbeille" Command="{Binding EmptyRecycleBinCommand}"/>
+                            <MenuItem Header="🌐 Vider cache DNS" Command="{Binding FlushDnsCacheCommand}"/>
+                            <MenuItem Header="📋 Vider presse-papiers" Command="{Binding ClearClipboardCommand}"/>
+                            <MenuItem Header="📂 Effacer documents récents" Command="{Binding ClearRecentDocumentsCommand}"/>
+                            <Separator/>
+                            <MenuItem Header="🛒 Vider cache Windows Store" Command="{Binding ClearWindowsStoreCacheCommand}"/>
+                            <MenuItem Header="🧽 Nettoyage de disque Windows" Command="{Binding RunDiskCleanupCommand}"/>
+                        </MenuItem>
+                        <Separator/>
+                        <!-- Avancé -->
+                        <MenuItem Header="⚡ Avancé (admin)">
+                            <MenuItem Header="📦 Nettoyer WinSxS (composants obsolètes)" Command="{Binding CleanupWinSxSCommand}"/>
+                            <MenuItem Header="😴 Activer/Désactiver hibernation" Command="{Binding ToggleHibernationCommand}"/>
+                        </MenuItem>
+                    </MenuItem>
+                </Menu>
+                
+                <!-- Bouton Relancer en Admin -->
+                <Button Command="{Binding RestartAsAdminCommand}"
+                        Visibility="{Binding IsAdmin, Converter={StaticResource InverseBoolToVis}}"
+                        Background="#FF5722" Foreground="White"
+                        Padding="16,10" FontWeight="SemiBold"
+                        Cursor="Hand">
                 <Button.Template>
                     <ControlTemplate TargetType="Button">
                         <Border Background="{TemplateBinding Background}" 
@@ -75,6 +108,7 @@
                     </ControlTemplate>
                 </Button.Template>
             </Button>
+            </StackPanel>
         </Grid>
 
         <!-- Profils de nettoyage -->
@@ -98,14 +132,23 @@
                                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                                         Background="{StaticResource SurfaceBrush}">
                                     <StackPanel Orientation="Horizontal">
-                                        <CheckBox IsChecked="{Binding IsEnabled}" VerticalAlignment="Center"/>
+                                        <CheckBox IsChecked="{Binding IsEnabled, Mode=TwoWay}" 
+                                                  VerticalAlignment="Center"
+                                                  Checked="ProfileCheckBox_Checked"
+                                                  Tag="{Binding}"/>
                                         <TextBlock Text="{Binding Icon}" FontSize="14" Margin="6,0,4,0" VerticalAlignment="Center"/>
                                         <StackPanel VerticalAlignment="Center">
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="{Binding Name}" FontWeight="Medium" FontSize="12"/>
+                                                <TextBlock Text="⚠️" FontSize="9" Margin="4,0,0,0" VerticalAlignment="Center"
+                                                           Visibility="{Binding IsSafe, Converter={StaticResource InverseBoolToVis}}"
+                                                           ToolTip="Opération risquée"/>
                                                 <TextBlock Text="🔒" FontSize="9" Margin="4,0,0,0" VerticalAlignment="Center"
                                                            Visibility="{Binding RequiresAdmin, Converter={StaticResource BoolToVis}}"
                                                            ToolTip="Nécessite les droits administrateur"/>
+                                                <TextBlock Text="👁️" FontSize="9" Margin="4,0,0,0" VerticalAlignment="Center"
+                                                           Visibility="{Binding IsPrivacy, Converter={StaticResource BoolToVis}}"
+                                                           ToolTip="Données de confidentialité"/>
                                             </StackPanel>
                                             <TextBlock FontSize="10" Foreground="{StaticResource TextSecondaryBrush}">
                                                 <Run Text="{Binding FileCount, Mode=OneWay}"/> fichiers - 
@@ -194,6 +237,16 @@
 
             <!-- Stats -->
             <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                <Border Background="#FFF3E0" Padding="12,8" CornerRadius="6" Margin="0,0,12,0"
+                        ToolTip="Clic droit pour vider">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🗑️ Corbeille:" FontWeight="Medium" Margin="0,0,8,0"/>
+                        <TextBlock Text="{Binding RecycleBinCount}" FontWeight="Bold" Foreground="#E65100"/>
+                        <TextBlock Text=" (" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBlock Text="{Binding RecycleBinSizeFormatted}" FontWeight="Medium" Foreground="#E65100"/>
+                        <TextBlock Text=")" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                </Border>
                 <Border Background="#E3F2FD" Padding="12,8" CornerRadius="6" Margin="0,0,12,0">
                     <StackPanel Orientation="Horizontal">
                         <TextBlock Text="📊 Total:" FontWeight="Medium" Margin="0,0,8,0"/>

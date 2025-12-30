@@ -1,10 +1,20 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using TempCleaner.Models;
 
 namespace TempCleaner.Services;
 
 public class CleanerService
 {
+    // Win32 API pour suppression forcée (du C++)
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool DeleteFile(string lpFileName);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern uint SetFileAttributes(string lpFileName, uint dwFileAttributes);
+
+    private const uint FILE_ATTRIBUTE_NORMAL = 0x80;
+
     public async Task<CleanResult> CleanAsync(
         IEnumerable<TempFileInfo> files,
         IProgress<(string message, int percent, long freedBytes)>? progress = null,
@@ -47,18 +57,43 @@ public class CleanerService
         return result;
     }
 
+    /// <summary>
+    /// Suppression améliorée avec fallback Win32 API (équivalent du C++)
+    /// </summary>
     private async Task<(bool Success, string ErrorMessage)> DeleteFileAsync(TempFileInfo file)
     {
         return await Task.Run(() =>
         {
             try
             {
-                if (File.Exists(file.FullPath))
+                if (!File.Exists(file.FullPath))
+                    return (true, string.Empty);
+
+                // Étape 1: Retirer les attributs de protection (du C++)
+                try
                 {
+                    SetFileAttributes(file.FullPath, FILE_ATTRIBUTE_NORMAL);
                     File.SetAttributes(file.FullPath, FileAttributes.Normal);
-                    File.Delete(file.FullPath);
                 }
-                return (true, string.Empty);
+                catch { /* Ignorer les erreurs d'attributs */ }
+
+                // Étape 2: Tentative de suppression standard
+                try
+                {
+                    File.Delete(file.FullPath);
+                    return (true, string.Empty);
+                }
+                catch
+                {
+                    // Étape 3: Fallback avec Win32 API (du C++)
+                    SetFileAttributes(file.FullPath, FILE_ATTRIBUTE_NORMAL);
+                    if (DeleteFile(file.FullPath))
+                    {
+                        return (true, string.Empty);
+                    }
+                }
+
+                return (false, "Impossible de supprimer le fichier");
             }
             catch (UnauthorizedAccessException)
             {

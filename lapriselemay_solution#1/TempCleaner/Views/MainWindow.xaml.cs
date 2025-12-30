@@ -1,26 +1,23 @@
 using System.Windows;
 using System.Windows.Controls;
+using TempCleaner.Models;
 using TempCleaner.ViewModels;
 
 namespace TempCleaner.Views;
 
 public partial class MainWindow : Window
 {
+    private bool _suppressWarning = false;
+    
     public MainWindow()
     {
         InitializeComponent();
         
-        // Force la fenêtre à avoir une position visible avec la barre de titre
         Loaded += (s, e) =>
         {
-            // S'assurer que la fenêtre est dans les limites de l'écran
             var workArea = SystemParameters.WorkArea;
-            
-            // Centrer la fenêtre dans la zone de travail
             Left = (workArea.Width - Width) / 2 + workArea.Left;
             Top = (workArea.Height - Height) / 2 + workArea.Top;
-            
-            // S'assurer que Top est au moins à 0 (barre de titre visible)
             if (Top < 0) Top = 10;
         };
     }
@@ -30,6 +27,29 @@ public partial class MainWindow : Window
         if (DataContext is MainViewModel viewModel)
         {
             viewModel.UpdateSelectedStats();
+        }
+    }
+    
+    private void ProfileCheckBox_Checked(object sender, RoutedEventArgs e)
+    {
+        if (_suppressWarning) return;
+        
+        if (sender is CheckBox checkBox && checkBox.Tag is CleanerProfile profile)
+        {
+            if (DataContext is MainViewModel viewModel)
+            {
+                // Afficher l'avertissement
+                bool confirmed = viewModel.ShowProfileWarning(profile);
+                
+                if (!confirmed)
+                {
+                    // L'utilisateur a annulé, décocher la case
+                    _suppressWarning = true;
+                    checkBox.IsChecked = false;
+                    profile.IsEnabled = false;
+                    _suppressWarning = false;
+                }
+            }
         }
     }
 }
