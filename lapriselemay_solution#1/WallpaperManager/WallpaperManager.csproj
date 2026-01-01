@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon Condition="Exists('Resources\app.ico')">Resources\app.ico</ApplicationIcon>
+    <AssemblyName>WallpaperManager</AssemblyName>
+    <RootNamespace>WallpaperManager</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>Felix-Antoine</Authors>
+    <Description>Gestionnaire de fonds d'écran avec rotation automatique, fonds animés et intégration Unsplash</Description>
+    <StartupObject>WallpaperManager.App</StartupObject>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    
+    <!-- Optimisations -->
+    <TieredCompilation>true</TieredCompilation>
+    <TieredCompilationQuickJit>true</TieredCompilationQuickJit>
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>portable</DebugType>
+    <Optimize>false</Optimize>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="H.NotifyIcon.Wpf" Version="2.2.0" />
+    <PackageReference Include="LibVLCSharp" Version="3.9.3" />
+    <PackageReference Include="LibVLCSharp.WPF" Version="3.9.3" />
+    <PackageReference Include="VideoLAN.LibVLC.Windows" Version="3.0.21" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Icône de l'application embarquée comme ressource -->
+    <Resource Include="Resources\app.ico" />
+    <!-- Copier l'icône dans le dossier de sortie pour le system tray -->
+    <Content Include="Resources\app.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Resources\app.ico</Link>
+    </Content>
+    <!-- Autres ressources -->
+    <Resource Include="Resources\**\*" Exclude="Resources\app.ico;Resources\*.ps1" />
+  </ItemGroup>
+
+</Project>
