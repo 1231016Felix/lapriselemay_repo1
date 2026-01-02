@@ -15,6 +15,10 @@ public sealed class WallpaperRotationService : IDisposable
     private volatile bool _isPaused;
     private bool _disposed;
     
+    // Pour préserver le temps restant lors de pause/resume
+    private DateTime _lastTickTime;
+    private double _remainingTimeMs;
+    
     public event EventHandler<Wallpaper>? WallpaperChanged;
     public event EventHandler<bool>? RotationStateChanged;
     
@@ -56,11 +60,12 @@ public sealed class WallpaperRotationService : IDisposable
         
         var intervalMs = Math.Max(SettingsService.Current.RotationIntervalMinutes, 1) * 60 * 1000;
         _timer.Interval = intervalMs;
+        _remainingTimeMs = 0; // Réinitialiser le temps restant
+        _lastTickTime = DateTime.UtcNow;
         _timer.Start();
         _isPaused = false;
         
-        // Appliquer immédiatement le premier fond d'écran
-        Next();
+        // Ne pas appliquer immédiatement - attendre le premier intervalle
         
         RotationStateChanged?.Invoke(this, true);
     }
@@ -74,18 +79,40 @@ public sealed class WallpaperRotationService : IDisposable
     
     public void Pause()
     {
+        if (_isPaused || !_timer.Enabled) return;
+        
+        // Calculer le temps restant avant le prochain changement
+        var elapsed = (DateTime.UtcNow - _lastTickTime).TotalMilliseconds;
+        _remainingTimeMs = Math.Max(_timer.Interval - elapsed, 1000); // Minimum 1 seconde
+        
+        _timer.Stop();
         _isPaused = true;
+        
+        System.Diagnostics.Debug.WriteLine($"Rotation en pause - Temps restant: {_remainingTimeMs / 1000:F0}s");
         RotationStateChanged?.Invoke(this, false);
     }
     
     public void Resume()
     {
+        if (!_isPaused) return;
+        
         lock (_lock)
         {
             if (_playlist.Count == 0) return;
         }
         
         _isPaused = false;
+        
+        // Reprendre avec le temps restant s'il y en avait
+        if (_remainingTimeMs > 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"Rotation reprise - Temps restant: {_remainingTimeMs / 1000:F0}s");
+            _timer.Interval = _remainingTimeMs;
+            _remainingTimeMs = 0;
+        }
+        
+        _lastTickTime = DateTime.UtcNow;
+        _timer.Start();
         RotationStateChanged?.Invoke(this, true);
     }
     
@@ -203,7 +230,18 @@ public sealed class WallpaperRotationService : IDisposable
     
     private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
     {
-        if (!_isPaused && !_disposed)
+        if (_disposed) return;
+        
+        // Remettre l'intervalle normal après une reprise avec temps restant
+        var normalInterval = Math.Max(SettingsService.Current.RotationIntervalMinutes, 1) * 60 * 1000;
+        if (Math.Abs(_timer.Interval - normalInterval) > 1000)
+        {
+            _timer.Interval = normalInterval;
+        }
+        
+        _lastTickTime = DateTime.UtcNow;
+        
+        if (!_isPaused)
         {
             Next();
         }

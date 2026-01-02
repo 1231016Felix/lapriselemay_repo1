@@ -37,6 +37,7 @@ public class Wallpaper
     public int Height { get; set; }
     public long FileSize { get; set; }
     public string[] Tags { get; set; } = [];
+    public string? FileHash { get; set; }  // MD5 pour détection doublons
     
     // Propriétés calculées - ne pas sérialiser
     [JsonIgnore]

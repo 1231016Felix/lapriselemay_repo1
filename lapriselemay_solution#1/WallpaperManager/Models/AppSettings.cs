@@ -43,6 +43,9 @@ public class AppSettings
     public string HotkeyPreviousWallpaper { get; set; } = "Ctrl+Alt+Left";
     public string HotkeyPauseRotation { get; set; } = "Ctrl+Alt+Space";
     
+    // État de la fenêtre (pour restaurer après redémarrage)
+    public bool WasInTrayOnLastExit { get; set; }
+    
     private static string GetDefaultWallpaperFolder() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
         "WallpaperManager");

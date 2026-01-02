@@ -72,6 +72,9 @@ public partial class MainWindow : Window
         // Si "minimiser dans le tray" est activé, fermer la fenêtre mais garder l'app
         if (SettingsService.Current.MinimizeToTray)
         {
+            // Signaler que la fenêtre n'est plus visible (dans le tray)
+            App.SetMainWindowVisible(false);
+            
             // Nettoyer les ressources pour libérer la RAM
             if (App.IsInitialized)
             {

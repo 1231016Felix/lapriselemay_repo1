@@ -49,6 +49,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private string _statusMessage = string.Empty;
     
     [ObservableProperty]
+    private ObservableCollection<DuplicateGroup> _duplicateGroups = [];
+    
+    [ObservableProperty]
+    private bool _isDuplicateScanRunning;
+    
+    [ObservableProperty]
     private int _selectedTabIndex;
     
     [ObservableProperty]
@@ -59,6 +65,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     
     [ObservableProperty]
     private bool _minimizeToTray = true;
+    
+    [ObservableProperty]
+    private bool _pauseOnBattery = true;
+    
+    [ObservableProperty]
+    private bool _pauseOnFullscreen = true;
     
     public string RotationStatusText => IsRotationEnabled ? "Active" : "Desactive";
 
@@ -78,6 +90,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UnsplashApiKey = SettingsService.Current.UnsplashApiKey ?? string.Empty;
         StartWithWindows = SettingsService.Current.StartWithWindows;
         MinimizeToTray = SettingsService.Current.MinimizeToTray;
+        PauseOnBattery = SettingsService.Current.PauseOnBattery;
+        PauseOnFullscreen = SettingsService.Current.PauseOnFullscreen;
         
         System.Diagnostics.Debug.WriteLine($"LoadData: IsRotationEnabled={IsRotationEnabled}");
     }
@@ -185,6 +199,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
             
             return wallpaper;
         });
+    }
+    
+    [RelayCommand]
+    private void OpenInExplorer(Wallpaper? wallpaper)
+    {
+        var target = wallpaper ?? SelectedWallpaper;
+        if (target == null || string.IsNullOrEmpty(target.FilePath)) return;
+        
+        if (!File.Exists(target.FilePath))
+        {
+            StatusMessage = "Fichier introuvable";
+            return;
+        }
+        
+        try
+        {
+            // Ouvre l'explorateur et sélectionne le fichier
+            System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{target.FilePath}\"");
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Erreur: {ex.Message}";
+        }
     }
     
     [RelayCommand]
@@ -303,6 +340,118 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         
         SettingsService.Save();
+    }
+    
+    partial void OnPauseOnBatteryChanged(bool value)
+    {
+        SettingsService.Current.PauseOnBattery = value;
+        SettingsService.Save();
+    }
+    
+    partial void OnPauseOnFullscreenChanged(bool value)
+    {
+        SettingsService.Current.PauseOnFullscreen = value;
+        SettingsService.Save();
+    }
+    
+    [RelayCommand]
+    private async Task ScanDuplicatesAsync()
+    {
+        if (IsDuplicateScanRunning) return;
+        
+        IsDuplicateScanRunning = true;
+        DuplicateGroups.Clear();
+        
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        
+        var progress = new Progress<(int current, int total, string status)>(p =>
+        {
+            StatusMessage = p.status;
+        });
+        
+        try
+        {
+            var groups = await DuplicateDetectionService.FindDuplicatesAsync(
+                Wallpapers, 
+                progress, 
+                _cts.Token);
+            
+            DuplicateGroups = new ObservableCollection<DuplicateGroup>(groups);
+            
+            if (groups.Count == 0)
+            {
+                StatusMessage = "Aucun doublon trouvé";
+            }
+            else
+            {
+                var totalDuplicates = groups.Sum(g => g.Wallpapers.Count - 1);
+                var recoverableSpace = DuplicateDetectionService.CalculateRecoverableSpace(groups);
+                StatusMessage = $"{totalDuplicates} doublon(s) trouvé(s) - {DuplicateDetectionService.FormatSize(recoverableSpace)} récupérables";
+            }
+            
+            // Sauvegarder les hash calculés
+            SettingsService.Save();
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Analyse annulée";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Erreur: {ex.Message}";
+        }
+        finally
+        {
+            IsDuplicateScanRunning = false;
+        }
+    }
+    
+    [RelayCommand]
+    private void RemoveDuplicate(Wallpaper? wallpaper)
+    {
+        if (wallpaper == null) return;
+        
+        // Retirer de la bibliothèque (ne supprime pas le fichier)
+        SettingsService.RemoveWallpaper(wallpaper.Id);
+        Wallpapers.Remove(wallpaper);
+        
+        // Mettre à jour les groupes de doublons
+        foreach (var group in DuplicateGroups.ToList())
+        {
+            group.Wallpapers.Remove(wallpaper);
+            if (group.Wallpapers.Count <= 1)
+            {
+                DuplicateGroups.Remove(group);
+            }
+        }
+        
+        SettingsService.Save();
+        
+        var remaining = DuplicateGroups.Sum(g => g.Wallpapers.Count - 1);
+        StatusMessage = remaining > 0 
+            ? $"Doublon retiré - {remaining} restant(s)" 
+            : "Tous les doublons ont été traités";
+        
+        if (App.IsInitialized)
+        {
+            App.RotationService.RefreshPlaylist();
+        }
+    }
+    
+    [RelayCommand]
+    private void ClearThumbnailCache()
+    {
+        ThumbnailService.Instance.ClearAllCache();
+        StatusMessage = "Cache des miniatures vidé";
+        
+        // Forcer le rafraîchissement de la liste
+        var temp = Wallpapers.ToList();
+        Wallpapers.Clear();
+        foreach (var w in temp)
+        {
+            Wallpapers.Add(w);
+        }
     }
     
     public void Dispose()

@@ -199,8 +199,13 @@ public partial class MainViewModel : ObservableObject
             StatusMessage = $"Nettoyage: {result.DeletedCount} fichiers ({result.FreedBytesFormatted} libérés)";
 
             if (result.FailedCount > 0)
-                MessageBox.Show($"{result.FailedCount} fichier(s) non supprimés.", "Avertissement",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            {
+                var totalSize = selectedFiles.Sum(f => f.Size);
+                MessageBox.Show(
+                    $"{result.FailedCount} fichier(s) non supprimés sur {result.DeletedCount + result.FailedCount} traités ({result.DeletedCount} nettoyés).\n" +
+                    $"{result.FreedBytesFormatted} libérés sur {FormatSize(totalSize)} prévus.",
+                    "Avertissement", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
         catch (OperationCanceledException)
         {

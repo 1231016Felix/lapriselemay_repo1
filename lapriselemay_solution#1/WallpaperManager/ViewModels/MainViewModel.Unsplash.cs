@@ -107,6 +107,10 @@ public partial class MainViewModel
             
             if (localPath != null)
             {
+                // Générer le thumbnail AVANT d'ajouter à la collection
+                StatusMessage = "Génération de la miniature...";
+                await ThumbnailService.Instance.GetThumbnailAsync(localPath);
+                
                 var wallpaper = UnsplashService.CreateWallpaperFromPhoto(photo, localPath);
                 SettingsService.AddWallpaper(wallpaper);
                 Wallpapers.Add(wallpaper);
