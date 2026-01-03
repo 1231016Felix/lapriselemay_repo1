@@ -2,18 +2,26 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Windows;
+using System.Windows.Threading;
+using QuickLauncher.Models;
 using QuickLauncher.Services;
 using QuickLauncher.Views;
 using H.NotifyIcon;
 
+using Application = System.Windows.Application;
+using MessageBox = System.Windows.MessageBox;
+
 namespace QuickLauncher;
 
-public partial class App : System.Windows.Application
+public partial class App : Application
 {
     private TaskbarIcon? _trayIcon;
     private HotkeyService? _hotkeyService;
     private LauncherWindow? _launcherWindow;
     private IndexingService? _indexingService;
+    private DispatcherTimer? _autoReindexTimer;
+    private AppSettings _settings = null!;
+    
     private static readonly string LogPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "QuickLauncher", "app.log");
@@ -27,29 +35,17 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        // Gestion globale des erreurs
-        DispatcherUnhandledException += (s, ex) =>
-        {
-            Log($"ERREUR UI: {ex.Exception}");
-            ex.Handled = true;
-        };
-        AppDomain.CurrentDomain.UnhandledException += (s, ex) =>
-        {
-            Log($"ERREUR FATALE: {ex.ExceptionObject}");
-        };
-        TaskScheduler.UnobservedTaskException += (s, ex) =>
-        {
-            Log($"ERREUR TASK: {ex.Exception}");
-            ex.SetObserved();
-        };
-
+        SetupExceptionHandling();
+        
         try
         {
             Log("=== Démarrage QuickLauncher ===");
             base.OnStartup(e);
             
+            _settings = AppSettings.Load();
+            
             Log("Synchronisation registre démarrage...");
-            Views.SettingsWindow.SyncStartupRegistry();
+            SettingsWindow.SyncStartupRegistry();
             
             Log("Création IndexingService...");
             _indexingService = new IndexingService();
@@ -65,34 +61,52 @@ public partial class App : System.Windows.Application
             _hotkeyService.HotkeyPressed += OnHotkeyPressed;
             _hotkeyService.Register();
             
-            Log("Démarrage terminé avec succès!");
+            Log("Configuration réindexation auto...");
+            SetupAutoReindex();
+            
+            Log("Démarrage terminé!");
         }
         catch (Exception ex)
         {
             Log($"ERREUR STARTUP: {ex}");
-            System.Windows.MessageBox.Show($"Erreur au démarrage:\n{ex.Message}", "QuickLauncher", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show($"Erreur au démarrage:\n{ex.Message}", "QuickLauncher", 
+                MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    private void SetupExceptionHandling()
+    {
+        DispatcherUnhandledException += (_, ex) =>
+        {
+            Log($"ERREUR UI: {ex.Exception}");
+            ex.Handled = true;
+        };
+        
+        AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
+        {
+            Log($"ERREUR FATALE: {ex.ExceptionObject}");
+        };
+        
+        TaskScheduler.UnobservedTaskException += (_, ex) =>
+        {
+            Log($"ERREUR TASK: {ex.Exception}");
+            ex.SetObserved();
+        };
     }
 
     private void CreateTrayIcon()
     {
         try
         {
-            var settings = Models.AppSettings.Load();
-            
-            // Créer/charger l'icône
-            var icon = GetAppIcon();
-            
             _trayIcon = new TaskbarIcon
             {
-                ToolTipText = $"QuickLauncher - {settings.Hotkey.DisplayText} pour ouvrir",
-                Icon = icon,
+                ToolTipText = $"QuickLauncher - {_settings.Hotkey.DisplayText} pour ouvrir",
+                Icon = GetAppIcon(),
                 ContextMenu = CreateContextMenu(),
                 Visibility = Visibility.Visible
             };
-            _trayIcon.TrayMouseDoubleClick += (_, _) => ShowLauncher();
             
-            // Forcer l'affichage
+            _trayIcon.TrayMouseDoubleClick += (_, _) => ShowLauncher();
             _trayIcon.ForceCreate();
             
             Log("Icône système créée");
@@ -107,9 +121,8 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            // Charger l'icône intégrée dans les ressources
             var uri = new Uri("pack://application:,,,/Resources/app.ico", UriKind.Absolute);
-            var streamInfo = System.Windows.Application.GetResourceStream(uri);
+            var streamInfo = GetResourceStream(uri);
             if (streamInfo != null)
             {
                 using var stream = streamInfo.Stream;
@@ -118,7 +131,7 @@ public partial class App : System.Windows.Application
         }
         catch (Exception ex)
         {
-            Log($"Erreur chargement icône ressource: {ex.Message}");
+            Log($"Erreur chargement icône: {ex.Message}");
         }
         
         return SystemIcons.Application;
@@ -127,42 +140,29 @@ public partial class App : System.Windows.Application
     private System.Windows.Controls.ContextMenu CreateContextMenu()
     {
         var menu = new System.Windows.Controls.ContextMenu();
-        var settings = Models.AppSettings.Load();
         
-        var openItem = new System.Windows.Controls.MenuItem { Header = $"Ouvrir ({settings.Hotkey.DisplayText})" };
-        openItem.Click += (_, _) => ShowLauncher();
-        
-        var settingsItem = new System.Windows.Controls.MenuItem { Header = "⚙️ Paramètres..." };
-        settingsItem.Click += (_, _) => ShowSettings();
-        
-        var reindexItem = new System.Windows.Controls.MenuItem { Header = "🔄 Réindexer" };
-        reindexItem.Click += async (_, _) => await ReindexAsync();
-        
-        var separator = new System.Windows.Controls.Separator();
-        
-        var helpItem = new System.Windows.Controls.MenuItem { Header = "❓ Aide" };
-        helpItem.Click += (_, _) => ShowHelp();
-        
-        var separator2 = new System.Windows.Controls.Separator();
-        
-        var exitItem = new System.Windows.Controls.MenuItem { Header = "🚪 Quitter" };
-        exitItem.Click += (_, _) => ExitApplication();
-        
-        menu.Items.Add(openItem);
+        AddMenuItem(menu, $"Ouvrir ({_settings.Hotkey.DisplayText})", ShowLauncher);
         menu.Items.Add(new System.Windows.Controls.Separator());
-        menu.Items.Add(settingsItem);
-        menu.Items.Add(reindexItem);
+        AddMenuItem(menu, "⚙️ Paramètres...", ShowSettings);
+        AddMenuItem(menu, "🔄 Réindexer", async () => await ReindexAsync());
         menu.Items.Add(new System.Windows.Controls.Separator());
-        menu.Items.Add(helpItem);
+        AddMenuItem(menu, "❓ Aide", ShowHelp);
         menu.Items.Add(new System.Windows.Controls.Separator());
-        menu.Items.Add(exitItem);
+        AddMenuItem(menu, "🚪 Quitter", ExitApplication);
         
         return menu;
+    }
+    
+    private static void AddMenuItem(System.Windows.Controls.ContextMenu menu, string header, Action action)
+    {
+        var item = new System.Windows.Controls.MenuItem { Header = header };
+        item.Click += (_, _) => action();
+        menu.Items.Add(item);
     }
 
     private void OnHotkeyPressed(object? sender, EventArgs e)
     {
-        Log("Hotkey pressé!");
+        Log("Hotkey pressé");
         Dispatcher.Invoke(ShowLauncher);
     }
 
@@ -170,30 +170,24 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            Log("ShowLauncher appelé");
             if (_indexingService == null)
             {
-                Log("IndexingService est null!");
+                Log("IndexingService null!");
                 return;
             }
             
             if (_launcherWindow == null || !_launcherWindow.IsLoaded)
             {
-                Log("Création nouvelle fenêtre...");
                 _launcherWindow = new LauncherWindow(_indexingService);
                 _launcherWindow.Closed += (_, _) => _launcherWindow = null;
-                
-                // Connecter les événements de la fenêtre
                 _launcherWindow.RequestOpenSettings += (_, _) => Dispatcher.Invoke(ShowSettings);
                 _launcherWindow.RequestQuit += (_, _) => Dispatcher.Invoke(ExitApplication);
                 _launcherWindow.RequestReindex += async (_, _) => await Dispatcher.Invoke(async () => await ReindexAsync());
             }
             
-            Log("Affichage fenêtre...");
             _launcherWindow.Show();
             _launcherWindow.Activate();
             _launcherWindow.FocusSearchBox();
-            Log("Fenêtre affichée");
         }
         catch (Exception ex)
         {
@@ -205,20 +199,14 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            Log("Ouverture paramètres...");
             var settingsWindow = new SettingsWindow(_indexingService);
             settingsWindow.ShowDialog();
             
-            // Recharger les paramètres après fermeture
-            var settings = Models.AppSettings.Load();
+            // Recharger les paramètres
+            _settings = AppSettings.Load();
             
-            // Mettre à jour le tooltip de l'icône système
             if (_trayIcon != null)
-            {
-                _trayIcon.ToolTipText = $"QuickLauncher - {settings.Hotkey.DisplayText} pour ouvrir";
-            }
-            
-            Log("Paramètres fermés");
+                _trayIcon.ToolTipText = $"QuickLauncher - {_settings.Hotkey.DisplayText} pour ouvrir";
         }
         catch (Exception ex)
         {
@@ -226,15 +214,64 @@ public partial class App : System.Windows.Application
         }
     }
     
+    public void SetupAutoReindex()
+    {
+        _autoReindexTimer?.Stop();
+        _settings = AppSettings.Load();
+        
+        if (!_settings.AutoReindexEnabled)
+        {
+            Log("Réindexation auto désactivée");
+            return;
+        }
+        
+        _autoReindexTimer = new DispatcherTimer();
+        
+        if (_settings.AutoReindexMode == AutoReindexMode.Interval)
+        {
+            // Mode intervalle
+            _autoReindexTimer.Interval = TimeSpan.FromMinutes(_settings.AutoReindexIntervalMinutes);
+            _autoReindexTimer.Tick += async (_, _) =>
+            {
+                Log($"Réindexation auto (intervalle {_settings.AutoReindexIntervalMinutes} min)");
+                await ReindexAsync();
+            };
+            
+            Log($"Timer réindexation: toutes les {_settings.AutoReindexIntervalMinutes} minutes");
+        }
+        else
+        {
+            // Mode heure programmée
+            _autoReindexTimer.Interval = TimeSpan.FromMinutes(1);
+            _autoReindexTimer.Tick += async (_, _) =>
+            {
+                var now = DateTime.Now;
+                var scheduled = _settings.AutoReindexScheduledTime.Split(':');
+                
+                if (scheduled.Length == 2 &&
+                    int.TryParse(scheduled[0], out var hour) &&
+                    int.TryParse(scheduled[1], out var minute) &&
+                    now.Hour == hour && now.Minute == minute)
+                {
+                    Log($"Réindexation auto (programmée {_settings.AutoReindexScheduledTime})");
+                    await ReindexAsync();
+                }
+            };
+            
+            Log($"Timer réindexation: programmé à {_settings.AutoReindexScheduledTime}");
+        }
+        
+        _autoReindexTimer.Start();
+    }
+    
     private async Task ReindexAsync()
     {
         try
         {
-            Log("Début réindexation...");
             if (_indexingService != null)
             {
                 await _indexingService.ReindexAsync();
-                Log("Réindexation terminée!");
+                Log("Réindexation terminée");
             }
         }
         catch (Exception ex)
@@ -245,47 +282,58 @@ public partial class App : System.Windows.Application
     
     private void ShowHelp()
     {
-        var settings = Models.AppSettings.Load();
-        var helpText = $@"🚀 QuickLauncher - Aide
+        var helpText = $"""
+            🚀 QuickLauncher - Aide
 
-📌 Raccourcis clavier:
-• {settings.Hotkey.DisplayText} - Ouvrir/Fermer QuickLauncher
-• Ctrl+, - Ouvrir les paramètres
-• Ctrl+R - Réindexer
-• Ctrl+Q - Quitter
-• Échap - Fermer la fenêtre
+            📌 Raccourcis clavier:
+            • {_settings.Hotkey.DisplayText} - Ouvrir/Fermer QuickLauncher
+            • Ctrl+, - Ouvrir les paramètres
+            • Ctrl+R - Réindexer
+            • Ctrl+Q - Quitter
+            • Échap - Fermer la fenêtre
 
-📌 Commandes spéciales:
-• :settings - Ouvrir les paramètres
-• :reload - Réindexer les fichiers
-• :history - Voir l'historique
-• :clear - Effacer l'historique
-• :help ou ? - Afficher l'aide
-• :quit - Quitter l'application
+            📌 Commandes spéciales:
+            • :settings - Ouvrir les paramètres
+            • :reload - Réindexer les fichiers
+            • :history - Voir l'historique
+            • :clear - Effacer l'historique
+            • :help ou ? - Afficher l'aide
+            • :quit - Quitter l'application
 
-📌 Recherche web (préfixes):
-• g [texte] - Recherche Google
-• yt [texte] - Recherche YouTube
-• gh [texte] - Recherche GitHub
-• so [texte] - Recherche Stack Overflow";
+            📌 Recherche web (préfixes):
+            • g [texte] - Recherche Google
+            • yt [texte] - Recherche YouTube
+            • gh [texte] - Recherche GitHub
+            • so [texte] - Recherche Stack Overflow
+            """;
         
-        System.Windows.MessageBox.Show(helpText, "QuickLauncher - Aide", 
+        MessageBox.Show(helpText, "QuickLauncher - Aide", 
             MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void ExitApplication()
     {
         Log("Fermeture application...");
+        
+        _autoReindexTimer?.Stop();
         _hotkeyService?.Unregister();
+        _hotkeyService?.Dispose();
+        _indexingService?.Dispose();
         _trayIcon?.Dispose();
+        
         Shutdown();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         Log("OnExit");
+        
+        _autoReindexTimer?.Stop();
         _hotkeyService?.Unregister();
+        _hotkeyService?.Dispose();
+        _indexingService?.Dispose();
         _trayIcon?.Dispose();
+        
         base.OnExit(e);
     }
 }

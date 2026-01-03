@@ -3,15 +3,23 @@ using QuickLauncher.Models;
 using QuickLauncher.Services;
 using System.Diagnostics;
 using System.IO;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
+using Application = System.Windows.Application;
+using Color = System.Windows.Media.Color;
+using ColorConverter = System.Windows.Media.ColorConverter;
+using ComboBox = System.Windows.Controls.ComboBox;
+using MessageBox = System.Windows.MessageBox;
+
 namespace QuickLauncher.Views;
 
-public partial class SettingsWindow : System.Windows.Window
+public partial class SettingsWindow : Window
 {
     private readonly AppSettings _settings;
     private readonly IndexingService? _indexingService;
+    
     private const string StartupRegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
     private const string AppName = "QuickLauncher";
 
@@ -35,9 +43,7 @@ public partial class SettingsWindow : System.Windows.Window
         ShowSettingsButtonCheck.IsChecked = _settings.ShowSettingsButton;
         MaxResultsSlider.Value = _settings.MaxResults;
         MaxResultsValue.Text = _settings.MaxResults.ToString();
-        
-        // Position fenêtre
-        SelectWindowPosition(_settings.WindowPosition);
+        SelectComboByTag(WindowPositionCombo, _settings.WindowPosition);
         
         // Historique
         EnableSearchHistoryCheck.IsChecked = _settings.EnableSearchHistory;
@@ -45,18 +51,19 @@ public partial class SettingsWindow : System.Windows.Window
         MaxHistoryValue.Text = _settings.MaxSearchHistory.ToString();
         
         // Apparence
-        SelectTheme(_settings.Theme);
+        SelectComboByTag(ThemeCombo, _settings.Theme);
         OpacitySlider.Value = _settings.WindowOpacity;
         OpacityValue.Text = $"{(int)(_settings.WindowOpacity * 100)}%";
         EnableAnimationsCheck.IsChecked = _settings.EnableAnimations;
-        SelectAccentColor(_settings.AccentColor);
+        SelectComboByTag(AccentColorCombo, _settings.AccentColor);
+        UpdateColorPreview(_settings.AccentColor);
         
         // Raccourci
         HotkeyAltCheck.IsChecked = _settings.Hotkey.UseAlt;
         HotkeyCtrlCheck.IsChecked = _settings.Hotkey.UseCtrl;
         HotkeyShiftCheck.IsChecked = _settings.Hotkey.UseShift;
         HotkeyWinCheck.IsChecked = _settings.Hotkey.UseWin;
-        SelectHotkeyKey(_settings.Hotkey.Key);
+        SelectComboByTag(HotkeyKeyCombo, _settings.Hotkey.Key);
         UpdateHotkeyDisplay();
         
         // Indexation
@@ -66,6 +73,14 @@ public partial class SettingsWindow : System.Windows.Window
         SearchDepthValue.Text = _settings.SearchDepth.ToString();
         IndexHiddenFoldersCheck.IsChecked = _settings.IndexHiddenFolders;
         
+        // Réindexation automatique
+        AutoReindexEnabledCheck.IsChecked = _settings.AutoReindexEnabled;
+        ReindexIntervalRadio.IsChecked = _settings.AutoReindexMode == AutoReindexMode.Interval;
+        ReindexTimeRadio.IsChecked = _settings.AutoReindexMode == AutoReindexMode.ScheduledTime;
+        SelectComboByTag(ReindexIntervalCombo, _settings.AutoReindexIntervalMinutes.ToString());
+        LoadScheduledTime(_settings.AutoReindexScheduledTime);
+        UpdateAutoReindexOptionsVisibility();
+        
         // Recherche Web
         SearchEnginesList.ItemsSource = _settings.SearchEngines;
         
@@ -73,63 +88,50 @@ public partial class SettingsWindow : System.Windows.Window
         DataPathText.Text = AppSettings.GetSettingsPath();
     }
     
-    private void SelectWindowPosition(string position)
+    private static void SelectComboByTag(ComboBox combo, string tag)
     {
-        foreach (ComboBoxItem item in WindowPositionCombo.Items)
+        foreach (ComboBoxItem item in combo.Items)
         {
-            if (item.Tag?.ToString() == position)
+            if (item.Tag?.ToString() == tag)
             {
-                WindowPositionCombo.SelectedItem = item;
+                combo.SelectedItem = item;
                 return;
             }
         }
-        WindowPositionCombo.SelectedIndex = 0;
+        if (combo.Items.Count > 0)
+            combo.SelectedIndex = 0;
     }
     
-    private void SelectTheme(string theme)
+    private void LoadScheduledTime(string time)
     {
-        foreach (ComboBoxItem item in ThemeCombo.Items)
+        var parts = time.Split(':');
+        if (parts.Length == 2)
         {
-            if (item.Tag?.ToString() == theme)
-            {
-                ThemeCombo.SelectedItem = item;
-                return;
-            }
+            SelectComboByTag(ReindexHourCombo, parts[0]);
+            SelectComboByTag(ReindexMinuteCombo, parts[1]);
         }
-        ThemeCombo.SelectedIndex = 0;
+        else
+        {
+            ReindexHourCombo.SelectedIndex = 3;
+            ReindexMinuteCombo.SelectedIndex = 0;
+        }
     }
-
-    private void SelectAccentColor(string color)
+    
+    private void UpdateColorPreview(string color)
     {
-        foreach (ComboBoxItem item in AccentColorCombo.Items)
-        {
-            if (item.Tag?.ToString() == color)
-            {
-                AccentColorCombo.SelectedItem = item;
-                break;
-            }
-        }
-        if (AccentColorCombo.SelectedItem == null)
-            AccentColorCombo.SelectedIndex = 0;
-        
         try
         {
-            ColorPreview.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
+            ColorPreview.Background = new SolidColorBrush(
+                (Color)ColorConverter.ConvertFromString(color));
         }
         catch { }
     }
     
-    private void SelectHotkeyKey(string key)
+    private void UpdateAutoReindexOptionsVisibility()
     {
-        foreach (ComboBoxItem item in HotkeyKeyCombo.Items)
-        {
-            if (item.Tag?.ToString() == key)
-            {
-                HotkeyKeyCombo.SelectedItem = item;
-                return;
-            }
-        }
-        HotkeyKeyCombo.SelectedIndex = 0;
+        var enabled = AutoReindexEnabledCheck.IsChecked == true;
+        AutoReindexOptionsPanel.IsEnabled = enabled;
+        AutoReindexOptionsPanel.Opacity = enabled ? 1.0 : 0.5;
     }
     
     private void LoadStatistics()
@@ -148,10 +150,13 @@ public partial class SettingsWindow : System.Windows.Window
                 stats.Add($"📅 Dernière indexation: {fileInfo.LastWriteTime:g}");
             }
             
+            if (_indexingService != null)
+                stats.Add($"🔢 Éléments indexés: {_indexingService.GetIndexedItemsCount()}");
+            
             stats.Add($"📂 Dossiers surveillés: {_settings.IndexedFolders.Count}");
             stats.Add($"📄 Extensions indexées: {_settings.FileExtensions.Count}");
             stats.Add($"🔍 Moteurs de recherche: {_settings.SearchEngines.Count}");
-            stats.Add($"🕐 Historique de recherche: {_settings.SearchHistory.Count} entrées");
+            stats.Add($"🕐 Historique: {_settings.SearchHistory.Count} entrées");
             
             StatsText.Text = string.Join("\n", stats);
         }
@@ -161,62 +166,46 @@ public partial class SettingsWindow : System.Windows.Window
         }
     }
 
-    // ═══════════════ Gestionnaires d'événements - Sliders ═══════════════
+    // === Gestionnaires d'événements - Sliders ===
     
-    private void MaxResultsSlider_ValueChanged(object sender, System.Windows.RoutedPropertyChangedEventArgs<double> e)
+    private void MaxResultsSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (MaxResultsValue != null)
             MaxResultsValue.Text = ((int)e.NewValue).ToString();
     }
     
-    private void MaxHistorySlider_ValueChanged(object sender, System.Windows.RoutedPropertyChangedEventArgs<double> e)
+    private void MaxHistorySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (MaxHistoryValue != null)
             MaxHistoryValue.Text = ((int)e.NewValue).ToString();
     }
     
-    private void OpacitySlider_ValueChanged(object sender, System.Windows.RoutedPropertyChangedEventArgs<double> e)
+    private void OpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (OpacityValue != null)
             OpacityValue.Text = $"{(int)(e.NewValue * 100)}%";
     }
     
-    private void SearchDepthSlider_ValueChanged(object sender, System.Windows.RoutedPropertyChangedEventArgs<double> e)
+    private void SearchDepthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (SearchDepthValue != null)
             SearchDepthValue.Text = ((int)e.NewValue).ToString();
     }
 
-    // ═══════════════ Gestionnaires d'événements - Apparence ═══════════════
+    // === Gestionnaires d'événements - Apparence ===
     
-    private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        // Future implementation pour le thème clair
-    }
+    private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) { }
     
     private void AccentColorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (AccentColorCombo.SelectedItem is ComboBoxItem item && item.Tag is string color)
-        {
-            try
-            {
-                ColorPreview.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(color));
-            }
-            catch { }
-        }
+        if (AccentColorCombo.SelectedItem is ComboBoxItem { Tag: string color })
+            UpdateColorPreview(color);
     }
 
-    // ═══════════════ Gestionnaires d'événements - Raccourci ═══════════════
+    // === Gestionnaires d'événements - Raccourci ===
     
-    private void Hotkey_Changed(object sender, System.Windows.RoutedEventArgs e)
-    {
-        UpdateHotkeyDisplay();
-    }
-    
-    private void HotkeyKeyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        UpdateHotkeyDisplay();
-    }
+    private void Hotkey_Changed(object sender, RoutedEventArgs e) => UpdateHotkeyDisplay();
+    private void HotkeyKeyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateHotkeyDisplay();
     
     private void UpdateHotkeyDisplay()
     {
@@ -234,9 +223,9 @@ public partial class SettingsWindow : System.Windows.Window
         CurrentHotkeyDisplay.Text = string.Join(" + ", parts);
     }
 
-    // ═══════════════ Gestionnaires d'événements - Dossiers ═══════════════
+    // === Gestionnaires d'événements - Dossiers ===
     
-    private void AddFolder_Click(object sender, System.Windows.RoutedEventArgs e)
+    private void AddFolder_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new System.Windows.Forms.FolderBrowserDialog
         {
@@ -253,13 +242,13 @@ public partial class SettingsWindow : System.Windows.Window
             }
             else
             {
-                System.Windows.MessageBox.Show("Ce dossier est déjà dans la liste.", "Information",
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                MessageBox.Show("Ce dossier est déjà dans la liste.", "Information",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
     }
 
-    private void RemoveFolder_Click(object sender, System.Windows.RoutedEventArgs e)
+    private void RemoveFolder_Click(object sender, RoutedEventArgs e)
     {
         if (IndexedFoldersList.SelectedItem is string folder)
         {
@@ -270,8 +259,8 @@ public partial class SettingsWindow : System.Windows.Window
             }
             else
             {
-                System.Windows.MessageBox.Show("Vous devez conserver au moins un dossier indexé.", "Attention",
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                MessageBox.Show("Vous devez conserver au moins un dossier indexé.", "Attention",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
     }
@@ -282,97 +271,80 @@ public partial class SettingsWindow : System.Windows.Window
         IndexedFoldersList.ItemsSource = _settings.IndexedFolders;
     }
 
-    // ═══════════════ Gestionnaires d'événements - Actions ═══════════════
+    // === Gestionnaires d'événements - Réindexation auto ===
     
-    private void ClearHistory_Click(object sender, System.Windows.RoutedEventArgs e)
+    private void AutoReindexEnabled_Changed(object sender, RoutedEventArgs e) => UpdateAutoReindexOptionsVisibility();
+    private void ReindexMode_Changed(object sender, RoutedEventArgs e) { }
+
+    // === Gestionnaires d'événements - Actions ===
+    
+    private void ClearHistory_Click(object sender, RoutedEventArgs e)
     {
-        var result = System.Windows.MessageBox.Show(
-            "Voulez-vous effacer tout l'historique de recherche?",
-            "Confirmation",
-            System.Windows.MessageBoxButton.YesNo,
-            System.Windows.MessageBoxImage.Question);
-            
-        if (result == System.Windows.MessageBoxResult.Yes)
+        if (MessageBox.Show("Voulez-vous effacer tout l'historique de recherche?", "Confirmation",
+            MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
         {
             _settings.ClearSearchHistory();
             _settings.Save();
             LoadStatistics();
-            System.Windows.MessageBox.Show("Historique effacé!", "Succès",
-                System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+            MessageBox.Show("Historique effacé!", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
     
-    private async void Reindex_Click(object sender, System.Windows.RoutedEventArgs e)
+    private async void Reindex_Click(object sender, RoutedEventArgs e)
     {
         if (_indexingService == null)
         {
-            System.Windows.MessageBox.Show("Service d'indexation non disponible. Veuillez redémarrer l'application.",
-                "Erreur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+            MessageBox.Show("Service d'indexation non disponible.", "Erreur",
+                MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
         
-        var result = System.Windows.MessageBox.Show(
-            "Voulez-vous réindexer tous les fichiers maintenant?\nCela peut prendre quelques instants.",
-            "Réindexation",
-            System.Windows.MessageBoxButton.YesNo,
-            System.Windows.MessageBoxImage.Question);
-            
-        if (result == System.Windows.MessageBoxResult.Yes)
+        if (MessageBox.Show("Réindexer tous les fichiers maintenant?", "Réindexation",
+            MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
         {
             try
             {
                 await _indexingService.ReindexAsync();
                 LoadStatistics();
-                System.Windows.MessageBox.Show("Réindexation terminée!", "Succès",
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                MessageBox.Show("Réindexation terminée!", "Succès",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"Erreur lors de la réindexation:\n{ex.Message}", "Erreur",
-                    System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                MessageBox.Show($"Erreur: {ex.Message}", "Erreur",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
     }
     
-    private void OpenDataFolder_Click(object sender, System.Windows.RoutedEventArgs e)
+    private void OpenDataFolder_Click(object sender, RoutedEventArgs e)
     {
         var folder = Path.GetDirectoryName(AppSettings.GetSettingsPath());
         if (folder != null && Directory.Exists(folder))
-        {
             Process.Start("explorer.exe", folder);
-        }
     }
 
-    private void ResetSettings_Click(object sender, System.Windows.RoutedEventArgs e)
+    private void ResetSettings_Click(object sender, RoutedEventArgs e)
     {
-        var result = System.Windows.MessageBox.Show(
-            "⚠️ Êtes-vous sûr de vouloir réinitialiser TOUS les paramètres?\n\nCette action est irréversible.",
-            "Confirmation",
-            System.Windows.MessageBoxButton.YesNo,
-            System.Windows.MessageBoxImage.Warning);
-            
-        if (result == System.Windows.MessageBoxResult.Yes)
+        if (MessageBox.Show("⚠️ Réinitialiser TOUS les paramètres?\n\nCette action est irréversible.",
+            "Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes)
         {
             AppSettings.Reset();
-            System.Windows.MessageBox.Show(
-                "Paramètres réinitialisés!\nL'application va redémarrer.",
-                "Succès",
-                System.Windows.MessageBoxButton.OK,
-                System.Windows.MessageBoxImage.Information);
+            MessageBox.Show("Paramètres réinitialisés!\nL'application va redémarrer.", "Succès",
+                MessageBoxButton.OK, MessageBoxImage.Information);
             
-            // Redémarrer l'application
-            var exePath = Process.GetCurrentProcess().MainModule?.FileName;
+            var exePath = Environment.ProcessPath;
             if (!string.IsNullOrEmpty(exePath))
             {
                 Process.Start(exePath);
-                System.Windows.Application.Current.Shutdown();
+                Application.Current.Shutdown();
             }
         }
     }
 
-    // ═══════════════ Boutons principaux ═══════════════
+    // === Boutons principaux ===
     
-    private void SaveButton_Click(object sender, System.Windows.RoutedEventArgs e)
+    private void SaveButton_Click(object sender, RoutedEventArgs e)
     {
         // Général
         _settings.StartWithWindows = StartWithWindowsCheck.IsChecked == true;
@@ -382,60 +354,68 @@ public partial class SettingsWindow : System.Windows.Window
         _settings.ShowIndexingStatus = ShowIndexingStatusCheck.IsChecked == true;
         _settings.ShowSettingsButton = ShowSettingsButtonCheck.IsChecked == true;
         _settings.MaxResults = (int)MaxResultsSlider.Value;
-        
-        // Position fenêtre
-        if (WindowPositionCombo.SelectedItem is ComboBoxItem posItem)
-            _settings.WindowPosition = posItem.Tag?.ToString() ?? "Center";
+        _settings.WindowPosition = GetComboTag(WindowPositionCombo) ?? "Center";
         
         // Historique
         _settings.EnableSearchHistory = EnableSearchHistoryCheck.IsChecked == true;
         _settings.MaxSearchHistory = (int)MaxHistorySlider.Value;
         
         // Apparence
-        if (ThemeCombo.SelectedItem is ComboBoxItem themeItem)
-            _settings.Theme = themeItem.Tag?.ToString() ?? "Dark";
+        _settings.Theme = GetComboTag(ThemeCombo) ?? "Dark";
         _settings.WindowOpacity = OpacitySlider.Value;
         _settings.EnableAnimations = EnableAnimationsCheck.IsChecked == true;
-        if (AccentColorCombo.SelectedItem is ComboBoxItem colorItem)
-            _settings.AccentColor = colorItem.Tag?.ToString() ?? "#0078D4";
+        _settings.AccentColor = GetComboTag(AccentColorCombo) ?? "#0078D4";
         
         // Raccourci
         _settings.Hotkey.UseAlt = HotkeyAltCheck.IsChecked == true;
         _settings.Hotkey.UseCtrl = HotkeyCtrlCheck.IsChecked == true;
         _settings.Hotkey.UseShift = HotkeyShiftCheck.IsChecked == true;
         _settings.Hotkey.UseWin = HotkeyWinCheck.IsChecked == true;
-        if (HotkeyKeyCombo.SelectedItem is ComboBoxItem keyItem)
-            _settings.Hotkey.Key = keyItem.Tag?.ToString() ?? "Space";
+        _settings.Hotkey.Key = GetComboTag(HotkeyKeyCombo) ?? "Space";
         
         // Indexation
         _settings.SearchDepth = (int)SearchDepthSlider.Value;
         _settings.IndexHiddenFolders = IndexHiddenFoldersCheck.IsChecked == true;
         
+        // Réindexation automatique
+        _settings.AutoReindexEnabled = AutoReindexEnabledCheck.IsChecked == true;
+        _settings.AutoReindexMode = ReindexTimeRadio.IsChecked == true 
+            ? AutoReindexMode.ScheduledTime 
+            : AutoReindexMode.Interval;
+        _settings.AutoReindexIntervalMinutes = int.Parse(GetComboTag(ReindexIntervalCombo) ?? "60");
+        
+        var hour = GetComboTag(ReindexHourCombo) ?? "03";
+        var minute = GetComboTag(ReindexMinuteCombo) ?? "00";
+        _settings.AutoReindexScheduledTime = $"{hour}:{minute}";
+        
         // Extensions
         var extensions = FileExtensionsBox.Text
-            .Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries)
+            .Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries)
             .Select(e => e.Trim().ToLowerInvariant())
             .Where(e => e.StartsWith('.'))
             .Distinct()
             .ToList();
+        
         if (extensions.Count > 0)
             _settings.FileExtensions = extensions;
         
         _settings.Save();
         UpdateStartupRegistry();
         
-        System.Windows.MessageBox.Show(
-            "✅ Paramètres sauvegardés!\n\nCertains changements (comme le raccourci clavier) nécessitent un redémarrage.",
-            "QuickLauncher",
-            System.Windows.MessageBoxButton.OK,
-            System.Windows.MessageBoxImage.Information);
+        // Reconfigurer le timer
+        if (Application.Current is App app)
+            app.SetupAutoReindex();
+        
+        MessageBox.Show("✅ Paramètres sauvegardés!\n\nLe raccourci clavier nécessite un redémarrage.",
+            "QuickLauncher", MessageBoxButton.OK, MessageBoxImage.Information);
+        
         Close();
     }
+    
+    private static string? GetComboTag(ComboBox combo) => 
+        (combo.SelectedItem as ComboBoxItem)?.Tag?.ToString();
 
-    private void CancelButton_Click(object sender, System.Windows.RoutedEventArgs e)
-    {
-        Close();
-    }
+    private void CancelButton_Click(object sender, RoutedEventArgs e) => Close();
 
     private void UpdateStartupRegistry()
     {
@@ -448,35 +428,21 @@ public partial class SettingsWindow : System.Windows.Window
             {
                 var exePath = GetApplicationExecutablePath();
                 if (!string.IsNullOrEmpty(exePath))
-                {
                     key.SetValue(AppName, $"\"{exePath}\"");
-                    Debug.WriteLine($"[Startup] Entrée registre créée: {exePath}");
-                }
-                else
-                {
-                    Debug.WriteLine("[Startup] ERREUR: Impossible de déterminer le chemin de l'exécutable");
-                }
             }
             else
             {
                 key.DeleteValue(AppName, false);
-                Debug.WriteLine("[Startup] Entrée registre supprimée");
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[Startup] ERREUR registre: {ex.Message}");
+            Debug.WriteLine($"[Startup] ERREUR: {ex.Message}");
         }
     }
 
-    /// <summary>
-    /// Obtient le chemin correct de l'exécutable de l'application.
-    /// Fonctionne pour les applications .NET publiées (single-file, framework-dependent, self-contained).
-    /// </summary>
     private static string? GetApplicationExecutablePath()
     {
-        // Méthode 1: Environment.ProcessPath (recommandé pour .NET 6+)
-        // Retourne le chemin du processus actuel, même pour les apps single-file
         var processPath = Environment.ProcessPath;
         if (!string.IsNullOrEmpty(processPath) && 
             processPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
@@ -485,23 +451,18 @@ public partial class SettingsWindow : System.Windows.Window
             return processPath;
         }
 
-        // Méthode 2: Chercher l'exe dans le répertoire de l'assembly
         var assemblyLocation = System.Reflection.Assembly.GetEntryAssembly()?.Location;
         if (!string.IsNullOrEmpty(assemblyLocation))
         {
             var directory = Path.GetDirectoryName(assemblyLocation);
             if (directory != null)
             {
-                // Chercher QuickLauncher.exe dans le même répertoire
                 var exePath = Path.Combine(directory, $"{AppName}.exe");
                 if (File.Exists(exePath))
-                {
                     return exePath;
-                }
             }
         }
 
-        // Méthode 3: Fallback via Process.MainModule
         var mainModule = Process.GetCurrentProcess().MainModule?.FileName;
         if (!string.IsNullOrEmpty(mainModule) && 
             mainModule.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) &&
@@ -513,10 +474,6 @@ public partial class SettingsWindow : System.Windows.Window
         return null;
     }
 
-    /// <summary>
-    /// Synchronise l'entrée de registre avec les paramètres actuels.
-    /// Appelé au démarrage de l'application pour s'assurer que le chemin est à jour.
-    /// </summary>
     public static void SyncStartupRegistry()
     {
         try
@@ -533,25 +490,18 @@ public partial class SettingsWindow : System.Windows.Window
                 if (!string.IsNullOrEmpty(expectedPath))
                 {
                     var expectedValue = $"\"{expectedPath}\"";
-                    
-                    // Mettre à jour si différent ou manquant
                     if (currentValue != expectedValue)
-                    {
                         key.SetValue(AppName, expectedValue);
-                        Debug.WriteLine($"[Startup] Registre synchronisé: {expectedPath}");
-                    }
                 }
             }
             else if (currentValue != null)
             {
-                // L'option est désactivée mais l'entrée existe, la supprimer
                 key.DeleteValue(AppName, false);
-                Debug.WriteLine("[Startup] Entrée registre orpheline supprimée");
             }
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[Startup] ERREUR sync registre: {ex.Message}");
+            Debug.WriteLine($"[Startup] ERREUR sync: {ex.Message}");
         }
     }
 }

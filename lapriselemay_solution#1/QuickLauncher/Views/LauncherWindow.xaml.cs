@@ -1,9 +1,10 @@
 using System.Windows;
 using System.Windows.Input;
-using System.Windows.Interop;
 using QuickLauncher.Models;
 using QuickLauncher.Services;
 using QuickLauncher.ViewModels;
+
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace QuickLauncher.Views;
 
@@ -12,7 +13,6 @@ public partial class LauncherWindow : Window
     private readonly LauncherViewModel _viewModel;
     private readonly AppSettings _settings;
     
-    // Événements pour communiquer avec App.xaml.cs
     public event EventHandler? RequestOpenSettings;
     public event EventHandler? RequestQuit;
     public event EventHandler? RequestReindex;
@@ -25,13 +25,17 @@ public partial class LauncherWindow : Window
         _viewModel = new LauncherViewModel(indexingService);
         DataContext = _viewModel;
         
-        // Événements du ViewModel
+        SetupEventHandlers();
+        ApplySettings();
+    }
+    
+    private void SetupEventHandlers()
+    {
         _viewModel.RequestHide += (_, _) => HideWindow();
         _viewModel.RequestOpenSettings += (_, _) => RequestOpenSettings?.Invoke(this, EventArgs.Empty);
         _viewModel.RequestQuit += (_, _) => RequestQuit?.Invoke(this, EventArgs.Empty);
         _viewModel.RequestReindex += (_, _) => RequestReindex?.Invoke(this, EventArgs.Empty);
         
-        // Gérer la visibilité du bouton Clear
         _viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(_viewModel.SearchText))
@@ -43,11 +47,11 @@ public partial class LauncherWindow : Window
         };
         
         ResultsList.MouseDoubleClick += (_, _) => _viewModel.ExecuteCommand.Execute(null);
-        
-        // Appliquer l'opacité de la fenêtre
+    }
+    
+    private void ApplySettings()
+    {
         Opacity = _settings.WindowOpacity;
-        
-        // Visibilité du bouton settings
         SettingsButton.Visibility = _settings.ShowSettingsButton ? Visibility.Visible : Visibility.Collapsed;
     }
     
@@ -55,8 +59,7 @@ public partial class LauncherWindow : Window
     {
         base.OnMouseLeftButtonDown(e);
         
-        if (e.OriginalSource is System.Windows.Controls.TextBox || 
-            e.OriginalSource is System.Windows.Controls.ListBoxItem)
+        if (e.OriginalSource is System.Windows.Controls.TextBox or System.Windows.Controls.ListBoxItem)
             return;
             
         DragMove();
@@ -70,31 +73,33 @@ public partial class LauncherWindow : Window
         SearchBox.SelectAll();
     }
 
-    private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.OemComma && Keyboard.Modifiers == ModifierKeys.Control)
+        // Raccourcis avec Ctrl
+        if (Keyboard.Modifiers == ModifierKeys.Control)
         {
-            HideWindow();
-            RequestOpenSettings?.Invoke(this, EventArgs.Empty);
-            e.Handled = true;
-            return;
+            switch (e.Key)
+            {
+                case Key.OemComma:
+                    HideWindow();
+                    RequestOpenSettings?.Invoke(this, EventArgs.Empty);
+                    e.Handled = true;
+                    return;
+                    
+                case Key.R:
+                    HideWindow();
+                    RequestReindex?.Invoke(this, EventArgs.Empty);
+                    e.Handled = true;
+                    return;
+                    
+                case Key.Q:
+                    RequestQuit?.Invoke(this, EventArgs.Empty);
+                    e.Handled = true;
+                    return;
+            }
         }
         
-        if (e.Key == Key.R && Keyboard.Modifiers == ModifierKeys.Control)
-        {
-            HideWindow();
-            RequestReindex?.Invoke(this, EventArgs.Empty);
-            e.Handled = true;
-            return;
-        }
-        
-        if (e.Key == Key.Q && Keyboard.Modifiers == ModifierKeys.Control)
-        {
-            RequestQuit?.Invoke(this, EventArgs.Empty);
-            e.Handled = true;
-            return;
-        }
-        
+        // Raccourcis sans modificateurs
         switch (e.Key)
         {
             case Key.Escape:
@@ -118,19 +123,13 @@ public partial class LauncherWindow : Window
                 break;
                 
             case Key.Tab:
-                if (Keyboard.Modifiers == ModifierKeys.Shift)
-                    _viewModel.MoveSelection(-1);
-                else
-                    _viewModel.MoveSelection(1);
+                _viewModel.MoveSelection(Keyboard.Modifiers == ModifierKeys.Shift ? -1 : 1);
                 e.Handled = true;
                 break;
         }
     }
     
-    private void Window_Deactivated(object sender, EventArgs e)
-    {
-        HideWindow();
-    }
+    private void Window_Deactivated(object sender, EventArgs e) => HideWindow();
     
     private void HideWindow()
     {
@@ -157,51 +156,36 @@ public partial class LauncherWindow : Window
         SearchBox.Focus();
     }
     
-    protected override void OnSourceInitialized(EventArgs e)
-    {
-        base.OnSourceInitialized(e);
-    }
-    
-    private void Window_Loaded(object sender, RoutedEventArgs e)
-    {
-        CenterOnScreen();
-    }
+    private void Window_Loaded(object sender, RoutedEventArgs e) => CenterOnScreen();
     
     private void CenterOnScreen()
     {
-        // Utiliser les paramètres WPF qui tiennent compte du DPI
-        double screenWidth = SystemParameters.PrimaryScreenWidth;
-        double screenHeight = SystemParameters.PrimaryScreenHeight;
-        double taskbarHeight = SystemParameters.PrimaryScreenHeight - SystemParameters.WorkArea.Height;
-        
-        // Largeur de la fenêtre (Width défini dans XAML)
-        double windowWidth = this.Width;
-        double windowHeight = this.ActualHeight > 0 ? this.ActualHeight : 150;
+        var screenWidth = SystemParameters.PrimaryScreenWidth;
+        var screenHeight = SystemParameters.PrimaryScreenHeight;
+        var taskbarHeight = screenHeight - SystemParameters.WorkArea.Height;
+        var windowWidth = Width;
+        var windowHeight = ActualHeight > 0 ? ActualHeight : 150;
         
         switch (_settings.WindowPosition)
         {
-            case "Remember":
-                if (_settings.LastWindowLeft.HasValue && _settings.LastWindowTop.HasValue)
+            case "Remember" when _settings.LastWindowLeft.HasValue && _settings.LastWindowTop.HasValue:
+                var left = _settings.LastWindowLeft.Value;
+                var top = _settings.LastWindowTop.Value;
+                
+                if (left >= 0 && left + windowWidth <= screenWidth &&
+                    top >= 0 && top + windowHeight <= screenHeight - taskbarHeight)
                 {
-                    double left = _settings.LastWindowLeft.Value;
-                    double top = _settings.LastWindowTop.Value;
-                    
-                    if (left >= 0 && left + windowWidth <= screenWidth &&
-                        top >= 0 && top + windowHeight <= screenHeight - taskbarHeight)
-                    {
-                        Left = left;
-                        Top = top;
-                        return;
-                    }
+                    Left = left;
+                    Top = top;
+                    return;
                 }
-                goto case "Center";
+                goto default;
                 
             case "Top":
                 Left = (screenWidth - windowWidth) / 2;
                 Top = 60;
                 break;
                 
-            case "Center":
             default:
                 Left = (screenWidth - windowWidth) / 2;
                 Top = (screenHeight - taskbarHeight) / 4;

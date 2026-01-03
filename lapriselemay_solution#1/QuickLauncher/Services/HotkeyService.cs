@@ -1,16 +1,15 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Windows.Input;
 using System.Windows.Interop;
 using QuickLauncher.Models;
 
 namespace QuickLauncher.Services;
 
-public class HotkeyService : IDisposable
+public sealed class HotkeyService : IDisposable
 {
     private const int WM_HOTKEY = 0x0312;
     private const int HOTKEY_ID = 9000;
     
-    // Modificateurs
     private const uint MOD_ALT = 0x0001;
     private const uint MOD_CONTROL = 0x0002;
     private const uint MOD_SHIFT = 0x0004;
@@ -26,6 +25,7 @@ public class HotkeyService : IDisposable
     private HwndSource? _source;
     private IntPtr _windowHandle;
     private bool _isRegistered;
+    private bool _disposed;
     private readonly AppSettings _settings;
     
     public event EventHandler? HotkeyPressed;
@@ -37,9 +37,8 @@ public class HotkeyService : IDisposable
 
     public void Register()
     {
-        if (_isRegistered) return;
+        if (_isRegistered || _disposed) return;
         
-        // Créer une fenêtre invisible pour recevoir les messages
         var parameters = new HwndSourceParameters("HotkeyWindow")
         {
             Width = 0,
@@ -53,52 +52,38 @@ public class HotkeyService : IDisposable
         _source.AddHook(WndProc);
         _windowHandle = _source.Handle;
         
-        // Calculer les modificateurs depuis les paramètres
+        var modifiers = GetModifiers();
+        var vk = GetVirtualKeyCode(_settings.Hotkey.Key);
+        
+        _isRegistered = RegisterHotKey(_windowHandle, HOTKEY_ID, modifiers, vk);
+        
+        Debug.WriteLine(_isRegistered 
+            ? $"Hotkey enregistré: {_settings.Hotkey.DisplayText}" 
+            : $"Échec enregistrement hotkey: {_settings.Hotkey.DisplayText}");
+    }
+    
+    private uint GetModifiers()
+    {
         uint modifiers = MOD_NOREPEAT;
         if (_settings.Hotkey.UseAlt) modifiers |= MOD_ALT;
         if (_settings.Hotkey.UseCtrl) modifiers |= MOD_CONTROL;
         if (_settings.Hotkey.UseShift) modifiers |= MOD_SHIFT;
         if (_settings.Hotkey.UseWin) modifiers |= MOD_WIN;
-        
-        // Obtenir le code de touche virtuelle
-        uint vk = GetVirtualKeyCode(_settings.Hotkey.Key);
-        
-        _isRegistered = RegisterHotKey(_windowHandle, HOTKEY_ID, modifiers, vk);
-        
-        if (!_isRegistered)
-        {
-            System.Diagnostics.Debug.WriteLine($"Échec de l'enregistrement du raccourci {_settings.Hotkey.DisplayText}");
-        }
-        else
-        {
-            System.Diagnostics.Debug.WriteLine($"Raccourci enregistré: {_settings.Hotkey.DisplayText}");
-        }
+        return modifiers;
     }
     
-    private uint GetVirtualKeyCode(string keyName)
+    private static uint GetVirtualKeyCode(string keyName) => keyName.ToUpperInvariant() switch
     {
-        return keyName.ToUpperInvariant() switch
-        {
-            "SPACE" => 0x20,
-            "ENTER" or "RETURN" => 0x0D,
-            "TAB" => 0x09,
-            "ESCAPE" or "ESC" => 0x1B,
-            "F1" => 0x70,
-            "F2" => 0x71,
-            "F3" => 0x72,
-            "F4" => 0x73,
-            "F5" => 0x74,
-            "F6" => 0x75,
-            "F7" => 0x76,
-            "F8" => 0x77,
-            "F9" => 0x78,
-            "F10" => 0x79,
-            "F11" => 0x7A,
-            "F12" => 0x7B,
-            _ when keyName.Length == 1 && char.IsLetter(keyName[0]) => (uint)char.ToUpper(keyName[0]),
-            _ => 0x20 // Default to Space
-        };
-    }
+        "SPACE" => 0x20,
+        "ENTER" or "RETURN" => 0x0D,
+        "TAB" => 0x09,
+        "ESCAPE" or "ESC" => 0x1B,
+        "F1" => 0x70, "F2" => 0x71, "F3" => 0x72, "F4" => 0x73,
+        "F5" => 0x74, "F6" => 0x75, "F7" => 0x76, "F8" => 0x77,
+        "F9" => 0x78, "F10" => 0x79, "F11" => 0x7A, "F12" => 0x7B,
+        _ when keyName.Length == 1 && char.IsLetter(keyName[0]) => (uint)char.ToUpper(keyName[0]),
+        _ => 0x20
+    };
     
     public void Unregister()
     {
@@ -107,6 +92,7 @@ public class HotkeyService : IDisposable
         UnregisterHotKey(_windowHandle, HOTKEY_ID);
         _source?.RemoveHook(WndProc);
         _source?.Dispose();
+        _source = null;
         _isRegistered = false;
     }
     
@@ -122,7 +108,8 @@ public class HotkeyService : IDisposable
     
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         Unregister();
-        GC.SuppressFinalize(this);
     }
 }

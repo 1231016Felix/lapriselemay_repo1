@@ -1,0 +1,249 @@
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Data;
+using Microsoft.UI.Xaml.Media;
+using CleanUninstaller.Models;
+using Windows.UI;
+
+namespace CleanUninstaller.Converters;
+
+/// <summary>
+/// Convertit un booléen en Visibility
+/// </summary>
+public partial class BoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var boolValue = value is bool b && b;
+        var invert = parameter is string s && s.Equals("Invert", StringComparison.OrdinalIgnoreCase);
+        
+        if (invert) boolValue = !boolValue;
+        
+        return boolValue ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        return value is Visibility v && v == Visibility.Visible;
+    }
+}
+
+/// <summary>
+/// Convertit un niveau de confiance en couleur
+/// </summary>
+public partial class ConfidenceToColorConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var confidence = value is ConfidenceLevel level ? level : ConfidenceLevel.None;
+        
+        var colorHex = confidence switch
+        {
+            ConfidenceLevel.VeryHigh => "#107C10",  // Vert foncé
+            ConfidenceLevel.High => "#498205",      // Vert
+            ConfidenceLevel.Medium => "#CA5010",    // Orange
+            ConfidenceLevel.Low => "#D13438",       // Rouge
+            _ => "#6E6E6E"                          // Gris
+        };
+
+        return new SolidColorBrush(ParseColor(colorHex));
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+
+    private static Color ParseColor(string hex)
+    {
+        hex = hex.TrimStart('#');
+        return Color.FromArgb(255,
+            byte.Parse(hex[..2], System.Globalization.NumberStyles.HexNumber),
+            byte.Parse(hex.Substring(2, 2), System.Globalization.NumberStyles.HexNumber),
+            byte.Parse(hex.Substring(4, 2), System.Globalization.NumberStyles.HexNumber));
+    }
+}
+
+/// <summary>
+/// Convertit un type d'installeur en icône
+/// </summary>
+public partial class InstallerTypeToIconConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var type = value is InstallerType t ? t : InstallerType.Unknown;
+        
+        return type switch
+        {
+            InstallerType.Msi => "\uE74C",          // Box
+            InstallerType.InnoSetup => "\uE756",    // Download
+            InstallerType.Nsis => "\uE7B8",         // Package
+            InstallerType.InstallShield => "\uE8B7", // Folder
+            InstallerType.Msix => "\uE71D",         // Store
+            InstallerType.Wix => "\uE912",          // Settings
+            InstallerType.ClickOnce => "\uE71B",    // Globe
+            InstallerType.Portable => "\uE8F1",     // Library
+            _ => "\uE74C"                           // Default box
+        };
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Convertit un type de résidu en icône
+/// </summary>
+public partial class ResidualTypeToIconConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var type = value is ResidualType t ? t : ResidualType.File;
+        
+        return type switch
+        {
+            ResidualType.File => "\uE8A5",           // File
+            ResidualType.Folder => "\uE8B7",         // Folder
+            ResidualType.RegistryKey => "\uE74C",    // Registry
+            ResidualType.RegistryValue => "\uE8F1",  // Value
+            ResidualType.Service => "\uE912",        // Service
+            ResidualType.ScheduledTask => "\uE787",  // Clock
+            ResidualType.Firewall => "\uE785",       // Shield
+            ResidualType.StartupEntry => "\uE768",   // Power
+            ResidualType.Certificate => "\uEB95",    // Certificate
+            _ => "\uE8E5"                            // Unknown
+        };
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Convertit une taille en octets en chaîne formatée
+/// </summary>
+public partial class FileSizeConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var bytes = value is long l ? l : (value is int i ? i : 0);
+        
+        if (bytes <= 0) return "—";
+        
+        string[] suffixes = ["o", "Ko", "Mo", "Go", "To"];
+        var counter = 0;
+        var size = (decimal)bytes;
+        
+        while (size >= 1024 && counter < suffixes.Length - 1)
+        {
+            size /= 1024;
+            counter++;
+        }
+        
+        return $"{size:N1} {suffixes[counter]}";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Convertit un statut de programme en couleur
+/// </summary>
+public partial class ProgramStatusToColorConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var status = value is ProgramStatus s ? s : ProgramStatus.Installed;
+        
+        var colorHex = status switch
+        {
+            ProgramStatus.Installed => "#6E6E6E",     // Gris
+            ProgramStatus.Scanning => "#0078D4",      // Bleu
+            ProgramStatus.Uninstalling => "#CA5010",  // Orange
+            ProgramStatus.Uninstalled => "#107C10",   // Vert
+            ProgramStatus.Error => "#D13438",         // Rouge
+            ProgramStatus.PartiallyRemoved => "#FF8C00", // Orange foncé
+            _ => "#6E6E6E"
+        };
+
+        return new SolidColorBrush(ParseColor(colorHex));
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+
+    private static Color ParseColor(string hex)
+    {
+        hex = hex.TrimStart('#');
+        return Color.FromArgb(255,
+            byte.Parse(hex[..2], System.Globalization.NumberStyles.HexNumber),
+            byte.Parse(hex.Substring(2, 2), System.Globalization.NumberStyles.HexNumber),
+            byte.Parse(hex.Substring(4, 2), System.Globalization.NumberStyles.HexNumber));
+    }
+}
+
+/// <summary>
+/// Convertit null en Visibility
+/// </summary>
+public partial class NullToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var isNull = value == null;
+        var invert = parameter is string s && s.Equals("Invert", StringComparison.OrdinalIgnoreCase);
+        
+        if (invert) isNull = !isNull;
+        
+        return isNull ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Convertit une chaîne vide en Visibility
+/// </summary>
+public partial class EmptyStringToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var isEmpty = string.IsNullOrWhiteSpace(value as string);
+        var invert = parameter is string s && s.Equals("Invert", StringComparison.OrdinalIgnoreCase);
+        
+        if (invert) isEmpty = !isEmpty;
+        
+        return isEmpty ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Inverse un booléen
+/// </summary>
+public partial class InverseBoolConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        return value is bool b && !b;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        return value is bool b && !b;
+    }
+}

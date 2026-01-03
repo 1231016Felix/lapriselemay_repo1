@@ -8,14 +8,12 @@
         ResizeMode="CanResizeWithGrip">
     
     <Window.Resources>
-        <!-- Style pour les CheckBox -->
         <Style x:Key="SettingsCheckBox" TargetType="CheckBox">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="Margin" Value="0,8"/>
             <Setter Property="FontSize" Value="13"/>
         </Style>
         
-        <!-- Style pour les Labels de section -->
         <Style x:Key="SectionLabel" TargetType="TextBlock">
             <Setter Property="Foreground" Value="#0078D4"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
@@ -23,7 +21,6 @@
             <Setter Property="Margin" Value="0,15,0,8"/>
         </Style>
         
-        <!-- Style pour les boutons -->
         <Style x:Key="ActionButton" TargetType="Button">
             <Setter Property="Padding" Value="16,8"/>
             <Setter Property="Background" Value="#3E3E3E"/>
@@ -47,7 +44,6 @@
             </Style.Triggers>
         </Style>
         
-        <!-- Style TabItem -->
         <Style TargetType="TabItem">
             <Setter Property="Foreground" Value="#AAA"/>
             <Setter Property="FontSize" Value="12"/>
@@ -102,7 +98,7 @@
         <!-- Onglets -->
         <TabControl Grid.Row="1" Background="#252525" BorderThickness="0">
             
-            <!-- ═══════════════ ONGLET GÉNÉRAL ═══════════════ -->
+            <!-- ONGLET GÉNÉRAL -->
             <TabItem Header="🏠 Général">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
                     <StackPanel>
@@ -142,7 +138,7 @@
                 </ScrollViewer>
             </TabItem>
             
-            <!-- ═══════════════ ONGLET APPARENCE ═══════════════ -->
+            <!-- ONGLET APPARENCE -->
             <TabItem Header="🎨 Apparence">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
                     <StackPanel>
@@ -181,7 +177,7 @@
                 </ScrollViewer>
             </TabItem>
             
-            <!-- ═══════════════ ONGLET RACCOURCI ═══════════════ -->
+            <!-- ONGLET RACCOURCIS -->
             <TabItem Header="⌨️ Raccourcis">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
                     <StackPanel>
@@ -216,7 +212,7 @@
                             </StackPanel>
                         </Border>
                         
-                        <TextBlock Text="⚠️ Note: Le changement de raccourci prendra effet au prochain redémarrage de l'application." Foreground="#FFB900" FontStyle="Italic" TextWrapping="Wrap" Margin="0,15,0,0"/>
+                        <TextBlock Text="⚠️ Le changement de raccourci prendra effet au prochain redémarrage." Foreground="#FFB900" FontStyle="Italic" TextWrapping="Wrap" Margin="0,15,0,0"/>
                         
                         <TextBlock Text="Raccourcis intégrés" Style="{StaticResource SectionLabel}"/>
                         <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,10">
@@ -259,7 +255,7 @@
                 </ScrollViewer>
             </TabItem>
             
-            <!-- ═══════════════ ONGLET INDEXATION ═══════════════ -->
+            <!-- ONGLET INDEXATION -->
             <TabItem Header="📁 Indexation">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
                     <StackPanel>
@@ -284,6 +280,50 @@
                         
                         <CheckBox x:Name="IndexHiddenFoldersCheck" Content="Indexer les dossiers cachés" Style="{StaticResource SettingsCheckBox}"/>
                         
+                        <!-- Réindexation automatique -->
+                        <TextBlock Text="Réindexation automatique" Style="{StaticResource SectionLabel}"/>
+                        <CheckBox x:Name="AutoReindexEnabledCheck" Content="Activer la réindexation automatique" Style="{StaticResource SettingsCheckBox}" Checked="AutoReindexEnabled_Changed" Unchecked="AutoReindexEnabled_Changed"/>
+                        
+                        <StackPanel x:Name="AutoReindexOptionsPanel" Margin="20,5,0,0">
+                            <RadioButton x:Name="ReindexIntervalRadio" Content="À intervalle régulier" Foreground="White" Margin="0,5" GroupName="ReindexMode" Checked="ReindexMode_Changed"/>
+                            <StackPanel Orientation="Horizontal" Margin="20,5,0,10">
+                                <TextBlock Text="Intervalle: " Foreground="#888" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="ReindexIntervalCombo" Width="150">
+                                    <ComboBoxItem Content="15 minutes" Tag="15"/>
+                                    <ComboBoxItem Content="30 minutes" Tag="30"/>
+                                    <ComboBoxItem Content="1 heure" Tag="60"/>
+                                    <ComboBoxItem Content="2 heures" Tag="120"/>
+                                    <ComboBoxItem Content="4 heures" Tag="240"/>
+                                    <ComboBoxItem Content="8 heures" Tag="480"/>
+                                </ComboBox>
+                            </StackPanel>
+                            
+                            <RadioButton x:Name="ReindexTimeRadio" Content="À une heure précise" Foreground="White" Margin="0,5" GroupName="ReindexMode" Checked="ReindexMode_Changed"/>
+                            <StackPanel Orientation="Horizontal" Margin="20,5,0,0">
+                                <TextBlock Text="Heure: " Foreground="#888" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="ReindexHourCombo" Width="70">
+                                    <ComboBoxItem Content="00h" Tag="00"/>
+                                    <ComboBoxItem Content="01h" Tag="01"/>
+                                    <ComboBoxItem Content="02h" Tag="02"/>
+                                    <ComboBoxItem Content="03h" Tag="03"/>
+                                    <ComboBoxItem Content="04h" Tag="04"/>
+                                    <ComboBoxItem Content="05h" Tag="05"/>
+                                    <ComboBoxItem Content="06h" Tag="06"/>
+                                    <ComboBoxItem Content="12h" Tag="12"/>
+                                    <ComboBoxItem Content="18h" Tag="18"/>
+                                    <ComboBoxItem Content="22h" Tag="22"/>
+                                    <ComboBoxItem Content="23h" Tag="23"/>
+                                </ComboBox>
+                                <TextBlock Text=" : " Foreground="#888" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="ReindexMinuteCombo" Width="70">
+                                    <ComboBoxItem Content="00" Tag="00"/>
+                                    <ComboBoxItem Content="15" Tag="15"/>
+                                    <ComboBoxItem Content="30" Tag="30"/>
+                                    <ComboBoxItem Content="45" Tag="45"/>
+                                </ComboBox>
+                            </StackPanel>
+                        </StackPanel>
+                        
                         <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,20,0,0">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="🔄" FontSize="18" VerticalAlignment="Center" Margin="0,0,10,0"/>
@@ -298,7 +338,7 @@
                 </ScrollViewer>
             </TabItem>
             
-            <!-- ═══════════════ ONGLET RECHERCHE WEB ═══════════════ -->
+            <!-- ONGLET RECHERCHE WEB -->
             <TabItem Header="🌐 Recherche Web">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
                     <StackPanel>
@@ -327,51 +367,27 @@
                         <TextBlock Text="Commandes spéciales" Style="{StaticResource SectionLabel}"/>
                         <Border Background="#2D2D2D" CornerRadius="8" Padding="15">
                             <StackPanel>
-                                <Grid Margin="0,3">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="100"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
+                                <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <TextBlock Text=":settings" Foreground="#0078D4" FontFamily="Consolas"/>
                                     <TextBlock Grid.Column="1" Text="Ouvrir les paramètres" Foreground="#888"/>
                                 </Grid>
-                                <Grid Margin="0,3">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="100"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
+                                <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <TextBlock Text=":reload" Foreground="#0078D4" FontFamily="Consolas"/>
                                     <TextBlock Grid.Column="1" Text="Réindexer les fichiers" Foreground="#888"/>
                                 </Grid>
-                                <Grid Margin="0,3">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="100"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
+                                <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <TextBlock Text=":history" Foreground="#0078D4" FontFamily="Consolas"/>
                                     <TextBlock Grid.Column="1" Text="Voir l'historique de recherche" Foreground="#888"/>
                                 </Grid>
-                                <Grid Margin="0,3">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="100"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
+                                <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <TextBlock Text=":clear" Foreground="#0078D4" FontFamily="Consolas"/>
                                     <TextBlock Grid.Column="1" Text="Effacer l'historique" Foreground="#888"/>
                                 </Grid>
-                                <Grid Margin="0,3">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="100"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
+                                <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <TextBlock Text=":help ou ?" Foreground="#0078D4" FontFamily="Consolas"/>
                                     <TextBlock Grid.Column="1" Text="Afficher l'aide" Foreground="#888"/>
                                 </Grid>
-                                <Grid Margin="0,3">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="100"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
+                                <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <TextBlock Text=":quit" Foreground="#0078D4" FontFamily="Consolas"/>
                                     <TextBlock Grid.Column="1" Text="Quitter QuickLauncher" Foreground="#888"/>
                                 </Grid>
@@ -381,7 +397,7 @@
                 </ScrollViewer>
             </TabItem>
             
-            <!-- ═══════════════ ONGLET À PROPOS ═══════════════ -->
+            <!-- ONGLET À PROPOS -->
             <TabItem Header="ℹ️ À propos">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
                     <StackPanel>

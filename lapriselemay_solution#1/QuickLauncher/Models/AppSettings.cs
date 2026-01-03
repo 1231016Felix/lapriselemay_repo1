@@ -3,33 +3,39 @@ using System.Text.Json;
 
 namespace QuickLauncher.Models;
 
+public enum AutoReindexMode
+{
+    Interval,
+    ScheduledTime
+}
+
 public class AppSettings
 {
     // === Dossiers et fichiers ===
-    public List<string> IndexedFolders { get; set; } = new()
-    {
+    public List<string> IndexedFolders { get; set; } =
+    [
         Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
         Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu),
         Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
         Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
-    };
+    ];
     
-    public List<string> FileExtensions { get; set; } = new()
-    {
+    public List<string> FileExtensions { get; set; } =
+    [
         ".exe", ".lnk", ".bat", ".cmd", ".ps1", ".msi",
         ".txt", ".pdf", ".docx", ".xlsx", ".pptx",
         ".png", ".jpg", ".jpeg", ".gif", ".mp3", ".mp4"
-    };
+    ];
     
     // === Scripts et recherche ===
-    public List<CustomScript> Scripts { get; set; } = new();
-    public List<WebSearchEngine> SearchEngines { get; set; } = new()
-    {
+    public List<CustomScript> Scripts { get; set; } = [];
+    public List<WebSearchEngine> SearchEngines { get; set; } =
+    [
         new() { Prefix = "g", Name = "Google", UrlTemplate = "https://www.google.com/search?q={query}" },
         new() { Prefix = "yt", Name = "YouTube", UrlTemplate = "https://www.youtube.com/results?search_query={query}" },
         new() { Prefix = "gh", Name = "GitHub", UrlTemplate = "https://github.com/search?q={query}" },
         new() { Prefix = "so", Name = "Stack Overflow", UrlTemplate = "https://stackoverflow.com/search?q={query}" }
-    };
+    ];
     
     // === Paramètres généraux ===
     public int MaxResults { get; set; } = 8;
@@ -45,11 +51,11 @@ public class AppSettings
     public double WindowOpacity { get; set; } = 1.0;
     public string AccentColor { get; set; } = "#0078D4";
     public bool EnableAnimations { get; set; } = true;
-    public string Theme { get; set; } = "Dark"; // Dark, Light, System
+    public string Theme { get; set; } = "Dark";
     public bool ShowSettingsButton { get; set; } = true;
     
     // === Position fenêtre ===
-    public string WindowPosition { get; set; } = "Center"; // Center, Remember, Top
+    public string WindowPosition { get; set; } = "Center";
     public double? LastWindowLeft { get; set; }
     public double? LastWindowTop { get; set; }
     
@@ -60,8 +66,14 @@ public class AppSettings
     public int SearchDepth { get; set; } = 5;
     public bool IndexHiddenFolders { get; set; } = false;
     
+    // === Réindexation automatique ===
+    public bool AutoReindexEnabled { get; set; } = false;
+    public AutoReindexMode AutoReindexMode { get; set; } = AutoReindexMode.Interval;
+    public int AutoReindexIntervalMinutes { get; set; } = 60;
+    public string AutoReindexScheduledTime { get; set; } = "03:00";
+    
     // === Historique de recherche ===
-    public List<string> SearchHistory { get; set; } = new();
+    public List<string> SearchHistory { get; set; } = [];
     
     private static readonly string SettingsPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -93,21 +105,14 @@ public class AppSettings
     {
         if (!EnableSearchHistory || string.IsNullOrWhiteSpace(query)) return;
         
-        // Retirer si déjà présent (pour le remettre en haut)
         SearchHistory.Remove(query);
-        
-        // Ajouter en haut
         SearchHistory.Insert(0, query);
         
-        // Limiter la taille
         while (SearchHistory.Count > MaxSearchHistory)
             SearchHistory.RemoveAt(SearchHistory.Count - 1);
     }
     
-    public void ClearSearchHistory()
-    {
-        SearchHistory.Clear();
-    }
+    public void ClearSearchHistory() => SearchHistory.Clear();
     
     public static void Reset()
     {
@@ -126,7 +131,7 @@ public class HotkeySettings
     public bool UseWin { get; set; } = false;
     public string Key { get; set; } = "Space";
     
-    public string DisplayText => string.Join("+", GetModifiers().Concat(new[] { Key }));
+    public string DisplayText => string.Join("+", GetModifiers().Concat([Key]));
     
     private IEnumerable<string> GetModifiers()
     {

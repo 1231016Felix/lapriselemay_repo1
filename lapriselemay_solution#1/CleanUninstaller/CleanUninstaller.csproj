@@ -1,0 +1,93 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>CleanUninstaller</RootNamespace>
+    <AssemblyName>CleanUninstaller</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <PublishProfile>win-$(Platform).pubxml</PublishProfile>
+    <Version>1.0.0</Version>
+    <Authors>Felix-Antoine</Authors>
+    <Company>Laprise-Lemay</Company>
+    <Product>Clean Uninstaller</Product>
+    <Description>Désinstalleur intelligent avec détection avancée des fichiers résiduels - Interface WinUI 3 moderne</Description>
+    <Copyright>© 2025 Felix-Antoine</Copyright>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <SatelliteResourceLanguages>fr</SatelliteResourceLanguages>
+    <!-- Supprimer les avertissements AOT non pertinents (PublishTrimmed=false) -->
+    <NoWarn>$(NoWarn);MVVMTK0045;CsWinRT1028</NoWarn>
+  </PropertyGroup>
+
+  <!-- Configuration Debug -->
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>portable</DebugType>
+    <Optimize>false</Optimize>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Configuration Release -->
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+    <DefineConstants>TRACE</DefineConstants>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Windows App SDK / WinUI 3 -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.251106002" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7175" />
+    
+    <!-- Force WinRT.Runtime 2.2.0 pour résoudre le conflit -->
+    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
+    
+    <!-- MVVM Toolkit -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
+    <PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.2.251219" />
+    
+    <!-- JSON pour les settings -->
+    <PackageReference Include="System.Text.Json" Version="9.0.5" />
+    
+    <!-- Pour l'extraction des icônes -->
+    <PackageReference Include="System.Drawing.Common" Version="9.0.5" />
+    
+    <!-- Pour WMI (System.Management) -->
+    <PackageReference Include="System.Management" Version="9.0.5" />
+  </ItemGroup>
+
+  <!-- Icône de l'application -->
+  <ItemGroup>
+    <Content Include="Assets\app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**\*" Exclude="Assets\*.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <!-- Embedded resources for default icons -->
+  <ItemGroup>
+    <None Remove="Assets\*.png" />
+    <Content Include="Assets\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

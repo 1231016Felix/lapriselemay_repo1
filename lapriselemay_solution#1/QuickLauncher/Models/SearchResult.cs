@@ -19,21 +19,19 @@ public class SearchResult
     public string Path { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public ResultType Type { get; set; }
-    public string? IconPath { get; set; }
     public int Score { get; set; }
     public DateTime LastUsed { get; set; }
     public int UseCount { get; set; }
     
-    // Icône personnalisable (pour les commandes système)
     private string? _customIcon;
     
     public string DisplayIcon
     {
-        get => _customIcon ?? GetDefaultIcon();
+        get => _customIcon ?? DefaultIcon;
         set => _customIcon = value;
     }
     
-    private string GetDefaultIcon() => Type switch
+    private string DefaultIcon => Type switch
     {
         ResultType.Application => "🚀",
         ResultType.File => "📄",

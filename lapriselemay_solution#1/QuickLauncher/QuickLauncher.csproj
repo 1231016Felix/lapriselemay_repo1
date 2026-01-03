@@ -16,14 +16,20 @@
     <StartupObject>QuickLauncher.App</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <!-- Symboles de débogage pour toutes les configurations -->
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>portable</DebugType>
   </PropertyGroup>
 
-  <!-- Désactiver les optimisations en Release pour un meilleur débogage -->
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+  <!-- Configuration Debug -->
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>portable</DebugType>
     <Optimize>false</Optimize>
+  </PropertyGroup>
+
+  <!-- Configuration Release optimisée -->
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
   </PropertyGroup>
 
   <ItemGroup>

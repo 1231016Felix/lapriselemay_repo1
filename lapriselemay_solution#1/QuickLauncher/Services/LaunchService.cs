@@ -14,61 +14,52 @@ public static class LaunchService
             {
                 case ResultType.Application:
                 case ResultType.File:
-                    Process.Start(new ProcessStartInfo { FileName = item.Path, UseShellExecute = true });
+                    StartProcess(item.Path);
                     break;
+                    
                 case ResultType.Folder:
-                    Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = item.Path, UseShellExecute = true });
+                    StartProcess("explorer.exe", item.Path);
                     break;
+                    
                 case ResultType.Script:
                     LaunchScript(item);
                     break;
+                    
                 case ResultType.WebSearch:
-                    Process.Start(new ProcessStartInfo { FileName = item.Path, UseShellExecute = true });
+                    StartProcess(item.Path);
                     break;
+                    
                 case ResultType.Calculator:
                     System.Windows.Clipboard.SetText(item.Path);
                     break;
+                    
                 case ResultType.Command:
-                    Process.Start(new ProcessStartInfo { FileName = "cmd.exe", Arguments = $"/c {item.Path}", UseShellExecute = true });
+                    StartProcess("cmd.exe", $"/c {item.Path}");
                     break;
             }
         }
-        catch (Exception ex) { Debug.WriteLine($"Erreur lancement: {ex.Message}"); }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Erreur lancement: {ex.Message}");
+        }
     }
 
     private static void LaunchScript(SearchResult item)
     {
         var ext = Path.GetExtension(item.Path).ToLowerInvariant();
-        var psi = new ProcessStartInfo
-        {
-            UseShellExecute = true,
-            WorkingDirectory = Path.GetDirectoryName(item.Path) ?? ""
-        };
+        var workingDir = Path.GetDirectoryName(item.Path) ?? "";
         
         if (ext == ".ps1")
-        {
-            psi.FileName = "powershell.exe";
-            psi.Arguments = $"-ExecutionPolicy Bypass -File \"{item.Path}\"";
-        }
+            StartProcess("powershell.exe", $"-ExecutionPolicy Bypass -File \"{item.Path}\"", workingDir);
         else
-        {
-            psi.FileName = item.Path;
-        }
-        Process.Start(psi);
+            StartProcess(item.Path, workingDirectory: workingDir);
     }
     
     public static void OpenContainingFolder(SearchResult item)
     {
         var folder = Path.GetDirectoryName(item.Path);
         if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder))
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "explorer.exe",
-                Arguments = $"/select,\"{item.Path}\"",
-                UseShellExecute = true
-            });
-        }
+            StartProcess("explorer.exe", $"/select,\"{item.Path}\"");
     }
     
     public static void RunAsAdmin(SearchResult item)
@@ -82,6 +73,26 @@ public static class LaunchService
                 Verb = "runas"
             });
         }
-        catch (System.ComponentModel.Win32Exception) { }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // L'utilisateur a annulé l'élévation UAC
+        }
+    }
+    
+    private static void StartProcess(string fileName, string? arguments = null, string? workingDirectory = null)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = fileName,
+            UseShellExecute = true
+        };
+        
+        if (!string.IsNullOrEmpty(arguments))
+            psi.Arguments = arguments;
+        
+        if (!string.IsNullOrEmpty(workingDirectory))
+            psi.WorkingDirectory = workingDirectory;
+        
+        Process.Start(psi);
     }
 }
