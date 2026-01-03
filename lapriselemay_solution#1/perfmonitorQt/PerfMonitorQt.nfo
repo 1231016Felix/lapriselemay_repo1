@@ -1,0 +1,389 @@
+
+                    ╔══════════════════════════════════════════════════════════════════╗
+                    ║                                                                  ║
+                    ║   ██████╗ ███████╗██████╗ ███████╗███╗   ███╗ ██████╗ ███╗   ██╗ ║
+                    ║   ██╔══██╗██╔════╝██╔══██╗██╔════╝████╗ ████║██╔═══██╗████╗  ██║ ║
+                    ║   ██████╔╝█████╗  ██████╔╝█████╗  ██╔████╔██║██║   ██║██╔██╗ ██║ ║
+                    ║   ██╔═══╝ ██╔══╝  ██╔══██╗██╔══╝  ██║╚██╔╝██║██║   ██║██║╚██╗██║ ║
+                    ║   ██║     ███████╗██║  ██║██║     ██║ ╚═╝ ██║╚██████╔╝██║ ╚████║ ║
+                    ║   ╚═╝     ╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝ ║
+                    ║                                                                  ║
+                    ║                        ██████╗ ████████╗                         ║
+                    ║                       ██╔═══██╗╚══██╔══╝                         ║
+                    ║                       ██║   ██║   ██║                            ║
+                    ║                       ██║▄▄ ██║   ██║                            ║
+                    ║                       ╚██████╔╝   ██║                            ║
+                    ║                        ╚══▀▀═╝    ╚═╝                            ║
+                    ║                                                                  ║
+                    ╚══════════════════════════════════════════════════════════════════╝
+
+                              Windows 11 Performance Monitor v1.0.0
+                          Moniteur de performance Windows 11 v1.0.0
+
+═══════════════════════════════════════════════════════════════════════════════
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                      GENERAL INFORMATION / INFO                         │
+  │                           INFORMATIONS GÉNÉRALES                        │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+    Application    : PerfMonitorQt
+    Version        : 1.0.0
+    Release Date   : 2024
+    Date de sortie
+
+    Developer      : Félix-Antoine
+    Développeur
+
+    License        : MIT License
+    Licence
+
+    Platform       : Windows 10/11 (64-bit)
+    Plateforme
+
+    Language       : C++20
+    Langage
+
+    Framework      : Qt 6.5+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                      DESCRIPTION (EN)                                   │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+    PerfMonitorQt is a modern, feature-rich system performance monitoring
+    application built with C++20 and Qt 6. Designed with a sleek Windows 11
+    dark theme interface, it provides comprehensive real-time monitoring of
+    your system's vital components.
+
+    Key capabilities include CPU usage tracking with per-core monitoring,
+    detailed memory analysis, disk activity monitoring with I/O graphs,
+    network adapter statistics, battery health information (optimized for
+    Surface devices), and advanced process management.
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                      DESCRIPTION (FR)                                   │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+    PerfMonitorQt est une application moderne et complète de surveillance
+    des performances système, développée en C++20 avec Qt 6. Conçue avec
+    une interface thème sombre style Windows 11, elle offre une surveillance
+    en temps réel complète des composants vitaux de votre système.
+
+    Ses fonctionnalités incluent le suivi de l'utilisation CPU avec
+    surveillance par cœur, l'analyse détaillée de la mémoire, la surveillance
+    de l'activité disque avec graphiques E/S, les statistiques des cartes
+    réseau, les informations sur la santé de la batterie (optimisé pour
+    les appareils Surface), et la gestion avancée des processus.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                        FEATURES / FONCTIONNALITÉS                       │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+    ┌───────────────────────────────────────────────────────────────────┐
+    │  SYSTEM MONITORING / SURVEILLANCE SYSTÈME                         │
+    └───────────────────────────────────────────────────────────────────┘
+
+    ► CPU Monitor / Moniteur CPU
+      • Real-time usage / Utilisation en temps réel
+      • Per-core monitoring / Surveillance par cœur
+      • Processor info / Info processeur
+      • System uptime / Temps de fonctionnement
+
+    ► Memory Monitor / Moniteur Mémoire
+      • RAM usage / Utilisation RAM
+      • Committed memory / Mémoire engagée
+      • Cached memory / Mémoire cache
+      • Paged pool / Pool paginé
+      • Detailed memory analysis / Analyse mémoire détaillée
+
+    ► Disk Monitor / Moniteur Disque
+      • Drive information / Information lecteurs
+      • Read/Write activity / Activité lecture/écriture
+      • Sparkline graphs / Graphiques sparkline
+      • Storage health / Santé stockage (S.M.A.R.T.)
+      • Disk scanner / Analyseur de disque
+
+    ► Network Monitor / Moniteur Réseau
+      • Adapter list / Liste adaptateurs
+      • Send/Receive rates / Débits envoi/réception
+      • Connection status / État connexion
+      • Network speed test / Test de vitesse réseau
+
+    ► GPU Monitor / Moniteur GPU
+      • GPU usage / Utilisation GPU
+      • Video memory / Mémoire vidéo
+
+    ► Temperature Monitor / Moniteur Température
+      • Hardware temperatures / Températures matérielles
+
+    ┌───────────────────────────────────────────────────────────────────┐
+    │  BATTERY MONITORING / SURVEILLANCE BATTERIE                       │
+    │  (Surface-optimized / Optimisé Surface)                           │
+    └───────────────────────────────────────────────────────────────────┘
+
+    ► Battery percentage / Pourcentage batterie
+    ► Charging status / État de charge
+    ► Time remaining / Temps restant
+    ► Battery health % / Santé batterie %
+    ► Cycle count / Nombre de cycles
+    ► Design vs current capacity / Capacité design vs actuelle
+    ► Voltage & temperature / Tension et température
+
+    ┌───────────────────────────────────────────────────────────────────┐
+    │  PROCESS & SERVICE MANAGEMENT / GESTION PROCESSUS ET SERVICES     │
+    └───────────────────────────────────────────────────────────────────┘
+
+    ► Full process list / Liste complète des processus
+    ► Search & filter / Recherche et filtre
+    ► CPU/Memory per process / CPU/Mémoire par processus
+    ► Thread & handle counts / Nombre threads et handles
+    ► End task functionality / Fonction terminer tâche
+    ► Process impact analysis / Analyse d'impact processus
+    ► Startup programs / Programmes de démarrage
+    ► Windows services / Services Windows
+
+    ┌───────────────────────────────────────────────────────────────────┐
+    │  UTILITIES / UTILITAIRES                                          │
+    └───────────────────────────────────────────────────────────────────┘
+
+    ► System cleaner / Nettoyeur système
+    ► Temp files cleaner / Nettoyeur fichiers temporaires
+    ► Energy mode control / Contrôle mode énergie
+    ► Metrics history / Historique métriques
+    ► Interactive charts / Graphiques interactifs
+    ► Time range selector / Sélecteur plage temps
+
+    ┌───────────────────────────────────────────────────────────────────┐
+    │  USER INTERFACE / INTERFACE UTILISATEUR                           │
+    └───────────────────────────────────────────────────────────────────┘
+
+    ► Modern dark theme (Windows 11 style)
+      Thème sombre moderne (style Windows 11)
+    ► Real-time sparkline graphs
+      Graphiques sparkline en temps réel
+    ► System tray integration with CPU indicator
+      Intégration barre système avec indicateur CPU
+    ► Minimize to tray option
+      Option réduire en zone de notification
+    ► Always on top mode
+      Mode toujours visible
+    ► Floating widget
+      Widget flottant
+    ► Tab-based navigation
+      Navigation par onglets
+    ► Settings dialog
+      Dialogue paramètres
+
+═══════════════════════════════════════════════════════════════════════════════
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                     REQUIREMENTS / CONFIGURATION REQUISE                │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+    MINIMUM / MINIMUM:
+    ──────────────────
+    ○ OS          : Windows 10/11 (64-bit)
+    ○ RAM         : 4 GB
+    ○ Storage     : 100 MB
+      Stockage
+
+    BUILD REQUIREMENTS / PRÉREQUIS DE COMPILATION:
+    ──────────────────────────────────────────────
+    ○ Qt 6.5 or later / Qt 6.5 ou supérieur
+    ○ CMake 3.20+
+    ○ Visual Studio 2022
+    ○ C++20 compatible compiler / Compilateur compatible C++20
+
+═══════════════════════════════════════════════════════════════════════════════
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                    KEYBOARD SHORTCUTS / RACCOURCIS CLAVIER              │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+    Ctrl+S     Export report / Exporter rapport
+    Ctrl+Q     Exit application / Quitter l'application
+    F5         Refresh process list / Actualiser liste processus
+
+═══════════════════════════════════════════════════════════════════════════════
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                   COMMAND LINE / LIGNE DE COMMANDE                      │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+    PerfMonitorQt.exe [options]
+
+    Options:
+    ────────
+    --minimized    Start minimized to system tray
+                   Démarrer réduit dans la zone de notification
+    --help         Show help message
+                   Afficher message d'aide
+
+═══════════════════════════════════════════════════════════════════════════════
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                  TECHNICAL DETAILS / DÉTAILS TECHNIQUES                 │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+    WINDOWS APIs USED / APIs WINDOWS UTILISÉES:
+    ───────────────────────────────────────────
+    • GetSystemTimes()          - CPU usage calculation / Calcul utilisation CPU
+    • GlobalMemoryStatusEx()    - Memory information / Info mémoire
+    • GetLogicalDrives()        - Disk information / Info disque
+    • GetDiskFreeSpaceEx()      - Disk space / Espace disque
+    • IOCTL_DISK_PERFORMANCE    - Disk activity / Activité disque
+    • GetIfTable2()             - Network information / Info réseau
+    • GetAdaptersAddresses()    - Network adapters / Adaptateurs réseau
+    • IOCTL_BATTERY_*           - Battery information / Info batterie
+    • CreateToolhelp32Snapshot()- Process enumeration / Énumération processus
+    • PDH Library               - Per-core CPU usage / Utilisation CPU par cœur
+
+    C++20 FEATURES USED / FONCTIONNALITÉS C++20 UTILISÉES:
+    ──────────────────────────────────────────────────────
+    • Concepts
+    • std::jthread (background updates / mises à jour arrière-plan)
+    • Ranges
+    • Designated initializers / Initialiseurs désignés
+    • [[nodiscard]] attribute / Attribut [[nodiscard]]
+
+    QT MODULES / MODULES QT:
+    ────────────────────────
+    • Qt Core       - Core functionality / Fonctionnalité de base
+    • Qt GUI        - Graphical interface / Interface graphique
+    • Qt Widgets    - UI widgets / Widgets UI
+    • Qt Charts     - Charts & graphs / Graphiques
+    • Qt Network    - Network operations / Opérations réseau
+    • Qt Sql        - Database support / Support base de données
+
+═══════════════════════════════════════════════════════════════════════════════
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                   PROJECT STRUCTURE / STRUCTURE DU PROJET               │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+    perfmonitorQt/
+    │
+    ├── CMakeLists.txt          Build configuration / Config compilation
+    ├── README.md               Documentation
+    ├── LICENSE.txt             MIT License / Licence MIT
+    │
+    ├── src/
+    │   ├── main.cpp            Entry point / Point d'entrée
+    │   ├── mainwindow.h/cpp    Main window / Fenêtre principale
+    │   │
+    │   ├── monitors/           Hardware monitors / Moniteurs matériel
+    │   │   ├── cpumonitor.*
+    │   │   ├── memorymonitor.*
+    │   │   ├── gpumonitor.*
+    │   │   ├── diskmonitor.*
+    │   │   ├── networkmonitor.*
+    │   │   ├── batterymonitor.*
+    │   │   ├── temperaturemonitor.*
+    │   │   └── ...
+    │   │
+    │   ├── widgets/            UI components / Composants UI
+    │   │   ├── sparklinegraph.*
+    │   │   ├── systemtray.*
+    │   │   ├── floatingwidget.*
+    │   │   └── ...
+    │   │
+    │   ├── database/           Data persistence / Persistance données
+    │   │   ├── metricshistory.*
+    │   │   └── servicehistory.*
+    │   │
+    │   ├── utils/              Utilities / Utilitaires
+    │   │   ├── systeminfo.*
+    │   │   ├── energymode.*
+    │   │   └── tempcleaner.*
+    │   │
+    │   └── cleaners/           System cleaners / Nettoyeurs système
+    │       └── systemcleaner.*
+    │
+    ├── resources/              Assets / Ressources
+    │   ├── resources.qrc
+    │   └── icons/
+    │
+    └── installer/              Inno Setup scripts / Scripts Inno Setup
+        └── setup.iss
+
+═══════════════════════════════════════════════════════════════════════════════
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                       INSTALLATION                                      │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+    INSTALLER / INSTALLATEUR:
+    ─────────────────────────
+    1. Build the project / Compiler le projet
+    2. Install Inno Setup / Installer Inno Setup
+    3. Run installer/setup.iss / Exécuter installer/setup.iss
+    4. Find installer in installer/output/ / Trouver installeur dans installer/output/
+
+    PORTABLE VERSION / VERSION PORTABLE:
+    ────────────────────────────────────
+    Copy build/Release folder after running windeployqt
+    Copier le dossier build/Release après exécution de windeployqt
+
+═══════════════════════════════════════════════════════════════════════════════
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                         CREDITS / CRÉDITS                               │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+    Developer / Développeur:
+    ────────────────────────
+    Félix-Antoine
+
+    Acknowledgments / Remerciements:
+    ─────────────────────────────────
+    • Qt Framework - https://www.qt.io/
+    • Microsoft Windows SDK
+    • Inno Setup - https://jrsoftware.org/isinfo.php
+
+═══════════════════════════════════════════════════════════════════════════════
+
+  ┌─────────────────────────────────────────────────────────────────────────┐
+  │                           LICENSE / LICENCE                             │
+  └─────────────────────────────────────────────────────────────────────────┘
+
+    MIT License
+
+    Copyright (c) 2024 Félix-Antoine
+
+    Permission is hereby granted, free of charge, to any person obtaining
+    a copy of this software and associated documentation files (the
+    "Software"), to deal in the Software without restriction, including
+    without limitation the rights to use, copy, modify, merge, publish,
+    distribute, sublicense, and/or sell copies of the Software.
+
+    ─────────────────────────────────────────────────────────────────────
+
+    Licence MIT
+
+    Copyright (c) 2024 Félix-Antoine
+
+    L'autorisation est accordée, gratuitement, à toute personne obtenant
+    une copie de ce logiciel et des fichiers de documentation associés
+    (le "Logiciel"), de traiter le Logiciel sans restriction, y compris
+    sans limitation les droits d'utiliser, copier, modifier, fusionner,
+    publier, distribuer, sous-licencier et/ou vendre des copies du
+    Logiciel.
+
+═══════════════════════════════════════════════════════════════════════════════
+
+                        ╔═══════════════════════════════╗
+                        ║                               ║
+                        ║   Thank you for using         ║
+                        ║      PerfMonitorQt!           ║
+                        ║                               ║
+                        ║   Merci d'utiliser            ║
+                        ║      PerfMonitorQt!           ║
+                        ║                               ║
+                        ╚═══════════════════════════════╝
+
+═══════════════════════════════════════════════════════════════════════════════
+                                                          NFO generated 2024
