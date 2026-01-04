@@ -74,6 +74,10 @@ public partial class ResidualItem : ObservableObject
         ResidualType.Firewall => "Règle de pare-feu",
         ResidualType.StartupEntry => "Entrée de démarrage",
         ResidualType.Certificate => "Certificat",
+        ResidualType.EnvironmentPath => "Variable PATH",
+        ResidualType.EnvironmentVariable => "Variable d'environnement",
+        ResidualType.ComComponent => "Composant COM",
+        ResidualType.FileAssociation => "Association de fichiers",
         _ => "Inconnu"
     };
 
@@ -101,6 +105,10 @@ public partial class ResidualItem : ObservableObject
         ResidualType.Firewall => "\uE785",
         ResidualType.StartupEntry => "\uE768",
         ResidualType.Certificate => "\uEB95",
+        ResidualType.EnvironmentPath => "\uE943",
+        ResidualType.EnvironmentVariable => "\uE8F9",
+        ResidualType.ComComponent => "\uE943",
+        ResidualType.FileAssociation => "\uE8E5",
         _ => "\uE8E5"
     };
 
@@ -147,7 +155,11 @@ public enum ResidualType
     ScheduledTask,
     Firewall,
     StartupEntry,
-    Certificate
+    Certificate,
+    EnvironmentPath,
+    EnvironmentVariable,
+    ComComponent,
+    FileAssociation
 }
 
 /// <summary>
