@@ -185,24 +185,24 @@ public static class StoreAppService
     /// </summary>
     public static List<SearchResult> GetAllApps()
     {
-        var results = new List<SearchResult>();
+        var allApps = new List<SearchResult>();
 
         try
         {
             // Obtenir le dossier AppsFolder via Shell
             if (SHParseDisplayName("shell:AppsFolder", IntPtr.Zero, out var pidlAppsFolder, 0, out _) != 0)
-                return results;
+                return allApps;
 
             try
             {
                 if (SHGetDesktopFolder(out var desktopFolder) != 0)
-                    return results;
+                    return allApps;
 
                 try
                 {
                     // Bind au dossier AppsFolder
                     if (SHBindToObject(desktopFolder, pidlAppsFolder, IntPtr.Zero, IID_IShellFolder, out var ppv) != 0)
-                        return results;
+                        return allApps;
 
                     var appsFolder = (IShellFolder)Marshal.GetObjectForIUnknown(ppv);
 
@@ -217,7 +217,7 @@ public static class StoreAppService
                             {
                                 var app = GetAppFromPidl(appsFolder, pidl);
                                 if (app != null)
-                                    results.Add(app);
+                                    allApps.Add(app);
                             }
                             finally
                             {
@@ -245,7 +245,14 @@ public static class StoreAppService
             // Silently fail - on reviendra aux raccourcis traditionnels
         }
 
-        return results;
+        // Dédupliquer par nom normalisé, en préférant les apps Store
+        return allApps
+            .GroupBy(app => NormalizeName(app.Name), StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderByDescending(app => app.Type == ResultType.StoreApp ? 1 : 0) // Préférer StoreApp
+                .ThenBy(app => app.Path.Length) // Sinon préférer le chemin le plus court
+                .First())
+            .ToList();
     }
 
     private static SearchResult? GetAppFromPidl(IShellFolder folder, IntPtr pidl)
@@ -283,6 +290,18 @@ public static class StoreAppService
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Normalise un nom pour la comparaison (supprime espaces multiples, trim, etc.)
+    /// </summary>
+    private static string NormalizeName(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return string.Empty;
+        
+        // Supprimer les espaces multiples et normaliser
+        return System.Text.RegularExpressions.Regex.Replace(name.Trim(), @"\s+", " ");
     }
 
     /// <summary>
