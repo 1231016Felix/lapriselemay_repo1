@@ -29,8 +29,7 @@ public sealed partial class SettingsDialog : ContentDialog
         CreateRestorePointToggle.IsOn = _settings.CreateRestorePoint;
         CreateRegistryBackupToggle.IsOn = _settings.CreateRegistryBackup;
         PreferQuietUninstallToggle.IsOn = _settings.PreferQuietUninstall;
-        AutoScanResidualsToggle.IsOn = _settings.AutoScanResiduals;
-        ConfidenceSlider.Value = _settings.MinConfidenceForAutoSelect;
+        ThoroughAnalysisToggle.IsOn = _settings.ThoroughAnalysisEnabled;
         ThemeComboBox.SelectedIndex = _settings.Theme;
     }
 
@@ -40,8 +39,7 @@ public sealed partial class SettingsDialog : ContentDialog
         _settings.CreateRestorePoint = CreateRestorePointToggle.IsOn;
         _settings.CreateRegistryBackup = CreateRegistryBackupToggle.IsOn;
         _settings.PreferQuietUninstall = PreferQuietUninstallToggle.IsOn;
-        _settings.AutoScanResiduals = AutoScanResidualsToggle.IsOn;
-        _settings.MinConfidenceForAutoSelect = (int)ConfidenceSlider.Value;
+        _settings.ThoroughAnalysisEnabled = ThoroughAnalysisToggle.IsOn;
         _settings.Theme = ThemeComboBox.SelectedIndex;
 
         await _settingsService.SaveAsync();

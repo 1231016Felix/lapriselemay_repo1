@@ -247,3 +247,35 @@ public partial class InverseBoolConverter : IValueConverter
         return value is bool b && !b;
     }
 }
+
+/// <summary>
+/// Convertisseur de string hexadécimal vers SolidColorBrush
+/// </summary>
+public partial class StringToBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        if (value is string colorStr && colorStr.StartsWith('#'))
+        {
+            try
+            {
+                var color = Color.FromArgb(
+                    255,
+                    byte.Parse(colorStr.Substring(1, 2), System.Globalization.NumberStyles.HexNumber),
+                    byte.Parse(colorStr.Substring(3, 2), System.Globalization.NumberStyles.HexNumber),
+                    byte.Parse(colorStr.Substring(5, 2), System.Globalization.NumberStyles.HexNumber));
+                return new SolidColorBrush(color);
+            }
+            catch
+            {
+                return new SolidColorBrush(Color.FromArgb(255, 110, 110, 110));
+            }
+        }
+        return new SolidColorBrush(Color.FromArgb(255, 110, 110, 110));
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}

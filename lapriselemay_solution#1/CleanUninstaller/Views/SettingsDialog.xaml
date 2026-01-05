@@ -36,35 +36,31 @@
                               Header="Désinstallation silencieuse"
                               OffContent="Utiliser l'interface standard"
                               OnContent="Quand disponible (recommandé)" />
-
-                <ToggleSwitch x:Name="AutoScanResidualsToggle"
-                              Header="Scanner les résidus automatiquement"
-                              OffContent="Désactivé"
-                              OnContent="Après chaque désinstallation" />
             </StackPanel>
 
-            <!-- Section Résidus -->
+            <!-- Section Analyse minutieuse -->
             <StackPanel Spacing="12">
                 <TextBlock Text="Détection des résidus" Style="{StaticResource SubtitleTextBlockStyle}" />
                 
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Confiance minimum pour sélection automatique"
-                               Style="{StaticResource CaptionTextBlockStyle}" />
-                    <StackPanel Orientation="Horizontal" Spacing="12">
-                        <Slider x:Name="ConfidenceSlider"
-                                Minimum="30"
-                                Maximum="100"
-                                Width="200"
-                                TickFrequency="10"
-                                TickPlacement="Outside" />
-                        <TextBlock VerticalAlignment="Center">
-                            <Run Text="{x:Bind ConfidenceSlider.Value, Mode=OneWay}" />
-                            <Run Text="%" />
-                        </TextBlock>
-                    </StackPanel>
-                    <TextBlock Text="Les résidus avec une confiance inférieure ne seront pas présélectionnés"
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    <ToggleSwitch x:Name="ThoroughAnalysisToggle"
+                                  Header="Analyse minutieuse"
+                                  OffContent="Désactivée"
+                                  OnContent="Activée" />
+                    
+                    <Border Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                            CornerRadius="4"
+                            Padding="12,8">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE7BA;" 
+                                      FontSize="16" 
+                                      Foreground="{ThemeResource SystemFillColorCautionBrush}" />
+                            <TextBlock Text="L'analyse minutieuse peut détecter des fichiers système ou partagés. Vérifiez attentivement les éléments avant suppression."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       TextWrapping="Wrap"
+                                       MaxWidth="350" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </StackPanel>
 

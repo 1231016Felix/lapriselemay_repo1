@@ -16,6 +16,10 @@ public static class LaunchService
                 case ResultType.File:
                     StartProcess(item.Path);
                     break;
+                
+                case ResultType.StoreApp:
+                    StoreAppService.LaunchApp(item.Path);
+                    break;
                     
                 case ResultType.Folder:
                     StartProcess("explorer.exe", item.Path);

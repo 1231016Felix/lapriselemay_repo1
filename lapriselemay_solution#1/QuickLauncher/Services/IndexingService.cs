@@ -84,6 +84,13 @@ public partial class IndexingService : IDisposable
             {
                 var items = new List<SearchResult>();
                 
+                // Indexer les applications du Microsoft Store (UWP/MSIX)
+                Log("Indexation des applications Store...");
+                var storeApps = StoreAppService.GetAllApps();
+                items.AddRange(storeApps);
+                Log($"  -> {storeApps.Count} applications trouvées");
+                
+                // Indexer les dossiers configurés (raccourcis traditionnels)
                 foreach (var folder in _settings.IndexedFolders)
                 {
                     Log($"Indexation: {folder}");
@@ -98,6 +105,7 @@ public partial class IndexingService : IDisposable
                     }
                 }
                 
+                // Scripts personnalisés
                 foreach (var script in _settings.Scripts)
                 {
                     items.Add(new SearchResult
@@ -109,8 +117,14 @@ public partial class IndexingService : IDisposable
                     });
                 }
                 
-                Log($"TOTAL: {items.Count} éléments");
-                SaveToDatabase(items);
+                // Dédupliquer par nom (préférer les apps Store aux raccourcis)
+                var deduplicated = items
+                    .GroupBy(i => i.Name.ToLowerInvariant())
+                    .Select(g => g.OrderByDescending(i => i.Type == ResultType.StoreApp ? 1 : 0).First())
+                    .ToList();
+                
+                Log($"TOTAL: {deduplicated.Count} éléments (après déduplication)");
+                SaveToDatabase(deduplicated);
                 LoadCache();
             });
         }
@@ -374,6 +388,7 @@ public partial class IndexingService : IDisposable
         score += item.Type switch
         {
             ResultType.Application => 20,
+            ResultType.StoreApp => 20,
             ResultType.Script => 15,
             ResultType.Folder => 10,
             _ => 0

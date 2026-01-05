@@ -3,6 +3,7 @@ namespace QuickLauncher.Models;
 public enum ResultType
 {
     Application,
+    StoreApp,  // Applications du Microsoft Store (UWP/MSIX)
     File,
     Folder,
     Script,
@@ -34,6 +35,7 @@ public class SearchResult
     private string DefaultIcon => Type switch
     {
         ResultType.Application => "🚀",
+        ResultType.StoreApp => "🪟",
         ResultType.File => "📄",
         ResultType.Folder => "📁",
         ResultType.Script => "⚡",

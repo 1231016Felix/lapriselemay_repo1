@@ -124,11 +124,19 @@ public class RegistryService
                 return null;
         }
 
-        var isSystemComponent = (key.GetValue("SystemComponent") as int?) == 1;
+        var systemComponentFlag = (key.GetValue("SystemComponent") as int?) == 1;
         var uninstallString = key.GetValue("UninstallString") as string ?? "";
+        var publisher = key.GetValue("Publisher") as string ?? "";
         
-        // Si pas de commande de désinstallation et composant système, ignorer
-        if (string.IsNullOrEmpty(uninstallString) && isSystemComponent)
+        // Déterminer si c'est vraiment un composant système
+        // Un programme est considéré comme composant système seulement si:
+        // - Il a le flag SystemComponent=1 ET
+        // - Il est de Microsoft/Windows OU n'a pas de commande de désinstallation
+        var isSystemComponent = systemComponentFlag && 
+            (IsSystemPublisher(publisher) || string.IsNullOrEmpty(uninstallString));
+        
+        // Si pas de commande de désinstallation et flag système, ignorer
+        if (string.IsNullOrEmpty(uninstallString) && systemComponentFlag)
             return null;
         
         // Ignorer les entrées qui n'ont ni uninstall ni install location (probablement des résidus)
@@ -155,7 +163,7 @@ public class RegistryService
         {
             Id = keyName,
             DisplayName = displayName,
-            Publisher = key.GetValue("Publisher") as string ?? "",
+            Publisher = publisher,
             Version = key.GetValue("DisplayVersion") as string ?? "",
             InstallDate = installDate,
             EstimatedSize = estimatedSizeKb * 1024L, // Convertir en octets
@@ -241,6 +249,26 @@ public class RegistryService
             "Corsair", "SteelSeries", "JetBrains", "Autodesk", "Corel"
         ];
         return knownPublishers.Any(p => segment.Equals(p, StringComparison.OrdinalIgnoreCase));
+    }
+    
+    /// <summary>
+    /// Vérifie si l'éditeur est un éditeur de composants système (Microsoft, Windows)
+    /// Les programmes de ces éditeurs avec SystemComponent=1 sont vraiment des composants système
+    /// </summary>
+    private static bool IsSystemPublisher(string publisher)
+    {
+        if (string.IsNullOrWhiteSpace(publisher)) return false;
+        
+        string[] systemPublishers = [
+            "Microsoft",
+            "Microsoft Corporation",
+            "Microsoft Corporations",
+            "Windows"
+        ];
+        
+        return systemPublishers.Any(sp => 
+            publisher.Equals(sp, StringComparison.OrdinalIgnoreCase) ||
+            publisher.StartsWith(sp + " ", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

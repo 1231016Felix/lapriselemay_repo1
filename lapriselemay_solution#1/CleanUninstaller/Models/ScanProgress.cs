@@ -121,14 +121,9 @@ public class AppSettings
     public bool PreferQuietUninstall { get; set; } = true;
 
     /// <summary>
-    /// Scanner automatiquement les résidus après désinstallation
+    /// Activer l'analyse minutieuse des résidus après désinstallation
     /// </summary>
-    public bool AutoScanResiduals { get; set; } = true;
-
-    /// <summary>
-    /// Niveau de confiance minimum pour la sélection automatique des résidus (0-100)
-    /// </summary>
-    public int MinConfidenceForAutoSelect { get; set; } = 70;
+    public bool ThoroughAnalysisEnabled { get; set; } = true;
 
     /// <summary>
     /// Emplacements supplémentaires à scanner pour les résidus

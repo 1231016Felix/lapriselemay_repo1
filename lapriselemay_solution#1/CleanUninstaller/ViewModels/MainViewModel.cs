@@ -210,6 +210,11 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Référence à la fenêtre principale pour afficher les dialogues
+    /// </summary>
+    public Microsoft.UI.Xaml.XamlRoot? XamlRoot { get; set; }
+
+    /// <summary>
     /// Commande de désinstallation du programme sélectionné
     /// </summary>
     [RelayCommand]
@@ -233,35 +238,62 @@ public partial class MainViewModel : ObservableObject
             // Créer un backup si configuré
             await _settingsService.CreateRegistryBackupAsync(program.DisplayName);
 
+            // Désinstaller sans scanner les résidus automatiquement
+            // (on le fera via le dialogue si l'option est activée)
             var result = await _uninstallService.UninstallProgramAsync(
                 program,
                 _settingsService.Settings.PreferQuietUninstall,
-                _settingsService.Settings.AutoScanResiduals,
+                scanResiduals: false,
                 progress);
+
+            // Attendre un peu pour que le système mette à jour le registre
+            await Task.Delay(2000);
 
             if (result.Success)
             {
                 program.Status = ProgramStatus.Uninstalled;
                 program.StatusMessage = "Désinstallé";
 
-                // Afficher les résidus trouvés
-                if (result.Residuals.Count > 0)
-                {
-                    Residuals = new ObservableCollection<ResidualItem>(result.Residuals);
-                    OnPropertyChanged(nameof(HasResiduals));
-                    OnPropertyChanged(nameof(ResidualsTotalSize));
-                    
-                    StatusMessage = $"Désinstallé - {result.ResidualCount} résidus trouvés ({FormatSize(result.TotalResidualSize)})";
-                }
-                else
-                {
-                    StatusMessage = "Désinstallation complète - Aucun résidu trouvé";
-                }
-
                 // Retirer de la liste
                 _allPrograms.Remove(program);
                 Programs.Remove(program);
                 TotalProgramCount = _allPrograms.Count;
+                SelectedProgram = null;
+
+                // Afficher le dialogue d'analyse des résidus si l'option est activée
+                if (_settingsService.Settings.ThoroughAnalysisEnabled && XamlRoot != null)
+                {
+                    StatusMessage = "Désinstallé - Analyse des résidus...";
+                    
+                    var residualDialog = new Views.ResidualScanDialog(program)
+                    {
+                        XamlRoot = XamlRoot
+                    };
+                    
+                    await residualDialog.ShowAsync();
+
+                    // Mettre à jour le statut après le dialogue
+                    if (residualDialog.DeletionPerformed)
+                    {
+                        StatusMessage = "Désinstallation et nettoyage terminés";
+                    }
+                    else if (residualDialog.Residuals.Count > 0)
+                    {
+                        // Des résidus restent
+                        Residuals = new ObservableCollection<ResidualItem>(residualDialog.Residuals);
+                        OnPropertyChanged(nameof(HasResiduals));
+                        OnPropertyChanged(nameof(ResidualsTotalSize));
+                        StatusMessage = $"Désinstallé - {residualDialog.Residuals.Count} résidu(s) restant(s)";
+                    }
+                    else
+                    {
+                        StatusMessage = "Désinstallation complète - Aucun résidu";
+                    }
+                }
+                else
+                {
+                    StatusMessage = "Désinstallation complète";
+                }
             }
             else
             {
@@ -303,9 +335,9 @@ public partial class MainViewModel : ObservableObject
                     $"Avant désinstallation de {selectedPrograms.Count} programmes");
             }
 
-            var allResiduals = new List<ResidualItem>();
             var successCount = 0;
             var failCount = 0;
+            var uninstalledPrograms = new List<InstalledProgram>();
 
             for (var i = 0; i < selectedPrograms.Count; i++)
             {
@@ -318,12 +350,12 @@ public partial class MainViewModel : ObservableObject
                 var result = await _uninstallService.UninstallProgramAsync(
                     program,
                     _settingsService.Settings.PreferQuietUninstall,
-                    _settingsService.Settings.AutoScanResiduals);
+                    scanResiduals: false);
 
                 if (result.Success)
                 {
                     successCount++;
-                    allResiduals.AddRange(result.Residuals);
+                    uninstalledPrograms.Add(program);
                     _allPrograms.Remove(program);
                     Programs.Remove(program);
                 }
@@ -336,14 +368,39 @@ public partial class MainViewModel : ObservableObject
             }
 
             TotalProgramCount = _allPrograms.Count;
+            StatusMessage = $"Terminé: {successCount} réussi(s), {failCount} échec(s)";
 
-            if (allResiduals.Count > 0)
+            // Proposer l'analyse des résidus si l'option est activée et qu'il y a eu des succès
+            if (_settingsService.Settings.ThoroughAnalysisEnabled && 
+                uninstalledPrograms.Count > 0 && 
+                XamlRoot != null)
             {
-                Residuals = new ObservableCollection<ResidualItem>(allResiduals);
-                OnPropertyChanged(nameof(HasResiduals));
-            }
+                // Scanner les résidus de tous les programmes désinstallés
+                var allResiduals = new List<ResidualItem>();
+                
+                for (var i = 0; i < uninstalledPrograms.Count; i++)
+                {
+                    var program = uninstalledPrograms[i];
+                    StatusMessage = $"Analyse des résidus de {program.DisplayName} ({i + 1}/{uninstalledPrograms.Count})...";
+                    
+                    var residuals = await _residualScanner.ScanResidualsAsync(program);
+                    allResiduals.AddRange(residuals);
+                }
 
-            StatusMessage = $"Terminé: {successCount} réussi(s), {failCount} échec(s), {allResiduals.Count} résidus";
+                if (allResiduals.Count > 0)
+                {
+                    // Afficher le dialogue avec tous les résidus
+                    Residuals = new ObservableCollection<ResidualItem>(allResiduals);
+                    OnPropertyChanged(nameof(HasResiduals));
+                    OnPropertyChanged(nameof(ResidualsTotalSize));
+                    
+                    StatusMessage = $"Terminé: {successCount} réussi(s), {failCount} échec(s), {allResiduals.Count} résidu(s) trouvé(s)";
+                }
+                else
+                {
+                    StatusMessage = $"Terminé: {successCount} réussi(s), {failCount} échec(s) - Aucun résidu";
+                }
+            }
         }
         finally
         {
@@ -463,17 +520,15 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Sélectionne les résidus avec confiance élevée
+    /// Sélectionne les résidus avec confiance élevée (High et VeryHigh uniquement)
     /// </summary>
     [RelayCommand]
     private void SelectHighConfidenceResiduals()
     {
-        // Convertir le seuil 0-100 en ConfidenceLevel (0-4)
-        var thresholdPercent = _settingsService.Settings.MinConfidenceForAutoSelect;
-        var threshold = (ConfidenceLevel)Math.Min(4, thresholdPercent / 25);
         foreach (var residual in Residuals)
         {
-            residual.IsSelected = residual.Confidence >= threshold;
+            // Sélectionner uniquement les éléments sûrs (High et VeryHigh)
+            residual.IsSelected = residual.Confidence >= ConfidenceLevel.High;
         }
         OnPropertyChanged(nameof(ResidualsTotalSize));
     }

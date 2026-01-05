@@ -63,6 +63,10 @@ public sealed partial class MainWindow : Window
         if (!_initialized && args.WindowActivationState != WindowActivationState.Deactivated)
         {
             _initialized = true;
+            
+            // Initialiser le XamlRoot pour le ViewModel (pour les dialogues)
+            ViewModel.XamlRoot = Content.XamlRoot;
+            
             await LoadProgramsAsync();
         }
     }
@@ -545,33 +549,32 @@ public sealed partial class MainWindow : Window
     {
         if (ViewModel.SelectedProgram == null) return;
 
-        ShowLoading(true, $"Scan des résidus pour {ViewModel.SelectedProgram.DisplayName}...");
-
-        try
+        // Ouvrir le dialogue de scan des résidus (meilleure UX qu'un petit panneau)
+        var residualDialog = new ResidualScanDialog(ViewModel.SelectedProgram)
         {
-            var progress = new Progress<ScanProgress>(p =>
-            {
-                LoadingProgressBar.Value = p.Percentage;
-                LoadingStatusText.Text = p.StatusMessage;
-            });
+            XamlRoot = Content.XamlRoot
+        };
+        
+        await residualDialog.ShowAsync();
 
-            await ViewModel.ScanResidualsAsync();
-            
-            if (ViewModel.HasResiduals)
-            {
-                ShowResiduals(true);
-                StatusText.Text = $"{ViewModel.Residuals.Count} résidus trouvés";
-                ShowInfoBar("Scan terminé", $"{ViewModel.Residuals.Count} éléments résiduels détectés.", InfoBarSeverity.Informational);
-            }
-            else
-            {
-                StatusText.Text = "Aucun résidu trouvé";
-                ShowInfoBar("Aucun résidu", "Ce programme ne semble pas avoir laissé de traces.", InfoBarSeverity.Success);
-            }
+        // Mettre à jour le statut après le dialogue
+        if (residualDialog.DeletionPerformed)
+        {
+            StatusText.Text = "Nettoyage des résidus terminé";
+            ShowInfoBar("Nettoyage terminé", "Les résidus sélectionnés ont été supprimés.", InfoBarSeverity.Success);
         }
-        finally
+        else if (residualDialog.Residuals.Count > 0)
         {
-            ShowLoading(false);
+            // Des résidus restent - les garder disponibles si l'utilisateur veut les voir dans le panneau
+            ViewModel.Residuals = new System.Collections.ObjectModel.ObservableCollection<ResidualItem>(residualDialog.Residuals);
+            ShowResiduals(true);
+            StatusText.Text = $"{residualDialog.Residuals.Count} résidu(s) non supprimé(s)";
+        }
+        else
+        {
+            ShowResiduals(false);
+            StatusText.Text = "Aucun résidu trouvé";
+            ShowInfoBar("Aucun résidu", "Ce programme ne semble pas avoir laissé de traces.", InfoBarSeverity.Success);
         }
     }
 
@@ -671,11 +674,14 @@ public sealed partial class MainWindow : Window
 
         _currentOperationCts?.Cancel();
         _currentOperationCts = new CancellationTokenSource();
+        _continueManually = false;
 
         var program = ViewModel.SelectedProgram;
         var operationType = force ? "forcée" : (silent ? "silencieuse" : "standard");
         
         ShowUninstallOverlay(true, $"Désinstallation {operationType} de {program.DisplayName}...");
+
+        var uninstallSuccess = false;
 
         try
         {
@@ -696,52 +702,95 @@ public sealed partial class MainWindow : Window
             }
             else
             {
+                // Désinstaller sans scanner automatiquement les résidus
                 result = await App.UninstallService.UninstallProgramAsync(
-                    program, silent, App.SettingsService.Settings.AutoScanResiduals, 
+                    program, silent, scanResiduals: false, 
                     progress, _currentOperationCts.Token);
             }
 
-            if (result.Success)
-            {
-                program.Status = ProgramStatus.Uninstalled;
-                
-                // Afficher les résidus trouvés
-                if (result.Residuals.Count > 0)
-                {
-                    ViewModel.Residuals = new System.Collections.ObjectModel.ObservableCollection<ResidualItem>(result.Residuals);
-                    ShowResiduals(true);
-                    StatusText.Text = $"Désinstallé - {result.ResidualCount} résidus trouvés";
-                    ShowInfoBar("Désinstallation réussie", 
-                        $"{result.ResidualCount} résidus détectés ({FormatSize(result.ResidualSize)})", 
-                        InfoBarSeverity.Warning);
-                }
-                else
-                {
-                    StatusText.Text = "Désinstallation complète";
-                    ShowInfoBar("Désinstallation complète", "Aucun résidu détecté.", InfoBarSeverity.Success);
-                }
+            uninstallSuccess = result.Success;
 
-                // Retirer de la liste
-                await LoadProgramsAsync();
-            }
-            else
+            if (!result.Success && !string.IsNullOrEmpty(result.ErrorMessage))
             {
                 program.Status = ProgramStatus.Error;
                 StatusText.Text = $"Erreur: {result.ErrorMessage}";
-                ShowInfoBar("Échec de la désinstallation", result.ErrorMessage ?? "Erreur inconnue", InfoBarSeverity.Error);
+                ShowInfoBar("Échec de la désinstallation", result.ErrorMessage, InfoBarSeverity.Error);
             }
         }
         catch (OperationCanceledException)
         {
-            StatusText.Text = "Opération annulée";
-            ShowInfoBar("Annulé", "L'opération a été annulée.", InfoBarSeverity.Informational);
+            // Si l'utilisateur a cliqué sur "Continuer manuellement", on considère que c'est un succès
+            if (_continueManually)
+            {
+                uninstallSuccess = true;
+            }
+            else
+            {
+                StatusText.Text = "Opération annulée";
+                ShowInfoBar("Annulé", "L'opération a été annulée.", InfoBarSeverity.Informational);
+                ShowUninstallOverlay(false);
+                return;
+            }
         }
         catch (Exception ex)
         {
             StatusText.Text = $"Erreur: {ex.Message}";
             ShowInfoBar("Erreur", ex.Message, InfoBarSeverity.Error);
+            ShowUninstallOverlay(false);
+            return;
         }
-        finally
+
+        // Étape suivante: nettoyage et scan des résidus
+        if (uninstallSuccess)
+        {
+            program.Status = ProgramStatus.Uninstalled;
+            
+            // Actualiser la liste des programmes
+            UninstallDetailText.Text = "Actualisation de la liste...";
+            await LoadProgramsAsync();
+
+            // Afficher le dialogue d'analyse des résidus si l'option est activée
+            if (App.SettingsService.Settings.ThoroughAnalysisEnabled)
+            {
+                ShowUninstallOverlay(false);
+                
+                var residualDialog = new ResidualScanDialog(program)
+                {
+                    XamlRoot = Content.XamlRoot
+                };
+                
+                await residualDialog.ShowAsync();
+
+                // Mettre à jour le statut après le dialogue
+                if (residualDialog.DeletionPerformed)
+                {
+                    StatusText.Text = "Désinstallation et nettoyage terminés";
+                    ShowInfoBar("Nettoyage terminé", "Les résidus sélectionnés ont été supprimés.", InfoBarSeverity.Success);
+                }
+                else if (residualDialog.Residuals.Count > 0)
+                {
+                    // Des résidus restent - les afficher dans le panneau
+                    ViewModel.Residuals = new System.Collections.ObjectModel.ObservableCollection<ResidualItem>(residualDialog.Residuals);
+                    ShowResiduals(true);
+                    StatusText.Text = $"Désinstallé - {residualDialog.Residuals.Count} résidu(s) restant(s)";
+                    ShowInfoBar("Résidus restants", 
+                        $"{residualDialog.Residuals.Count} élément(s) non supprimé(s)", 
+                        InfoBarSeverity.Warning);
+                }
+                else
+                {
+                    StatusText.Text = "Désinstallation complète - Aucun résidu";
+                    ShowInfoBar("Désinstallation complète", "Aucun résidu détecté.", InfoBarSeverity.Success);
+                }
+            }
+            else
+            {
+                ShowUninstallOverlay(false);
+                StatusText.Text = "Désinstallation complète";
+                ShowInfoBar("Désinstallation complète", "Programme désinstallé avec succès.", InfoBarSeverity.Success);
+            }
+        }
+        else
         {
             ShowUninstallOverlay(false);
         }
@@ -803,7 +852,39 @@ public sealed partial class MainWindow : Window
         UninstallStatusText.Text = message;
         UninstallProgressBar.Value = 0;
         UninstallDetailText.Text = "";
+        ContinueUninstallButton.Visibility = Visibility.Collapsed;
+        
+        if (show)
+        {
+            // Afficher le bouton "Continuer" après 10 secondes
+            _ = ShowContinueButtonAfterDelayAsync();
+        }
     }
+
+    private async Task ShowContinueButtonAfterDelayAsync()
+    {
+        await Task.Delay(10000); // 10 secondes
+        
+        // Vérifier si l'overlay est toujours visible
+        if (UninstallOverlay.Visibility == Visibility.Visible)
+        {
+            ContinueUninstallButton.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void ContinueUninstall_Click(object sender, RoutedEventArgs e)
+    {
+        // IMPORTANT: Définir le flag AVANT d'annuler pour éviter la condition de course
+        // Le flag doit être true quand l'exception OperationCanceledException est attrapée
+        _continueManually = true;
+        ContinueUninstallButton.Visibility = Visibility.Collapsed;
+        UninstallDetailText.Text = "Passage à l'étape suivante...";
+        
+        // Annuler l'attente en cours - cela va déclencher le passage à l'étape suivante
+        _currentOperationCts?.Cancel();
+    }
+
+    private bool _continueManually;
 
     #endregion
 }

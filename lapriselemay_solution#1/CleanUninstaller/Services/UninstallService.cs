@@ -91,8 +91,8 @@ public partial class UninstallService
         }
         catch (OperationCanceledException)
         {
-            result.Success = false;
-            result.ErrorMessage = "Désinstallation annulée";
+            // Propager l'annulation pour permettre la gestion en amont
+            throw;
         }
         catch (Exception ex)
         {
@@ -162,6 +162,11 @@ public partial class UninstallService
             }
 
             progress?.Report(new ScanProgress(100, "Terminé"));
+        }
+        catch (OperationCanceledException)
+        {
+            // Propager l'annulation pour permettre la gestion en amont
+            throw;
         }
         catch (Exception ex)
         {
@@ -263,6 +268,11 @@ public partial class UninstallService
             }
 
             progress?.Report(new ScanProgress(100, "Désinstallation forcée terminée"));
+        }
+        catch (OperationCanceledException)
+        {
+            // Propager l'annulation pour permettre la gestion en amont
+            throw;
         }
         catch (Exception ex)
         {
@@ -427,11 +437,20 @@ public partial class UninstallService
         try
         {
             process.Start();
+            var mainPid = process.Id;
             
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(timeout.Value);
 
+            // Attendre la fin du processus principal
             await process.WaitForExitAsync(cts.Token);
+            
+            // Attendre un peu que les processus enfants se terminent aussi
+            await Task.Delay(1000, cancellationToken);
+            
+            // Attendre que les processus liés au désinstalleur soient terminés
+            await WaitForRelatedProcessesAsync(executable, mainPid, TimeSpan.FromMinutes(2), cancellationToken);
+            
             return process.ExitCode;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -439,6 +458,84 @@ public partial class UninstallService
             // Timeout
             try { process.Kill(true); } catch { }
             return -1;
+        }
+    }
+
+    private static async Task WaitForRelatedProcessesAsync(
+        string executable, 
+        int parentPid, 
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var exeName = Path.GetFileNameWithoutExtension(executable).ToLowerInvariant();
+        var startTime = DateTime.UtcNow;
+        
+        // Noms de processus courants pour les désinstalleurs
+        var uninstallerNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "unins000", "unins001", "uninstall", "uninst", "setup", 
+            "msiexec", "au_", "_iu14d2n", "_au_"
+        };
+        
+        // Ajouter le nom de l'exécutable s'il est spécifique
+        if (!string.IsNullOrEmpty(exeName) && exeName.Length > 3)
+        {
+            uninstallerNames.Add(exeName);
+        }
+
+        // Maximum 30 secondes d'attente pour les processus liés
+        var maxWait = TimeSpan.FromSeconds(30);
+        if (timeout > maxWait) timeout = maxWait;
+
+        while (DateTime.UtcNow - startTime < timeout)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            
+            var stillRunning = false;
+            
+            foreach (var proc in Process.GetProcesses())
+            {
+                try
+                {
+                    var name = proc.ProcessName.ToLowerInvariant();
+                    // Vérifier si le nom contient un des patterns de désinstalleur
+                    if (uninstallerNames.Any(n => name.Contains(n)))
+                    {
+                        // Ignorer msiexec si c'est le service principal (il tourne toujours)
+                        if (name == "msiexec")
+                        {
+                            try
+                            {
+                                // Vérifier si c'est une instance avec des arguments (pas le service)
+                                var cmdLine = proc.MainModule?.FileName;
+                                if (string.IsNullOrEmpty(cmdLine))
+                                {
+                                    continue;
+                                }
+                            }
+                            catch
+                            {
+                                continue; // Ignorer si on ne peut pas accéder
+                            }
+                        }
+                        
+                        stillRunning = true;
+                        break;
+                    }
+                }
+                catch { }
+                finally
+                {
+                    proc.Dispose();
+                }
+            }
+            
+            if (!stillRunning)
+            {
+                break;
+            }
+            
+            await Task.Delay(500, cancellationToken);
         }
     }
 
@@ -543,12 +640,11 @@ public partial class UninstallService
             switch (residual.Type)
             {
                 case ResidualType.File:
-                    File.SetAttributes(residual.Path, FileAttributes.Normal);
-                    File.Delete(residual.Path);
+                    ForceDeleteFile(residual.Path);
                     break;
 
                 case ResidualType.Folder:
-                    Directory.Delete(residual.Path, true);
+                    ForceDeleteDirectory(residual.Path);
                     break;
 
                 case ResidualType.RegistryKey:
@@ -566,8 +662,193 @@ public partial class UninstallService
                 case ResidualType.Service:
                     DeleteService(residual.Path);
                     break;
+
+                case ResidualType.EnvironmentPath:
+                    RemoveFromEnvironmentPath(residual.Path);
+                    break;
+
+                case ResidualType.EnvironmentVariable:
+                    DeleteEnvironmentVariable(residual.Path);
+                    break;
+
+                case ResidualType.ComComponent:
+                    DeleteComComponent(residual.Path);
+                    break;
+
+                case ResidualType.FileAssociation:
+                    DeleteFileAssociation(residual.Path);
+                    break;
+
+                case ResidualType.StartupEntry:
+                    DeleteStartupEntry(residual.Path);
+                    break;
+
+                case ResidualType.Firewall:
+                    DeleteFirewallRule(residual.Path);
+                    break;
+
+                case ResidualType.Certificate:
+                    // Les certificats nécessitent des privilèges spéciaux
+                    break;
             }
         }, cancellationToken);
+    }
+
+    private static void ForceDeleteFile(string path)
+    {
+        if (!File.Exists(path)) return;
+
+        try
+        {
+            // Retirer les attributs
+            File.SetAttributes(path, FileAttributes.Normal);
+            File.Delete(path);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Essayer avec cmd /c del /f
+            RunCommandSilent("cmd.exe", $"/c del /f /q \"{path}\"");
+        }
+        catch (IOException)
+        {
+            // Fichier verrouillé - essayer de le déverrouiller ou forcer
+            RunCommandSilent("cmd.exe", $"/c del /f /q \"{path}\"");
+        }
+    }
+
+    private static void ForceDeleteDirectory(string path)
+    {
+        if (!Directory.Exists(path)) return;
+
+        try
+        {
+            // D'abord, supprimer les attributs read-only de tous les fichiers
+            foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    File.SetAttributes(file, FileAttributes.Normal);
+                }
+                catch { }
+            }
+
+            Directory.Delete(path, true);
+        }
+        catch
+        {
+            // Forcer avec rmdir
+            RunCommandSilent("cmd.exe", $"/c rmdir /s /q \"{path}\"");
+        }
+    }
+
+    private static void RemoveFromEnvironmentPath(string pathToRemove)
+    {
+        try
+        {
+            // Variable utilisateur
+            var userPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "";
+            var userPaths = userPath.Split(';').Where(p => !p.Equals(pathToRemove, StringComparison.OrdinalIgnoreCase)).ToArray();
+            Environment.SetEnvironmentVariable("PATH", string.Join(";", userPaths), EnvironmentVariableTarget.User);
+        }
+        catch { }
+
+        try
+        {
+            // Variable système
+            var systemPath = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine) ?? "";
+            var systemPaths = systemPath.Split(';').Where(p => !p.Equals(pathToRemove, StringComparison.OrdinalIgnoreCase)).ToArray();
+            Environment.SetEnvironmentVariable("PATH", string.Join(";", systemPaths), EnvironmentVariableTarget.Machine);
+        }
+        catch { }
+    }
+
+    private static void DeleteEnvironmentVariable(string variableName)
+    {
+        try
+        {
+            Environment.SetEnvironmentVariable(variableName, null, EnvironmentVariableTarget.User);
+        }
+        catch { }
+
+        try
+        {
+            Environment.SetEnvironmentVariable(variableName, null, EnvironmentVariableTarget.Machine);
+        }
+        catch { }
+    }
+
+    private static void DeleteComComponent(string clsid)
+    {
+        try
+        {
+            Registry.ClassesRoot.DeleteSubKeyTree($"CLSID\\{clsid}", false);
+        }
+        catch { }
+
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Classes\CLSID", true);
+            key?.DeleteSubKeyTree(clsid, false);
+        }
+        catch { }
+
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\WOW6432Node\Classes\CLSID", true);
+            key?.DeleteSubKeyTree(clsid, false);
+        }
+        catch { }
+    }
+
+    private static void DeleteFileAssociation(string extension)
+    {
+        try
+        {
+            Registry.ClassesRoot.DeleteSubKeyTree(extension, false);
+        }
+        catch { }
+
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts", true);
+            key?.DeleteSubKeyTree(extension, false);
+        }
+        catch { }
+    }
+
+    private static void DeleteStartupEntry(string path)
+    {
+        // path peut être une clé de registre ou un fichier dans Startup
+        if (path.StartsWith("HKEY", StringComparison.OrdinalIgnoreCase) || 
+            path.StartsWith("HKLM", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("HKCU", StringComparison.OrdinalIgnoreCase))
+        {
+            DeleteRegistryValue(path);
+        }
+        else if (File.Exists(path))
+        {
+            ForceDeleteFile(path);
+        }
+    }
+
+    private static void DeleteFirewallRule(string ruleName)
+    {
+        RunCommandSilent("netsh.exe", $"advfirewall firewall delete rule name=\"{ruleName}\"");
+    }
+
+    private static void RunCommandSilent(string fileName, string arguments)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = fileName,
+            Arguments = arguments,
+            CreateNoWindow = true,
+            UseShellExecute = false,
+            WindowStyle = ProcessWindowStyle.Hidden
+        };
+
+        using var proc = Process.Start(psi);
+        proc?.WaitForExit(10000);
     }
 
     private static void DeleteRegistryKey(string path)
