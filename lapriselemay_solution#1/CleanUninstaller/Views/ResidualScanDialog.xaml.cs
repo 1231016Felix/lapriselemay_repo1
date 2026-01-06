@@ -130,10 +130,11 @@ public sealed partial class ResidualScanDialog : ContentDialog
         
         if (riskyItems.Count > 0)
         {
-            // Afficher le panneau de confirmation intégré (on ne peut pas ouvrir un ContentDialog dans un ContentDialog)
-            WarningMessageText.Text = $"Vous avez sélectionné {riskyItems.Count} élément(s) avec une confiance faible (jaune ou rouge).\n\n" +
-                                      "Ces fichiers pourraient être utilisés par d'autres programmes ou le système.\n\n" +
+            // Afficher le panneau de confirmation (masque le contenu principal)
+            WarningMessageText.Text = $"Vous avez sélectionné {riskyItems.Count} élément(s) avec une confiance faible.\n\n" +
+                                      "Ces fichiers pourraient être utilisés par d'autres programmes.\n\n" +
                                       "Voulez-vous vraiment les supprimer?";
+            MainContentPanel.Visibility = Visibility.Collapsed;
             WarningConfirmPanel.Visibility = Visibility.Visible;
             IsPrimaryButtonEnabled = false;
             IsSecondaryButtonEnabled = false;
@@ -147,6 +148,7 @@ public sealed partial class ResidualScanDialog : ContentDialog
     private void CancelWarning_Click(object sender, RoutedEventArgs e)
     {
         WarningConfirmPanel.Visibility = Visibility.Collapsed;
+        MainContentPanel.Visibility = Visibility.Visible;
         IsPrimaryButtonEnabled = true;
         IsSecondaryButtonEnabled = true;
     }
@@ -154,6 +156,7 @@ public sealed partial class ResidualScanDialog : ContentDialog
     private async void ConfirmDelete_Click(object sender, RoutedEventArgs e)
     {
         WarningConfirmPanel.Visibility = Visibility.Collapsed;
+        MainContentPanel.Visibility = Visibility.Visible;
         var selected = _residuals.Where(r => r.IsSelected && !r.IsDeleted).ToList();
         await PerformDeletionAsync(selected);
     }
@@ -233,14 +236,23 @@ public sealed partial class ResidualScanDialog : ContentDialog
                 {
                     var reason = item.ErrorMessage ?? "Raison inconnue";
                     // Simplifier les messages d'erreur courants
-                    if (reason.Contains("Access", StringComparison.OrdinalIgnoreCase) || 
+                    if (reason.Contains("unauthorized", StringComparison.OrdinalIgnoreCase) ||
+                        reason.Contains("Access", StringComparison.OrdinalIgnoreCase) || 
                         reason.Contains("Accès", StringComparison.OrdinalIgnoreCase))
-                        reason = "Accès refusé (fichier en cours d'utilisation ou protégé)";
+                        reason = "Accès refusé";
                     else if (reason.Contains("not found", StringComparison.OrdinalIgnoreCase) ||
                              reason.Contains("introuvable", StringComparison.OrdinalIgnoreCase))
                         reason = "Élément introuvable";
+                    else if (reason.Contains("in use", StringComparison.OrdinalIgnoreCase) ||
+                             reason.Contains("utilisé", StringComparison.OrdinalIgnoreCase))
+                        reason = "Fichier en cours d'utilisation";
                     
-                    errorDetails.AppendLine($"• {item.DisplayPath}: {reason}");
+                    // Tronquer les chemins/GUIDs longs
+                    var displayName = item.DisplayPath;
+                    if (displayName.Length > 40)
+                        displayName = displayName.Substring(0, 37) + "...";
+                    
+                    errorDetails.AppendLine($"• {displayName}: {reason}");
                 }
                 
                 if (failedItems.Count > 5)
@@ -249,7 +261,7 @@ public sealed partial class ResidualScanDialog : ContentDialog
                 }
                 
                 ErrorInfoBar.Title = "Certains éléments n'ont pas pu être supprimés";
-                ErrorInfoBar.Message = errorDetails.ToString();
+                ErrorInfoBarContent.Text = errorDetails.ToString().TrimEnd();
                 ErrorInfoBar.Severity = Microsoft.UI.Xaml.Controls.InfoBarSeverity.Warning;
                 ErrorInfoBar.IsOpen = true;
             }

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Window
     x:Class="CleanUninstaller.Views.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -22,7 +22,7 @@
         </Grid.RowDefinitions>
 
         <!-- Title Bar -->
-        <Grid x:Name="AppTitleBar" Grid.Row="0" >
+        <Grid x:Name="AppTitleBar" Grid.Row="0" Background="Transparent">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -232,18 +232,21 @@
                 </Grid>
 
                 <!-- En-tête de colonnes -->
-                <Grid x:Name="HeaderGrid" Grid.Row="2" Margin="8,0,8,4" Padding="8,6">
+                <Grid Grid.Row="2" Margin="8,0,8,4" Padding="8,6">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="32" />          <!-- Checkbox -->
-                        <ColumnDefinition Width="40" />          <!-- Icône -->
-                        <ColumnDefinition x:Name="NameColumn" Width="*" MinWidth="80" />
-                        <ColumnDefinition Width="3" />           <!-- Splitter -->
-                        <ColumnDefinition x:Name="PublisherColumn" Width="100" MinWidth="40" />
-                        <ColumnDefinition Width="3" />           <!-- Splitter -->
-                        <ColumnDefinition x:Name="DateColumn" Width="75" MinWidth="40" />
-                        <ColumnDefinition Width="3" />           <!-- Splitter -->
-                        <ColumnDefinition x:Name="SizeColumn" Width="60" MinWidth="40" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" MinWidth="150" />
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="100" />
+                        <ColumnDefinition Width="90" />
                     </Grid.ColumnDefinitions>
+                    
+                    <!-- Espace pour checkbox -->
+                    <Border Width="32" />
+                    
+                    <!-- Espace pour icône -->
+                    <Border Grid.Column="1" Width="48" />
                     
                     <!-- Nom -->
                     <Button Grid.Column="2" 
@@ -264,18 +267,8 @@
                         </StackPanel>
                     </Button>
                     
-                    <!-- Splitter Nom/Éditeur -->
-                    <controls:GridSplitter Grid.Column="3" 
-                                           Width="3"
-                                           ResizeBehavior="BasedOnAlignment"
-                                           ResizeDirection="Columns"
-                                           Background="{ThemeResource DividerStrokeColorDefaultBrush}"
-                                           PointerPressed="GridSplitter_PointerPressed"
-                                           PointerReleased="GridSplitter_PointerReleased"
-                                           PointerCaptureLost="GridSplitter_PointerReleased" />
-                    
                     <!-- Éditeur -->
-                    <Button Grid.Column="4" 
+                    <Button Grid.Column="3" 
                             Style="{StaticResource SubtleButtonStyle}"
                             HorizontalAlignment="Left"
                             Padding="4,2"
@@ -293,25 +286,15 @@
                         </StackPanel>
                     </Button>
                     
-                    <!-- Splitter Éditeur/Date -->
-                    <controls:GridSplitter Grid.Column="5" 
-                                           Width="3"
-                                           ResizeBehavior="BasedOnAlignment"
-                                           ResizeDirection="Columns"
-                                           Background="{ThemeResource DividerStrokeColorDefaultBrush}"
-                                           PointerPressed="GridSplitter_PointerPressed"
-                                           PointerReleased="GridSplitter_PointerReleased"
-                                           PointerCaptureLost="GridSplitter_PointerReleased" />
-                    
                     <!-- Date d'installation -->
-                    <Button Grid.Column="6" 
+                    <Button Grid.Column="4" 
                             Style="{StaticResource SubtleButtonStyle}"
                             HorizontalAlignment="Left"
                             Padding="4,2"
                             Click="SortByDateHeader_Click"
                             ToolTipService.ToolTip="Trier par date d'installation">
                         <StackPanel Orientation="Horizontal" Spacing="4">
-                            <TextBlock Text="Date" 
+                            <TextBlock Text="Installé le" 
                                        Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             <FontIcon x:Name="SortDateIcon" 
@@ -322,19 +305,9 @@
                         </StackPanel>
                     </Button>
                     
-                    <!-- Splitter Date/Taille -->
-                    <controls:GridSplitter Grid.Column="7" 
-                                           Width="3"
-                                           ResizeBehavior="BasedOnAlignment"
-                                           ResizeDirection="Columns"
-                                           Background="{ThemeResource DividerStrokeColorDefaultBrush}"
-                                           PointerPressed="GridSplitter_PointerPressed"
-                                           PointerReleased="GridSplitter_PointerReleased"
-                                           PointerCaptureLost="GridSplitter_PointerReleased" />
-                    
-                    <!-- Taille -->
+                    <!-- Taille (cliquable pour trier) -->
                     <Button x:Name="SizeColumnHeader"
-                            Grid.Column="8" 
+                            Grid.Column="5" 
                             Style="{StaticResource SubtleButtonStyle}"
                             HorizontalAlignment="Right"
                             Padding="4,2"
@@ -357,29 +330,18 @@
                           Grid.Row="3"
                           SelectionMode="Single"
                           SelectionChanged="ProgramListView_SelectionChanged"
-                          DoubleTapped="ProgramListView_DoubleTapped"
-                          Loaded="ProgramListView_Loaded"
-                          ContainerContentChanging="ProgramListView_ContainerContentChanging">
-                    <ListView.ItemContainerStyle>
-                        <Style TargetType="ListViewItem">
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="Padding" Value="0" />
-                        </Style>
-                    </ListView.ItemContainerStyle>
+                          DoubleTapped="ProgramListView_DoubleTapped">
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="models:InstalledProgram">
-                            <Grid x:Name="ItemGrid" Padding="8,6"
+                            <Grid Padding="8,10" ColumnSpacing="12"
                                   ToolTipService.ToolTip="{x:Bind InstallerType}">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="32" />     <!-- Checkbox -->
-                                    <ColumnDefinition Width="40" />     <!-- Icône -->
-                                    <ColumnDefinition Width="*" MinWidth="80" />  <!-- Nom -->
-                                    <ColumnDefinition Width="3" />      <!-- Splitter space -->
-                                    <ColumnDefinition Width="100" MinWidth="40" /> <!-- Éditeur -->
-                                    <ColumnDefinition Width="3" />      <!-- Splitter space -->
-                                    <ColumnDefinition Width="75" MinWidth="40" /> <!-- Date -->
-                                    <ColumnDefinition Width="3" />      <!-- Splitter space -->
-                                    <ColumnDefinition Width="60" MinWidth="40" />  <!-- Taille -->
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" MinWidth="150" />
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="100" />
+                                    <ColumnDefinition Width="90" />
                                 </Grid.ColumnDefinitions>
 
                                 <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
@@ -387,87 +349,69 @@
                                           MinWidth="0" />
 
                                 <!-- Icône du programme -->
-                                <Grid Grid.Column="1" Width="28" Height="28" VerticalAlignment="Center">
+                                <Grid Grid.Column="1" Width="36" Height="36" VerticalAlignment="Center">
                                     <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                            CornerRadius="4"
+                                            CornerRadius="6"
                                             Visibility="{x:Bind IconPlaceholderVisibility, Mode=OneWay}">
                                         <FontIcon Glyph="&#xE74C;" 
-                                                  FontSize="14"
+                                                  FontSize="18"
                                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                                     </Border>
                                     <Image Source="{x:Bind Icon, Mode=OneWay}" 
-                                           Width="24" Height="24"
+                                           Width="32" Height="32"
                                            Stretch="Uniform"
                                            Visibility="{x:Bind IconVisibility, Mode=OneWay}" />
                                 </Grid>
 
                                 <!-- Nom et badges -->
-                                <Grid Grid.Column="2" VerticalAlignment="Center"
-                                      ToolTipService.ToolTip="{x:Bind DisplayName}">
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    
-                                    <TextBlock Text="{x:Bind DisplayName}" 
-                                               FontWeight="SemiBold"
-                                               FontSize="13"
-                                               TextTrimming="CharacterEllipsis"
-                                               MaxLines="1" />
-                                    
-                                    <!-- Badges -->
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="4,0,0,0">
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{x:Bind DisplayName}" 
+                                                   FontWeight="SemiBold"
+                                                   TextTrimming="CharacterEllipsis" />
+                                        <!-- Badge Windows App -->
                                         <Border Visibility="{x:Bind IsWindowsApp}"
                                                 Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                                CornerRadius="3" Padding="4,1">
-                                            <TextBlock Text="S" FontSize="9" Foreground="White" />
+                                                CornerRadius="4" Padding="6,2">
+                                            <TextBlock Text="Store" FontSize="10" Foreground="White" />
                                         </Border>
+                                        <!-- Badge Système -->
                                         <Border Visibility="{x:Bind IsSystemComponent}"
                                                 Background="{ThemeResource SystemFillColorCautionBrush}"
-                                                CornerRadius="3" Padding="4,1">
-                                            <TextBlock Text="!" FontSize="9" />
+                                                CornerRadius="4" Padding="6,2">
+                                            <TextBlock Text="Système" FontSize="10" />
                                         </Border>
                                     </StackPanel>
-                                    
-                                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2"
-                                               Text="{x:Bind Version}" 
+                                    <TextBlock Text="{x:Bind Version}" 
                                                Style="{StaticResource CaptionTextBlockStyle}"
-                                               FontSize="11"
-                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                                               TextTrimming="CharacterEllipsis" />
-                                </Grid>
+                                               Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                                </StackPanel>
 
                                 <!-- Éditeur -->
-                                <TextBlock Grid.Column="4" 
+                                <TextBlock Grid.Column="3" 
                                            Text="{x:Bind Publisher}" 
-                                           FontSize="12"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                            TextTrimming="CharacterEllipsis"
-                                           MaxLines="1"
                                            VerticalAlignment="Center"
                                            ToolTipService.ToolTip="{x:Bind Publisher}" />
 
                                 <!-- Date d'installation -->
-                                <TextBlock Grid.Column="6" 
+                                <TextBlock Grid.Column="4" 
                                            Text="{x:Bind FormattedInstallDate}" 
-                                           FontSize="12"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           TextTrimming="CharacterEllipsis"
                                            VerticalAlignment="Center" />
 
                                 <!-- Taille -->
-                                <Border Grid.Column="8" 
+                                <Border Grid.Column="5" 
                                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                        CornerRadius="3"
-                                        Padding="6,2"
+                                        CornerRadius="4"
+                                        Padding="10,4"
                                         VerticalAlignment="Center"
                                         HorizontalAlignment="Right">
                                     <TextBlock Text="{x:Bind FormattedSize}" 
-                                               FontSize="11"
+                                               Style="{StaticResource CaptionTextBlockStyle}"
                                                FontFamily="Consolas" />
                                 </Border>
                             </Grid>
@@ -514,10 +458,10 @@
 
             <!-- GridSplitter pour redimensionner les panneaux -->
             <controls:GridSplitter Grid.Column="1" 
-                                   Width="6"
+                                   Width="8"
                                    ResizeBehavior="BasedOnAlignment"
                                    ResizeDirection="Columns"
-                                   Background="{ThemeResource ControlStrongFillColorDefaultBrush}" />
+                                   Background="{ThemeResource DividerStrokeColorDefaultBrush}" />
 
             <!-- Details Panel -->
             <Grid Grid.Column="2" Padding="16">
@@ -681,17 +625,17 @@
                     <!-- Légende confiance -->
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
                         <StackPanel Orientation="Horizontal" Spacing="4">
-                            <Ellipse Width="6" Height="8" Fill="#107C10" />
+                            <Ellipse Width="8" Height="8" Fill="#107C10" />
                             <TextBlock Text="Très haute" Style="{StaticResource CaptionTextBlockStyle}" 
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="4">
-                            <Ellipse Width="6" Height="8" Fill="#498205" />
+                            <Ellipse Width="8" Height="8" Fill="#498205" />
                             <TextBlock Text="Haute" Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="4">
-                            <Ellipse Width="6" Height="8" Fill="#CA5010" />
+                            <Ellipse Width="8" Height="8" Fill="#CA5010" />
                             <TextBlock Text="Moyenne" Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
@@ -721,7 +665,7 @@
                                     <Border Grid.Column="1" 
                                             Width="4" 
                                             CornerRadius="2"
-                                            
+                                            VerticalAlignment="Stretch"
                                             Background="{x:Bind ConfidenceBrush}" />
 
                                     <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center" Margin="4,0,0,0">
@@ -855,4 +799,3 @@
         </Grid>
     </Grid>
 </Window>
-

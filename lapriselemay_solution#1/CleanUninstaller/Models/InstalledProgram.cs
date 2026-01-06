@@ -31,7 +31,16 @@ public partial class InstalledProgram : ObservableObject
     /// <summary>
     /// Taille estimée en octets
     /// </summary>
-    public long EstimatedSize { get; init; }
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FormattedSize))]
+    private long _estimatedSize;
+
+    /// <summary>
+    /// Indique si la taille est approximative (calculée à partir du dossier)
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FormattedSize))]
+    private bool _isSizeApproximate;
 
     /// <summary>
     /// Date d'installation
@@ -150,7 +159,7 @@ public partial class InstalledProgram : ObservableObject
     /// <summary>
     /// Taille formatée pour l'affichage
     /// </summary>
-    public string FormattedSize => FormatSize(EstimatedSize);
+    public string FormattedSize => IsSizeApproximate ? $"~{FormatSize(EstimatedSize)}" : FormatSize(EstimatedSize);
 
     /// <summary>
     /// Date d'installation formatée

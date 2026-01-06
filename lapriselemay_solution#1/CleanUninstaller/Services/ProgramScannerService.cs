@@ -465,23 +465,204 @@ public class ProgramScannerService
         List<InstalledProgram> programs,
         CancellationToken cancellationToken)
     {
+        var programsWithoutSize = programs.Where(p => p.EstimatedSize == 0).ToList();
+        
+        if (programsWithoutSize.Count == 0) return;
+
         await Task.Run(() =>
         {
-            foreach (var program in programs.Where(p => p.EstimatedSize == 0 && !string.IsNullOrEmpty(p.InstallLocation)))
+            foreach (var program in programsWithoutSize)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 try
                 {
-                    if (Directory.Exists(program.InstallLocation))
+                    // Essayer de trouver le dossier d'installation
+                    var installDir = FindInstallDirectory(program);
+                    
+                    if (!string.IsNullOrEmpty(installDir) && Directory.Exists(installDir))
                     {
-                        // Note: Utiliser reflection pour modifier EstimatedSize (readonly)
-                        // En production, ajouter une propriété calculée
+                        var size = CalculateDirectorySize(installDir);
+                        if (size > 0)
+                        {
+                            program.EstimatedSize = size;
+                            program.IsSizeApproximate = true;
+                        }
                     }
                 }
-                catch { /* Ignorer les erreurs d'accès */ }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Erreur calcul taille {program.DisplayName}: {ex.Message}");
+                }
             }
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Trouve le dossier d'installation d'un programme
+    /// </summary>
+    private static string? FindInstallDirectory(InstalledProgram program)
+    {
+        // 1. Utiliser InstallLocation si disponible
+        if (!string.IsNullOrEmpty(program.InstallLocation) && Directory.Exists(program.InstallLocation))
+        {
+            return program.InstallLocation;
+        }
+
+        // 2. Extraire le dossier depuis UninstallString
+        var dirFromUninstall = ExtractDirectoryFromUninstall(program.UninstallString);
+        if (!string.IsNullOrEmpty(dirFromUninstall) && Directory.Exists(dirFromUninstall))
+        {
+            return dirFromUninstall;
+        }
+
+        // 3. Extraire le dossier depuis QuietUninstallString
+        var dirFromQuiet = ExtractDirectoryFromUninstall(program.QuietUninstallString);
+        if (!string.IsNullOrEmpty(dirFromQuiet) && Directory.Exists(dirFromQuiet))
+        {
+            return dirFromQuiet;
+        }
+
+        // 4. Chercher dans Program Files par nom
+        var dirFromSearch = SearchProgramInCommonLocations(program.DisplayName, program.Publisher);
+        if (!string.IsNullOrEmpty(dirFromSearch))
+        {
+            return dirFromSearch;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extrait le dossier parent d'un chemin d'exécutable depuis une commande de désinstallation
+    /// </summary>
+    private static string? ExtractDirectoryFromUninstall(string? command)
+    {
+        if (string.IsNullOrEmpty(command)) return null;
+
+        try
+        {
+            var cleanPath = command.Trim();
+            
+            // Enlever les guillemets
+            if (cleanPath.StartsWith('"'))
+            {
+                var endQuote = cleanPath.IndexOf('"', 1);
+                if (endQuote > 0)
+                {
+                    cleanPath = cleanPath[1..endQuote];
+                }
+            }
+
+            // Ignorer MsiExec
+            if (cleanPath.Contains("msiexec", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            // Trouver le .exe
+            var exeIndex = cleanPath.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+            if (exeIndex > 0)
+            {
+                cleanPath = cleanPath[..(exeIndex + 4)];
+            }
+
+            if (!Path.IsPathRooted(cleanPath)) return null;
+
+            var directory = Path.GetDirectoryName(cleanPath);
+            
+            // Remonter si dans un sous-dossier de désinstallation
+            if (!string.IsNullOrEmpty(directory))
+            {
+                var dirName = Path.GetFileName(directory)?.ToLowerInvariant();
+                if (dirName is "uninst" or "uninstall" or "_uninst" or "bin" or "_iu14d2n.tmp")
+                {
+                    directory = Path.GetDirectoryName(directory);
+                }
+            }
+
+            return directory;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Recherche un programme dans les emplacements courants
+    /// </summary>
+    private static string? SearchProgramInCommonLocations(string programName, string publisher)
+    {
+        if (string.IsNullOrEmpty(programName)) return null;
+
+        var searchPaths = new List<string>
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
+        };
+
+        // Simplifier le nom pour la recherche
+        var searchName = programName
+            .Replace(" ", "")
+            .Replace("-", "")
+            .Replace("_", "")
+            .ToLowerInvariant();
+
+        // Mots clés significatifs
+        var keywords = programName
+            .Split([' ', '-', '_', '.'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 2)
+            .Take(3)
+            .ToArray();
+
+        foreach (var basePath in searchPaths)
+        {
+            if (string.IsNullOrEmpty(basePath) || !Directory.Exists(basePath)) continue;
+
+            try
+            {
+                foreach (var dir in Directory.EnumerateDirectories(basePath))
+                {
+                    var dirName = Path.GetFileName(dir);
+                    if (string.IsNullOrEmpty(dirName)) continue;
+
+                    var simplifiedDirName = dirName
+                        .Replace(" ", "")
+                        .Replace("-", "")
+                        .Replace("_", "")
+                        .ToLowerInvariant();
+
+                    // Correspondance exacte
+                    if (simplifiedDirName == searchName)
+                    {
+                        return dir;
+                    }
+
+                    // Correspondance par mots clés
+                    if (keywords.Length > 0 && keywords.All(w => 
+                        dirName.Contains(w, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        return dir;
+                    }
+
+                    // Correspondance partielle
+                    if (simplifiedDirName.Length >= 4 && searchName.Length >= 4)
+                    {
+                        if (simplifiedDirName.Contains(searchName) || searchName.Contains(simplifiedDirName))
+                        {
+                            return dir;
+                        }
+                    }
+                }
+            }
+            catch { /* Accès refusé - ignorer */ }
+        }
+
+        return null;
     }
 
     /// <summary>

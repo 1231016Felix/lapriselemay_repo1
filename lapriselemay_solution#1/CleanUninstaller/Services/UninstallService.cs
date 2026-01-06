@@ -62,7 +62,7 @@ public partial class UninstallService
             progress?.Report(new ScanProgress(10, "Lancement du désinstalleur..."));
 
             // Exécuter le désinstalleur
-            var exitCode = await RunUninstallerAsync(executable, arguments, cancellationToken);
+            var exitCode = await RunUninstallerAsync(executable, arguments, cancellationToken, program: program);
 
             progress?.Report(new ScanProgress(70, "Vérification de la désinstallation..."));
 
@@ -141,7 +141,7 @@ public partial class UninstallService
 
             progress?.Report(new ScanProgress(20, "Exécution du désinstalleur silencieux..."));
 
-            var exitCode = await RunUninstallerAsync(executable, arguments, cancellationToken, timeout: TimeSpan.FromMinutes(5));
+            var exitCode = await RunUninstallerAsync(executable, arguments, cancellationToken, timeout: TimeSpan.FromMinutes(5), program: program);
 
             progress?.Report(new ScanProgress(80, "Vérification..."));
 
@@ -420,7 +420,8 @@ public partial class UninstallService
         string executable, 
         string arguments, 
         CancellationToken cancellationToken,
-        TimeSpan? timeout = null)
+        TimeSpan? timeout = null,
+        InstalledProgram? program = null)
     {
         timeout ??= TimeSpan.FromMinutes(10);
 
@@ -449,7 +450,8 @@ public partial class UninstallService
             await Task.Delay(1000, cancellationToken);
             
             // Attendre que les processus liés au désinstalleur soient terminés
-            await WaitForRelatedProcessesAsync(executable, mainPid, TimeSpan.FromMinutes(2), cancellationToken);
+            // ET/OU que le programme disparaisse du registre
+            await WaitForUninstallCompletionAsync(executable, mainPid, program, TimeSpan.FromMinutes(5), cancellationToken);
             
             return process.ExitCode;
         }
@@ -461,81 +463,188 @@ public partial class UninstallService
         }
     }
 
-    private static async Task WaitForRelatedProcessesAsync(
-        string executable, 
-        int parentPid, 
+    private static async Task WaitForUninstallCompletionAsync(
+        string executable,
+        int mainPid,
+        InstalledProgram? program,
         TimeSpan timeout,
         CancellationToken cancellationToken)
     {
-        var exeName = Path.GetFileNameWithoutExtension(executable).ToLowerInvariant();
         var startTime = DateTime.UtcNow;
+        var exeName = Path.GetFileNameWithoutExtension(executable).ToLowerInvariant();
         
         // Noms de processus courants pour les désinstalleurs
         var uninstallerNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "unins000", "unins001", "uninstall", "uninst", "setup", 
-            "msiexec", "au_", "_iu14d2n", "_au_"
+            "msiexec", "au_", "_iu14d2n", "_au_", "installer",
+            "un_a", "un_b"
         };
         
-        // Ajouter le nom de l'exécutable s'il est spécifique
         if (!string.IsNullOrEmpty(exeName) && exeName.Length > 3)
         {
             uninstallerNames.Add(exeName);
         }
 
-        // Maximum 30 secondes d'attente pour les processus liés
-        var maxWait = TimeSpan.FromSeconds(30);
-        if (timeout > maxWait) timeout = maxWait;
+        // Capturer les PIDs des processus de désinstallation au démarrage
+        var trackedPids = new HashSet<int>();
+        CaptureUninstallerProcesses(uninstallerNames, trackedPids);
+        
+        var lastRegistryCheck = DateTime.MinValue;
+        var programStillExists = true;
 
         while (DateTime.UtcNow - startTime < timeout)
         {
             cancellationToken.ThrowIfCancellationRequested();
             
+            // Vérifier le registre toutes les 2 secondes
+            if (program != null && (DateTime.UtcNow - lastRegistryCheck).TotalSeconds >= 2)
+            {
+                lastRegistryCheck = DateTime.UtcNow;
+                programStillExists = CheckProgramInRegistry(program.RegistryKeyName);
+                
+                // Si le programme a disparu du registre, la désinstallation est terminée
+                if (!programStillExists)
+                {
+                    // Attendre un peu pour que tout se termine proprement
+                    await Task.Delay(1500, cancellationToken);
+                    return;
+                }
+            }
+            
+            // Mettre à jour la liste des processus trackés
+            CaptureUninstallerProcesses(uninstallerNames, trackedPids);
+            
+            // Vérifier si des processus de désinstallation sont encore en cours
             var stillRunning = false;
             
-            foreach (var proc in Process.GetProcesses())
+            foreach (var pid in trackedPids.ToList())
             {
                 try
                 {
-                    var name = proc.ProcessName.ToLowerInvariant();
-                    // Vérifier si le nom contient un des patterns de désinstalleur
-                    if (uninstallerNames.Any(n => name.Contains(n)))
+                    var proc = Process.GetProcessById(pid);
+                    if (!proc.HasExited)
                     {
-                        // Ignorer msiexec si c'est le service principal (il tourne toujours)
-                        if (name == "msiexec")
-                        {
-                            try
-                            {
-                                // Vérifier si c'est une instance avec des arguments (pas le service)
-                                var cmdLine = proc.MainModule?.FileName;
-                                if (string.IsNullOrEmpty(cmdLine))
-                                {
-                                    continue;
-                                }
-                            }
-                            catch
-                            {
-                                continue; // Ignorer si on ne peut pas accéder
-                            }
-                        }
-                        
                         stillRunning = true;
+                        proc.Dispose();
                         break;
                     }
+                    proc.Dispose();
+                    trackedPids.Remove(pid);
+                }
+                catch (ArgumentException)
+                {
+                    trackedPids.Remove(pid);
                 }
                 catch { }
-                finally
-                {
-                    proc.Dispose();
-                }
             }
             
+            // Aussi vérifier par nom de processus
             if (!stillRunning)
             {
-                break;
+                stillRunning = IsAnyUninstallerRunning(uninstallerNames);
+            }
+            
+            // Si plus aucun processus de désinstallation n'est en cours, c'est terminé
+            if (!stillRunning)
+            {
+                await Task.Delay(1000, cancellationToken);
+                return;
             }
             
             await Task.Delay(500, cancellationToken);
+        }
+    }
+
+    private static bool CheckProgramInRegistry(string registryKeyName)
+    {
+        var paths = new[]
+        {
+            @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+            @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+        };
+
+        foreach (var path in paths)
+        {
+            try
+            {
+                using var key = Registry.LocalMachine.OpenSubKey(path);
+                if (key?.GetSubKeyNames().Contains(registryKeyName) == true)
+                {
+                    return true;
+                }
+            }
+            catch { }
+        }
+
+        try
+        {
+            using var userKey = Registry.CurrentUser.OpenSubKey(paths[0]);
+            if (userKey?.GetSubKeyNames().Contains(registryKeyName) == true)
+            {
+                return true;
+            }
+        }
+        catch { }
+
+        return false;
+    }
+
+    private static bool IsAnyUninstallerRunning(HashSet<string> uninstallerNames)
+    {
+        foreach (var proc in Process.GetProcesses())
+        {
+            try
+            {
+                var name = proc.ProcessName.ToLowerInvariant();
+                if (uninstallerNames.Any(n => name.Contains(n)))
+                {
+                    // Ignorer msiexec si c'est le service principal
+                    if (name == "msiexec")
+                    {
+                        try
+                        {
+                            if (proc.Threads.Count <= 2)
+                            {
+                                continue;
+                            }
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+                    }
+                    
+                    return true;
+                }
+            }
+            catch { }
+            finally
+            {
+                proc.Dispose();
+            }
+        }
+        
+        return false;
+    }
+
+    private static void CaptureUninstallerProcesses(HashSet<string> uninstallerNames, HashSet<int> trackedPids)
+    {
+        foreach (var proc in Process.GetProcesses())
+        {
+            try
+            {
+                var name = proc.ProcessName.ToLowerInvariant();
+                if (uninstallerNames.Any(n => name.Contains(n)))
+                {
+                    trackedPids.Add(proc.Id);
+                }
+            }
+            catch { }
+            finally
+            {
+                proc.Dispose();
+            }
         }
     }
 

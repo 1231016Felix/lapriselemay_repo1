@@ -101,6 +101,42 @@ public enum SortOption
 }
 
 /// <summary>
+/// Options de filtrage par taille
+/// </summary>
+public enum SizeFilter
+{
+    /// <summary>
+    /// Toutes les tailles
+    /// </summary>
+    All,
+    
+    /// <summary>
+    /// Moins de 10 Mo
+    /// </summary>
+    Small,
+    
+    /// <summary>
+    /// Entre 10 Mo et 100 Mo
+    /// </summary>
+    Medium,
+    
+    /// <summary>
+    /// Entre 100 Mo et 1 Go
+    /// </summary>
+    Large,
+    
+    /// <summary>
+    /// Plus de 1 Go
+    /// </summary>
+    VeryLarge,
+    
+    /// <summary>
+    /// Taille inconnue uniquement
+    /// </summary>
+    Unknown
+}
+
+/// <summary>
 /// Paramètres de l'application
 /// </summary>
 public class AppSettings

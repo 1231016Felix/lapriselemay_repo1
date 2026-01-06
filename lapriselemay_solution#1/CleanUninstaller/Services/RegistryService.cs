@@ -25,6 +25,332 @@ public class RegistryService
     ];
 
     /// <summary>
+    /// Calcule les tailles des dossiers d'installation pour les programmes sans taille connue
+    /// Retourne le nombre de programmes dont la taille a été calculée (approximative)
+    /// </summary>
+    public async Task<int> CalculateMissingSizesAsync(
+        List<InstalledProgram> programs,
+        IProgress<ScanProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var programsWithoutSize = programs.Where(p => p.EstimatedSize == 0).ToList();
+        
+        if (programsWithoutSize.Count == 0) return 0;
+
+        var processed = 0;
+        var approximateCount = 0;
+        var total = programsWithoutSize.Count;
+
+        await Task.Run(() =>
+        {
+            foreach (var program in programsWithoutSize)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    // Essayer de trouver le dossier d'installation
+                    var installDir = FindInstallDirectory(program);
+                    
+                    if (!string.IsNullOrEmpty(installDir) && Directory.Exists(installDir))
+                    {
+                        var size = CalculateDirectorySize(installDir, cancellationToken);
+                        if (size > 0)
+                        {
+                            program.EstimatedSize = size;
+                            program.IsSizeApproximate = true;
+                            approximateCount++;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Erreur calcul taille {program.DisplayName}: {ex.Message}");
+                }
+
+                processed++;
+                progress?.Report(new ScanProgress
+                {
+                    Phase = ScanPhase.CalculatingSizes,
+                    Percentage = (processed * 100) / total,
+                    StatusMessage = $"Calcul des tailles... ({processed}/{total})",
+                    ProcessedCount = processed,
+                    TotalCount = total
+                });
+            }
+        }, cancellationToken);
+
+        return approximateCount;
+    }
+
+    /// <summary>
+    /// Trouve le dossier d'installation d'un programme
+    /// </summary>
+    private static string? FindInstallDirectory(InstalledProgram program)
+    {
+        // 1. Utiliser InstallLocation si disponible
+        if (!string.IsNullOrEmpty(program.InstallLocation) && Directory.Exists(program.InstallLocation))
+        {
+            return program.InstallLocation;
+        }
+
+        // 2. Extraire le dossier depuis UninstallString
+        var dirFromUninstall = ExtractDirectoryFromPath(program.UninstallString);
+        if (!string.IsNullOrEmpty(dirFromUninstall) && Directory.Exists(dirFromUninstall))
+        {
+            return dirFromUninstall;
+        }
+
+        // 3. Extraire le dossier depuis QuietUninstallString
+        var dirFromQuiet = ExtractDirectoryFromPath(program.QuietUninstallString);
+        if (!string.IsNullOrEmpty(dirFromQuiet) && Directory.Exists(dirFromQuiet))
+        {
+            return dirFromQuiet;
+        }
+
+        // 4. Chercher dans tous les emplacements connus par nom
+        var dirFromSearch = FindProgramDirectory(program.DisplayName, program.Publisher);
+        if (!string.IsNullOrEmpty(dirFromSearch))
+        {
+            return dirFromSearch;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Extrait le dossier parent d'un chemin d'exécutable
+    /// </summary>
+    private static string? ExtractDirectoryFromPath(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+
+        try
+        {
+            // Nettoyer le chemin
+            var cleanPath = path.Trim();
+            
+            // Enlever les guillemets
+            if (cleanPath.StartsWith('"'))
+            {
+                var endQuote = cleanPath.IndexOf('"', 1);
+                if (endQuote > 0)
+                {
+                    cleanPath = cleanPath[1..endQuote];
+                }
+            }
+
+            // Cas MsiExec - pas de dossier exploitable directement
+            if (cleanPath.Contains("msiexec", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            // Trouver le .exe dans le chemin
+            var exeIndex = cleanPath.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+            if (exeIndex > 0)
+            {
+                cleanPath = cleanPath[..(exeIndex + 4)];
+            }
+
+            // Vérifier que c'est un chemin valide
+            if (!Path.IsPathRooted(cleanPath)) return null;
+
+            var directory = Path.GetDirectoryName(cleanPath);
+            
+            // Remonter d'un niveau si on est dans un sous-dossier uninst/uninstall
+            if (!string.IsNullOrEmpty(directory))
+            {
+                var dirName = Path.GetFileName(directory)?.ToLowerInvariant();
+                if (dirName is "uninst" or "uninstall" or "_uninst" or "bin")
+                {
+                    directory = Path.GetDirectoryName(directory);
+                }
+            }
+
+            return directory;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Cherche un dossier correspondant au nom du programme dans tous les emplacements connus
+    /// </summary>
+    private static string? FindProgramDirectory(string programName, string publisher)
+    {
+        if (string.IsNullOrEmpty(programName)) return null;
+
+        // Tous les emplacements possibles
+        var searchPaths = new List<string>
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share"),
+        };
+
+        // Ajouter les dossiers d'éditeur dans AppData
+        if (!string.IsNullOrEmpty(publisher))
+        {
+            var publisherName = publisher.Split(' ')[0]; // Premier mot de l'éditeur
+            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), publisherName));
+            searchPaths.Add(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), publisherName));
+        }
+
+        // Simplifier le nom pour la recherche
+        var searchName = SimplifyName(programName);
+
+        // Extraire les mots clés significatifs (> 2 caractères)
+        var keywords = programName.Split(new[] { ' ', '-', '_', '.' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(w => w.Length > 2 && !IsCommonWord(w))
+            .Take(3)
+            .ToArray();
+
+        foreach (var basePath in searchPaths)
+        {
+            if (string.IsNullOrEmpty(basePath) || !Directory.Exists(basePath)) continue;
+
+            var result = SearchInDirectory(basePath, searchName, keywords, maxDepth: 2);
+            if (!string.IsNullOrEmpty(result))
+            {
+                return result;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Recherche récursive dans un dossier
+    /// </summary>
+    private static string? SearchInDirectory(string basePath, string searchName, string[] keywords, int maxDepth, int currentDepth = 0)
+    {
+        if (currentDepth > maxDepth) return null;
+
+        try
+        {
+            foreach (var dir in Directory.EnumerateDirectories(basePath))
+            {
+                var dirName = Path.GetFileName(dir);
+                if (string.IsNullOrEmpty(dirName)) continue;
+
+                // Ignorer certains dossiers système
+                if (IsSystemDirectory(dirName)) continue;
+
+                var simplifiedDirName = SimplifyName(dirName);
+
+                // Correspondance exacte (simplifiée)
+                if (simplifiedDirName == searchName)
+                {
+                    return dir;
+                }
+
+                // Correspondance par mots clés (tous les mots doivent être présents)
+                if (keywords.Length > 0 && keywords.All(w => dirName.Contains(w, StringComparison.OrdinalIgnoreCase)))
+                {
+                    return dir;
+                }
+
+                // Le nom du dossier contient le nom du programme ou vice versa
+                if (simplifiedDirName.Length >= 4 && searchName.Length >= 4)
+                {
+                    if (simplifiedDirName.Contains(searchName) || searchName.Contains(simplifiedDirName))
+                    {
+                        return dir;
+                    }
+                }
+
+                // Recherche récursive dans les sous-dossiers (pour les structures Publisher/App)
+                if (currentDepth < maxDepth)
+                {
+                    var subResult = SearchInDirectory(dir, searchName, keywords, maxDepth, currentDepth + 1);
+                    if (!string.IsNullOrEmpty(subResult))
+                    {
+                        return subResult;
+                    }
+                }
+            }
+        }
+        catch { /* Accès refusé - ignorer */ }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Simplifie un nom pour la comparaison
+    /// </summary>
+    private static string SimplifyName(string name)
+    {
+        return name
+            .Replace(" ", "")
+            .Replace("-", "")
+            .Replace("_", "")
+            .Replace(".", "")
+            .ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Vérifie si un mot est commun et doit être ignoré
+    /// </summary>
+    private static bool IsCommonWord(string word)
+    {
+        string[] commonWords = ["the", "for", "and", "app", "application", "software", "program", "tool", "tools", "version", "update", "edition", "pro", "free", "lite"];
+        return commonWords.Contains(word.ToLowerInvariant());
+    }
+
+    /// <summary>
+    /// Vérifie si un dossier est un dossier système à ignorer
+    /// </summary>
+    private static bool IsSystemDirectory(string dirName)
+    {
+        string[] systemDirs = ["windows", "system32", "syswow64", "microsoft", "packages", "cache", "temp", "tmp", "logs", "crash", "dumps"];
+        return systemDirs.Contains(dirName.ToLowerInvariant());
+    }
+
+    /// <summary>
+    /// Calcule la taille d'un dossier récursivement
+    /// </summary>
+    private static long CalculateDirectorySize(string path, CancellationToken cancellationToken)
+    {
+        long size = 0;
+
+        try
+        {
+            // Fichiers du dossier courant
+            foreach (var file in Directory.EnumerateFiles(path))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    var fileInfo = new FileInfo(file);
+                    size += fileInfo.Length;
+                }
+                catch { /* Accès refusé - ignorer */ }
+            }
+
+            // Sous-dossiers (récursif)
+            foreach (var dir in Directory.EnumerateDirectories(path))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    size += CalculateDirectorySize(dir, cancellationToken);
+                }
+                catch { /* Accès refusé - ignorer */ }
+            }
+        }
+        catch { /* Accès refusé - ignorer */ }
+
+        return size;
+    }
+
+    /// <summary>
     /// Lit tous les programmes installés depuis le registre
     /// </summary>
     public async Task<List<InstalledProgram>> GetInstalledProgramsAsync(

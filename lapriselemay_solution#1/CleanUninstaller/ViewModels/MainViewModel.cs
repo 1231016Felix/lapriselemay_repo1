@@ -78,6 +78,12 @@ public partial class MainViewModel : ObservableObject
     private bool _sortDescending;
 
     /// <summary>
+    /// Filtre par taille
+    /// </summary>
+    [ObservableProperty]
+    private SizeFilter _sizeFilter = SizeFilter.All;
+
+    /// <summary>
     /// Indique si un scan est en cours
     /// </summary>
     [ObservableProperty]
@@ -542,6 +548,12 @@ public partial class MainViewModel : ObservableObject
     partial void OnShowWindowsAppsChanged(bool value) => ApplyFilters();
     partial void OnSortByChanged(SortOption value) => ApplyFilters();
     partial void OnSortDescendingChanged(bool value) => ApplyFilters();
+    partial void OnSizeFilterChanged(SizeFilter value) => ApplyFilters();
+
+    // Constantes pour les tailles (en octets)
+    private const long SIZE_10_MB = 10L * 1024 * 1024;
+    private const long SIZE_100_MB = 100L * 1024 * 1024;
+    private const long SIZE_1_GB = 1024L * 1024 * 1024;
 
     private void ApplyFilters()
     {
@@ -566,6 +578,17 @@ public partial class MainViewModel : ObservableObject
             filtered = filtered.Where(p => !p.IsWindowsApp);
         }
 
+        // Filtre par taille
+        filtered = SizeFilter switch
+        {
+            SizeFilter.Small => filtered.Where(p => p.EstimatedSize > 0 && p.EstimatedSize < SIZE_10_MB),
+            SizeFilter.Medium => filtered.Where(p => p.EstimatedSize >= SIZE_10_MB && p.EstimatedSize < SIZE_100_MB),
+            SizeFilter.Large => filtered.Where(p => p.EstimatedSize >= SIZE_100_MB && p.EstimatedSize < SIZE_1_GB),
+            SizeFilter.VeryLarge => filtered.Where(p => p.EstimatedSize >= SIZE_1_GB),
+            SizeFilter.Unknown => filtered.Where(p => p.EstimatedSize == 0),
+            _ => filtered // SizeFilter.All
+        };
+
         // Tri
         filtered = SortBy switch
         {
@@ -575,9 +598,7 @@ public partial class MainViewModel : ObservableObject
             SortOption.Publisher => SortDescending 
                 ? filtered.OrderByDescending(p => p.Publisher) 
                 : filtered.OrderBy(p => p.Publisher),
-            SortOption.Size => SortDescending 
-                ? filtered.OrderByDescending(p => p.EstimatedSize) 
-                : filtered.OrderBy(p => p.EstimatedSize),
+            SortOption.Size => SortBySize(filtered),
             SortOption.InstallDate => SortDescending 
                 ? filtered.OrderByDescending(p => p.InstallDate) 
                 : filtered.OrderBy(p => p.InstallDate),
@@ -589,6 +610,27 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedCount));
         OnPropertyChanged(nameof(SelectedTotalSize));
         OnPropertyChanged(nameof(HasSelection));
+    }
+
+    /// <summary>
+    /// Tri par taille avec les tailles inconnues à la fin
+    /// </summary>
+    private IEnumerable<InstalledProgram> SortBySize(IEnumerable<InstalledProgram> programs)
+    {
+        // Séparer les programmes avec taille connue et inconnue
+        var withSize = programs.Where(p => p.EstimatedSize > 0);
+        var unknownSize = programs.Where(p => p.EstimatedSize == 0);
+
+        // Trier les programmes avec taille connue
+        var sortedWithSize = SortDescending
+            ? withSize.OrderByDescending(p => p.EstimatedSize)
+            : withSize.OrderBy(p => p.EstimatedSize);
+
+        // Les tailles inconnues sont toujours à la fin, triées par nom
+        var sortedUnknown = unknownSize.OrderBy(p => p.DisplayName);
+
+        // Concaténer: tailles connues d'abord, puis inconnues
+        return sortedWithSize.Concat(sortedUnknown);
     }
 
     #endregion

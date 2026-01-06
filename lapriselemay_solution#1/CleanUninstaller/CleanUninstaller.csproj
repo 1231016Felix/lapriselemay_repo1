@@ -59,6 +59,7 @@
     <!-- MVVM Toolkit -->
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.251219" />
     <PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.2.251219" />
     
     <!-- JSON pour les settings -->
@@ -88,6 +89,14 @@
     <Content Include="Assets\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <!-- Exclure les fichiers backup de la compilation -->
+  <ItemGroup>
+    <Compile Remove="Views\MainWindow_backup.xaml.cs" />
+    <Page Remove="Views\MainWindow_backup.xaml" />
+    <None Include="Views\MainWindow_backup.xaml" />
+    <None Include="Views\MainWindow_backup.xaml.cs" />
   </ItemGroup>
 
 </Project>
