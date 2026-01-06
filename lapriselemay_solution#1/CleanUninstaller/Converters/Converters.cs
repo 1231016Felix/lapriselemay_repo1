@@ -191,6 +191,27 @@ public partial class ProgramStatusToColorConverter : IValueConverter
 }
 
 /// <summary>
+/// Convertit une chaîne en Visibility (Visible si non vide, Collapsed sinon)
+/// </summary>
+public partial class StringToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var isEmpty = string.IsNullOrWhiteSpace(value?.ToString());
+        var invert = parameter is string s && s.Equals("Invert", StringComparison.OrdinalIgnoreCase);
+        
+        if (invert) isEmpty = !isEmpty;
+        
+        return isEmpty ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
 /// Convertit null en Visibility
 /// </summary>
 public partial class NullToVisibilityConverter : IValueConverter

@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Window
     x:Class="CleanUninstaller.Views.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -6,6 +6,7 @@
     xmlns:models="using:CleanUninstaller.Models"
     xmlns:local="using:CleanUninstaller.Views"
     xmlns:controls="using:CommunityToolkit.WinUI.Controls"
+    xmlns:ctControls="using:CommunityToolkit.WinUI.Controls"
     Title="Clean Uninstaller">
 
     <Window.SystemBackdrop>
@@ -13,6 +14,11 @@
     </Window.SystemBackdrop>
 
     <Grid>
+        <Grid.ChildrenTransitions>
+            <TransitionCollection>
+                <EntranceThemeTransition />
+            </TransitionCollection>
+        </Grid.ChildrenTransitions>
         
         <Grid.RowDefinitions>
             <RowDefinition Height="48" />
@@ -22,7 +28,7 @@
         </Grid.RowDefinitions>
 
         <!-- Title Bar -->
-        <Grid x:Name="AppTitleBar" Grid.Row="0" >
+        <Grid x:Name="AppTitleBar" Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -33,158 +39,169 @@
                 <TextBlock Text="Clean Uninstaller" 
                            Style="{StaticResource CaptionTextBlockStyle}"
                            VerticalAlignment="Center" />
-                <Border Background="{ThemeResource AccentFillColorDefaultBrush}" 
-                        CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                    <TextBlock Text="v1.0" Style="{StaticResource CaptionTextBlockStyle}" 
-                               Foreground="White" FontSize="10" />
-                </Border>
+                <InfoBadge Value="1" Style="{StaticResource AttentionValueInfoBadgeStyle}" 
+                           VerticalAlignment="Center" Visibility="Collapsed" />
             </StackPanel>
         </Grid>
 
-        <!-- Toolbar -->
-        <Grid Grid.Row="1" Padding="16,8" Background="{ThemeResource LayerFillColorDefaultBrush}">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+        <!-- CommandBar Toolbar -->
+        <CommandBar Grid.Row="1" 
+                    DefaultLabelPosition="Right"
+                    Background="{ThemeResource LayerFillColorDefaultBrush}"
+                    IsOpen="False">
+            <CommandBar.Content>
+                <AutoSuggestBox x:Name="SearchBox"
+                                PlaceholderText="Rechercher un programme..."
+                                QueryIcon="Find"
+                                TextChanged="SearchBox_TextChanged"
+                                Width="300"
+                                Margin="12,0" />
+            </CommandBar.Content>
+            
+            <AppBarButton x:Name="RefreshButton"
+                          Icon="Refresh"
+                          Label="Actualiser"
+                          Click="RefreshButton_Click"
+                          ToolTipService.ToolTip="Actualiser la liste (F5)"
+                          AccessKey="F5" />
 
-            <StackPanel Orientation="Horizontal" Spacing="4">
-                <Button x:Name="RefreshButton"
-                        Click="RefreshButton_Click"
-                        ToolTipService.ToolTip="Actualiser la liste (F5)"
-                        Style="{StaticResource SubtleButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE72C;" FontSize="14" />
-                        <TextBlock Text="Actualiser" />
-                    </StackPanel>
-                </Button>
+            <AppBarButton x:Name="UninstallButton"
+                          Label="Désinstaller"
+                          Click="UninstallButton_Click"
+                          ToolTipService.ToolTip="Désinstaller le programme sélectionné">
+                <AppBarButton.Icon>
+                    <FontIcon Glyph="&#xE74D;" />
+                </AppBarButton.Icon>
+                <AppBarButton.Flyout>
+                    <MenuFlyout Placement="Bottom">
+                        <MenuFlyoutItem Text="Désinstallation standard" Icon="Delete" Click="UninstallStandard_Click" />
+                        <MenuFlyoutItem Text="Désinstallation silencieuse" Click="UninstallSilent_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE74F;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Désinstallation forcée" Click="UninstallForced_Click"
+                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE7BA;" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Désinstaller la sélection" Click="UninstallBatch_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE762;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                    </MenuFlyout>
+                </AppBarButton.Flyout>
+            </AppBarButton>
 
-                <AppBarSeparator />
+            <AppBarSeparator />
 
-                <Button x:Name="UninstallButton"
-                        Click="UninstallButton_Click"
-                        Style="{StaticResource AccentButtonStyle}"
-                        ToolTipService.ToolTip="Désinstaller le programme sélectionné">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE74D;" FontSize="14" />
-                        <TextBlock Text="Désinstaller" />
-                    </StackPanel>
-                </Button>
+            <AppBarButton x:Name="ExportButton" 
+                          Icon="Save"
+                          Label="Exporter"
+                          Click="ExportButton_Click"
+                          ToolTipService.ToolTip="Exporter la liste des programmes" />
 
-                <DropDownButton x:Name="UninstallOptionsButton" ToolTipService.ToolTip="Options de désinstallation">
-                    <FontIcon Glyph="&#xE712;" FontSize="12" />
-                    <DropDownButton.Flyout>
-                        <MenuFlyout Placement="Bottom">
-                            <MenuFlyoutItem Text="Désinstallation standard" Icon="Delete" Click="UninstallStandard_Click" />
-                            <MenuFlyoutItem Text="Désinstallation silencieuse" Click="UninstallSilent_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE74F;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
+            <AppBarSeparator />
+
+            <AppBarButton Icon="Sort" Label="Trier">
+                <AppBarButton.Flyout>
+                    <MenuFlyout>
+                        <RadioMenuFlyoutItem x:Name="SortByNameItem" Text="Nom" IsChecked="True" Click="SortByName_Click" />
+                        <RadioMenuFlyoutItem x:Name="SortByPublisherItem" Text="Éditeur" Click="SortByPublisher_Click" />
+                        <RadioMenuFlyoutItem x:Name="SortBySizeItem" Text="Taille" Click="SortBySize_Click" />
+                        <RadioMenuFlyoutItem x:Name="SortByDateItem" Text="Date d'installation" Click="SortByDate_Click" />
+                        <MenuFlyoutSeparator />
+                        <ToggleMenuFlyoutItem x:Name="SortDescendingItem" Text="Ordre décroissant" Click="SortOrder_Click" />
+                    </MenuFlyout>
+                </AppBarButton.Flyout>
+            </AppBarButton>
+
+            <AppBarButton Label="Filtres">
+                <AppBarButton.Icon>
+                    <FontIcon Glyph="&#xE71C;" />
+                </AppBarButton.Icon>
+                <AppBarButton.Flyout>
+                    <MenuFlyout>
+                        <ToggleMenuFlyoutItem x:Name="ShowSystemAppsToggle" 
+                                              Text="Applications système"
+                                              Click="FilterChanged_Click" />
+                        <ToggleMenuFlyoutItem x:Name="ShowWindowsAppsToggle" 
+                                              Text="Applications Windows Store"
+                                              IsChecked="True"
+                                              Click="FilterChanged_Click" />
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutSubItem Text="Filtrer par taille">
+                            <RadioMenuFlyoutItem x:Name="SizeFilterAllItem" 
+                                                 Text="Toutes les tailles" 
+                                                 IsChecked="True"
+                                                 Click="SizeFilter_Click" Tag="All" />
                             <MenuFlyoutSeparator />
-                            <MenuFlyoutItem Text="Désinstallation forcée" Click="UninstallForced_Click"
-                                            Foreground="{ThemeResource SystemFillColorCriticalBrush}">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE7BA;" Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
+                            <RadioMenuFlyoutItem x:Name="SizeFilterSmallItem" 
+                                                 Text="Petit (&lt; 10 Mo)" 
+                                                 Click="SizeFilter_Click" Tag="Small" />
+                            <RadioMenuFlyoutItem x:Name="SizeFilterMediumItem" 
+                                                 Text="Moyen (10 - 100 Mo)" 
+                                                 Click="SizeFilter_Click" Tag="Medium" />
+                            <RadioMenuFlyoutItem x:Name="SizeFilterLargeItem" 
+                                                 Text="Grand (100 Mo - 1 Go)" 
+                                                 Click="SizeFilter_Click" Tag="Large" />
+                            <RadioMenuFlyoutItem x:Name="SizeFilterVeryLargeItem" 
+                                                 Text="Très grand (&gt; 1 Go)" 
+                                                 Click="SizeFilter_Click" Tag="VeryLarge" />
                             <MenuFlyoutSeparator />
-                            <MenuFlyoutItem Text="Désinstaller la sélection" Click="UninstallBatch_Click">
-                                <MenuFlyoutItem.Icon>
-                                    <FontIcon Glyph="&#xE762;" />
-                                </MenuFlyoutItem.Icon>
-                            </MenuFlyoutItem>
-                        </MenuFlyout>
-                    </DropDownButton.Flyout>
-                </DropDownButton>
+                            <RadioMenuFlyoutItem x:Name="SizeFilterUnknownItem" 
+                                                 Text="Taille inconnue" 
+                                                 Click="SizeFilter_Click" Tag="Unknown" />
+                        </MenuFlyoutSubItem>
+                        <MenuFlyoutSeparator />
+                        <MenuFlyoutItem Text="Réinitialiser les filtres" Click="ResetFilters_Click">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE72C;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                    </MenuFlyout>
+                </AppBarButton.Flyout>
+            </AppBarButton>
 
-                <AppBarSeparator />
+            <AppBarSeparator />
 
-                <Button x:Name="ExportButton" Click="ExportButton_Click"
-                        ToolTipService.ToolTip="Exporter la liste des programmes"
-                        Style="{StaticResource SubtleButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xEDE1;" FontSize="14" />
-                        <TextBlock Text="Exporter" />
-                    </StackPanel>
-                </Button>
-            </StackPanel>
+            <AppBarButton Label="Outils">
+                <AppBarButton.Icon>
+                    <FontIcon Glyph="&#xE90F;" />
+                </AppBarButton.Icon>
+                <AppBarButton.Flyout>
+                    <MenuFlyout>
+                        <MenuFlyoutItem Text="Programmes orphelins" 
+                                        Click="OrphanedPrograms_Click"
+                                        ToolTipService.ToolTip="Détecter et supprimer les entrées de registre orphelines">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE7BA;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                    </MenuFlyout>
+                </AppBarButton.Flyout>
+            </AppBarButton>
 
-            <AutoSuggestBox x:Name="SearchBox"
-                            Grid.Column="1" 
-                            PlaceholderText="Rechercher un programme..."
-                            QueryIcon="Find"
-                            TextChanged="SearchBox_TextChanged"
-                            MaxWidth="400"
-                            Margin="16,0" />
-
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
-                <DropDownButton Content="Trier" Style="{StaticResource SubtleButtonStyle}">
-                    <DropDownButton.Flyout>
-                        <MenuFlyout>
-                            <RadioMenuFlyoutItem x:Name="SortByNameItem" Text="Nom" IsChecked="True" Click="SortByName_Click" />
-                            <RadioMenuFlyoutItem x:Name="SortByPublisherItem" Text="Éditeur" Click="SortByPublisher_Click" />
-                            <RadioMenuFlyoutItem x:Name="SortBySizeItem" Text="Taille" Click="SortBySize_Click" />
-                            <RadioMenuFlyoutItem x:Name="SortByDateItem" Text="Date d'installation" Click="SortByDate_Click" />
-                            <MenuFlyoutSeparator />
-                            <ToggleMenuFlyoutItem x:Name="SortDescendingItem" Text="Ordre décroissant" Click="SortOrder_Click" />
-                        </MenuFlyout>
-                    </DropDownButton.Flyout>
-                </DropDownButton>
-
-                <DropDownButton Content="Filtres" Style="{StaticResource SubtleButtonStyle}">
-                    <DropDownButton.Flyout>
-                        <MenuFlyout>
-                            <ToggleMenuFlyoutItem x:Name="ShowSystemAppsToggle" 
-                                                  Text="Applications système"
-                                                  Click="FilterChanged_Click" />
-                            <ToggleMenuFlyoutItem x:Name="ShowWindowsAppsToggle" 
-                                                  Text="Applications Windows Store"
-                                                  IsChecked="True"
-                                                  Click="FilterChanged_Click" />
-                            <MenuFlyoutSeparator />
-                            <MenuFlyoutSubItem Text="Filtrer par taille">
-                                <RadioMenuFlyoutItem x:Name="SizeFilterAllItem" 
-                                                     Text="Toutes les tailles" 
-                                                     IsChecked="True"
-                                                     Click="SizeFilter_Click" Tag="All" />
-                                <MenuFlyoutSeparator />
-                                <RadioMenuFlyoutItem x:Name="SizeFilterSmallItem" 
-                                                     Text="Petit (&lt; 10 Mo)" 
-                                                     Click="SizeFilter_Click" Tag="Small" />
-                                <RadioMenuFlyoutItem x:Name="SizeFilterMediumItem" 
-                                                     Text="Moyen (10 - 100 Mo)" 
-                                                     Click="SizeFilter_Click" Tag="Medium" />
-                                <RadioMenuFlyoutItem x:Name="SizeFilterLargeItem" 
-                                                     Text="Grand (100 Mo - 1 Go)" 
-                                                     Click="SizeFilter_Click" Tag="Large" />
-                                <RadioMenuFlyoutItem x:Name="SizeFilterVeryLargeItem" 
-                                                     Text="Très grand (&gt; 1 Go)" 
-                                                     Click="SizeFilter_Click" Tag="VeryLarge" />
-                                <MenuFlyoutSeparator />
-                                <RadioMenuFlyoutItem x:Name="SizeFilterUnknownItem" 
-                                                     Text="Taille inconnue" 
-                                                     Click="SizeFilter_Click" Tag="Unknown" />
-                            </MenuFlyoutSubItem>
-                            <MenuFlyoutSeparator />
-                            <MenuFlyoutItem Text="Réinitialiser les filtres" Click="ResetFilters_Click" />
-                        </MenuFlyout>
-                    </DropDownButton.Flyout>
-                </DropDownButton>
-
-                <AppBarSeparator />
-
-                <Button x:Name="SettingsButton" Click="SettingsButton_Click"
-                        ToolTipService.ToolTip="Paramètres"
-                        Style="{StaticResource SubtleButtonStyle}">
-                    <FontIcon Glyph="&#xE713;" FontSize="16" />
-                </Button>
-            </StackPanel>
-        </Grid>
+            <CommandBar.SecondaryCommands>
+                <AppBarButton x:Name="SettingsButton" 
+                              Icon="Setting"
+                              Label="Paramètres"
+                              Click="SettingsButton_Click" />
+            </CommandBar.SecondaryCommands>
+        </CommandBar>
 
         <!-- Main Content -->
         <Grid Grid.Row="2">
+            <Grid.ChildrenTransitions>
+                <TransitionCollection>
+                    <ContentThemeTransition />
+                </TransitionCollection>
+            </Grid.ChildrenTransitions>
+            
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="ProgramListColumn" Width="*" MinWidth="450" />
                 <ColumnDefinition Width="Auto" />
@@ -204,7 +221,13 @@
                 <InfoBar x:Name="MainInfoBar" 
                          IsOpen="False" 
                          Severity="Informational"
-                         Margin="0,0,0,8" />
+                         Margin="0,0,0,8">
+                    <InfoBar.Transitions>
+                        <TransitionCollection>
+                            <AddDeleteThemeTransition />
+                        </TransitionCollection>
+                    </InfoBar.Transitions>
+                </InfoBar>
 
                 <Grid Grid.Row="1" Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
@@ -360,6 +383,12 @@
                           DoubleTapped="ProgramListView_DoubleTapped"
                           Loaded="ProgramListView_Loaded"
                           ContainerContentChanging="ProgramListView_ContainerContentChanging">
+                    <ListView.ItemContainerTransitions>
+                        <TransitionCollection>
+                            <AddDeleteThemeTransition />
+                            <ReorderThemeTransition />
+                        </TransitionCollection>
+                    </ListView.ItemContainerTransitions>
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem">
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -419,17 +448,19 @@
                                                TextTrimming="CharacterEllipsis"
                                                MaxLines="1" />
                                     
-                                    <!-- Badges -->
+                                    <!-- Badges avec texte -->
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="4,0,0,0">
                                         <Border Visibility="{x:Bind IsWindowsApp}"
                                                 Background="{ThemeResource AccentFillColorDefaultBrush}"
-                                                CornerRadius="3" Padding="4,1">
-                                            <TextBlock Text="S" FontSize="9" Foreground="White" />
+                                                CornerRadius="4" Padding="5,2"
+                                                ToolTipService.ToolTip="Application Windows Store">
+                                            <TextBlock Text="MS" FontSize="9" FontWeight="SemiBold" Foreground="White" />
                                         </Border>
                                         <Border Visibility="{x:Bind IsSystemComponent}"
                                                 Background="{ThemeResource SystemFillColorCautionBrush}"
-                                                CornerRadius="3" Padding="4,1">
-                                            <TextBlock Text="!" FontSize="9" />
+                                                CornerRadius="4" Padding="5,2"
+                                                ToolTipService.ToolTip="Composant système">
+                                            <TextBlock Text="SYS" FontSize="9" FontWeight="SemiBold" />
                                         </Border>
                                     </StackPanel>
                                     
@@ -479,6 +510,12 @@
                 <Grid x:Name="LoadingOverlay" 
                       Grid.Row="3" 
                       Visibility="Collapsed">
+                    <Grid.ChildrenTransitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition />
+                        </TransitionCollection>
+                    </Grid.ChildrenTransitions>
+                    
                     <!-- Fond semi-transparent avec effet de flou -->
                     <Border Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}" 
                             Opacity="0.95" />
@@ -521,33 +558,46 @@
 
             <!-- Details Panel -->
             <Grid Grid.Column="2" Padding="16">
+                <Grid.ChildrenTransitions>
+                    <TransitionCollection>
+                        <ContentThemeTransition HorizontalOffset="40" />
+                    </TransitionCollection>
+                </Grid.ChildrenTransitions>
+                
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Program Details -->
-                <StackPanel x:Name="DetailsPanel" Visibility="Collapsed">
-                    <Grid Margin="0,0,0,16">
+                <!-- Program Details avec SettingsCards -->
+                <StackPanel x:Name="DetailsPanel" Visibility="Collapsed" Spacing="12">
+                    <StackPanel.ChildrenTransitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition IsStaggeringEnabled="True" />
+                        </TransitionCollection>
+                    </StackPanel.ChildrenTransitions>
+                    
+                    <!-- Header avec icône et nom -->
+                    <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         
-                        <Grid Width="48" Height="48" Margin="0,0,12,0">
+                        <Grid Width="56" Height="56" Margin="0,0,16,0">
                             <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                                    CornerRadius="8">
-                                <FontIcon x:Name="DetailIconPlaceholder" Glyph="&#xE74C;" FontSize="24"
+                                    CornerRadius="12">
+                                <FontIcon x:Name="DetailIconPlaceholder" Glyph="&#xE74C;" FontSize="28"
                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </Border>
-                            <Image x:Name="DetailIcon" Width="44" Height="44" Stretch="Uniform" />
+                            <Image x:Name="DetailIcon" Width="48" Height="48" Stretch="Uniform" />
                         </Grid>
                         
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                             <TextBlock x:Name="DetailNameText"
                                        FontWeight="SemiBold"
-                                       FontSize="16"
+                                       FontSize="18"
                                        TextWrapping="Wrap"
                                        MaxLines="2" />
                             <TextBlock x:Name="DetailPublisherText"
@@ -555,93 +605,109 @@
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                     </Grid>
-                    
-                    <!-- Informations détaillées -->
-                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            CornerRadius="8" Padding="12" Margin="0,0,0,12">
-                        <StackPanel Spacing="8">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="100" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Version" Foreground="{ThemeResource TextFillColorSecondaryBrush}" 
-                                           Style="{StaticResource CaptionTextBlockStyle}" />
-                                <TextBlock x:Name="DetailVersionText" Grid.Column="1" 
-                                           Style="{StaticResource CaptionTextBlockStyle}" />
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="100" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Installé le" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           Style="{StaticResource CaptionTextBlockStyle}" />
-                                <TextBlock x:Name="DetailDateText" Grid.Column="1"
-                                           Style="{StaticResource CaptionTextBlockStyle}" />
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="100" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Taille" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           Style="{StaticResource CaptionTextBlockStyle}" />
-                                <TextBlock x:Name="DetailSizeText" Grid.Column="1"
-                                           Style="{StaticResource CaptionTextBlockStyle}" />
-                            </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="100" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Type" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                           Style="{StaticResource CaptionTextBlockStyle}" />
-                                <TextBlock x:Name="DetailTypeText" Grid.Column="1"
-                                           Style="{StaticResource CaptionTextBlockStyle}" />
-                            </Grid>
-                        </StackPanel>
-                    </Border>
 
-                    <!-- Emplacement -->
-                    <Expander Header="Emplacement" HorizontalAlignment="Stretch" Margin="0,0,0,12">
-                        <StackPanel Spacing="8" Padding="4">
-                            <TextBlock x:Name="DetailLocationText"
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       TextWrapping="Wrap"
-                                       IsTextSelectionEnabled="True" />
+                    <!-- SettingsCards pour les informations -->
+                    <ctControls:SettingsCard Header="Version" IsClickEnabled="False">
+                        <ctControls:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="&#xE8EC;" />
+                        </ctControls:SettingsCard.HeaderIcon>
+                        <TextBlock x:Name="DetailVersionText" 
+                                   Style="{StaticResource BodyTextBlockStyle}" />
+                    </ctControls:SettingsCard>
+
+                    <ctControls:SettingsCard Header="Date d'installation" IsClickEnabled="False">
+                        <ctControls:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="&#xE787;" />
+                        </ctControls:SettingsCard.HeaderIcon>
+                        <TextBlock x:Name="DetailDateText" 
+                                   Style="{StaticResource BodyTextBlockStyle}" />
+                    </ctControls:SettingsCard>
+
+                    <ctControls:SettingsCard Header="Taille" IsClickEnabled="False">
+                        <ctControls:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="&#xE7F8;" />
+                        </ctControls:SettingsCard.HeaderIcon>
+                        <TextBlock x:Name="DetailSizeText" 
+                                   Style="{StaticResource BodyTextBlockStyle}"
+                                   Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                   FontWeight="SemiBold" />
+                    </ctControls:SettingsCard>
+
+                    <ctControls:SettingsCard Header="Type d'installeur" IsClickEnabled="False">
+                        <ctControls:SettingsCard.HeaderIcon>
+                            <FontIcon Glyph="&#xE74C;" />
+                        </ctControls:SettingsCard.HeaderIcon>
+                        <TextBlock x:Name="DetailTypeText" 
+                                   Style="{StaticResource BodyTextBlockStyle}" />
+                    </ctControls:SettingsCard>
+
+                    <!-- Emplacement avec SettingsExpander -->
+                    <ctControls:SettingsExpander Header="Emplacement" IsExpanded="False">
+                        <ctControls:SettingsExpander.HeaderIcon>
+                            <FontIcon Glyph="&#xE8B7;" />
+                        </ctControls:SettingsExpander.HeaderIcon>
+                        <ctControls:SettingsExpander.Content>
                             <Button x:Name="OpenLocationButton" 
-                                    Content="Ouvrir le dossier"
+                                    Content="Ouvrir"
                                     Click="OpenLocationButton_Click"
-                                    HorizontalAlignment="Left" />
-                        </StackPanel>
-                    </Expander>
+                                    Style="{StaticResource AccentButtonStyle}" />
+                        </ctControls:SettingsExpander.Content>
+                        <ctControls:SettingsExpander.Items>
+                            <ctControls:SettingsCard HorizontalContentAlignment="Left">
+                                <TextBlock x:Name="DetailLocationText"
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           TextWrapping="Wrap"
+                                           IsTextSelectionEnabled="True"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </ctControls:SettingsCard>
+                        </ctControls:SettingsExpander.Items>
+                    </ctControls:SettingsExpander>
 
-                    <!-- Actions -->
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Content="Analyser les résidus..."
+                    <!-- Actions principales -->
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        
+                        <Button Content="Analyser les résidus"
                                 Click="ScanResidualsButton_Click"
-                                ToolTipService.ToolTip="Ouvre une fenêtre pour analyser et supprimer les résidus"
-                                Style="{StaticResource AccentButtonStyle}" />
+                                ToolTipService.ToolTip="Rechercher et supprimer les fichiers résiduels"
+                                Style="{StaticResource AccentButtonStyle}"
+                                HorizontalAlignment="Stretch" />
+                        
                         <Button x:Name="ModifyButton"
+                                Grid.Column="1"
                                 Content="Modifier"
                                 Click="ModifyButton_Click"
+                                Margin="8,0,0,0"
                                 Visibility="Collapsed" />
-                    </StackPanel>
+                    </Grid>
                 </StackPanel>
 
                 <!-- Placeholder -->
                 <StackPanel x:Name="PlaceholderPanel"
                             VerticalAlignment="Center"
                             HorizontalAlignment="Center"
-                            Spacing="8">
-                    <FontIcon Glyph="&#xE8A5;" FontSize="48" 
-                              Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                            Spacing="12">
+                    <StackPanel.ChildrenTransitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition />
+                        </TransitionCollection>
+                    </StackPanel.ChildrenTransitions>
+                    
+                    <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                            CornerRadius="50"
+                            Width="80" Height="80"
+                            HorizontalAlignment="Center">
+                        <FontIcon Glyph="&#xE8A5;" FontSize="36" 
+                                  Foreground="{ThemeResource TextFillColorTertiaryBrush}" />
+                    </Border>
                     <TextBlock Text="Sélectionnez un programme"
-                               Style="{StaticResource BodyTextBlockStyle}"
+                               Style="{StaticResource SubtitleTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                TextAlignment="Center" />
-                    <TextBlock Text="pour voir ses détails"
+                    <TextBlock Text="pour voir ses détails et options"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
                                TextAlignment="Center" />
@@ -652,6 +718,12 @@
                       Grid.Row="1" 
                       Margin="0,16,0,0"
                       Visibility="Collapsed">
+                    <Grid.ChildrenTransitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition />
+                        </TransitionCollection>
+                    </Grid.ChildrenTransitions>
+                    
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -678,26 +750,31 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- Légende confiance -->
+                    <!-- Légende confiance avec InfoBadge -->
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
                         <StackPanel Orientation="Horizontal" Spacing="4">
-                            <Ellipse Width="6" Height="8" Fill="#107C10" />
+                            <InfoBadge Style="{StaticResource SuccessIconInfoBadgeStyle}" Width="12" Height="12" />
                             <TextBlock Text="Très haute" Style="{StaticResource CaptionTextBlockStyle}" 
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="4">
-                            <Ellipse Width="6" Height="8" Fill="#498205" />
+                            <InfoBadge Style="{StaticResource InformationalIconInfoBadgeStyle}" Width="12" Height="12" />
                             <TextBlock Text="Haute" Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="4">
-                            <Ellipse Width="6" Height="8" Fill="#CA5010" />
+                            <InfoBadge Style="{StaticResource CautionIconInfoBadgeStyle}" Width="12" Height="12" />
                             <TextBlock Text="Moyenne" Style="{StaticResource CaptionTextBlockStyle}"
                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                     </StackPanel>
 
                     <ListView x:Name="ResidualsListView" Grid.Row="2" SelectionMode="None">
+                        <ListView.ItemContainerTransitions>
+                            <TransitionCollection>
+                                <AddDeleteThemeTransition />
+                            </TransitionCollection>
+                        </ListView.ItemContainerTransitions>
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
                                 <Setter Property="Padding" Value="0" />
@@ -758,6 +835,12 @@
                         Padding="12"
                         Margin="0,12,0,0"
                         Visibility="Collapsed">
+                    <Border.Transitions>
+                        <TransitionCollection>
+                            <EntranceThemeTransition />
+                        </TransitionCollection>
+                    </Border.Transitions>
+                    
                     <StackPanel Spacing="12">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -815,11 +898,28 @@
                          Visibility="Collapsed" />
         </Grid>
 
+        <!-- TeachingTip pour les nouveaux utilisateurs -->
+        <TeachingTip x:Name="WelcomeTeachingTip"
+                     Target="{x:Bind UninstallButton}"
+                     Title="Bienvenue dans Clean Uninstaller"
+                     Subtitle="Sélectionnez un programme et cliquez ici pour le désinstaller proprement. L'outil analysera ensuite les fichiers résiduels."
+                     PreferredPlacement="Bottom"
+                     IsLightDismissEnabled="True"
+                     CloseButtonContent="Compris !"
+                     ActionButtonContent="Ne plus afficher"
+                     ActionButtonClick="WelcomeTeachingTip_ActionButtonClick" />
+
         <!-- Uninstall Overlay -->
         <Grid x:Name="UninstallOverlay"
               Grid.RowSpan="4"
               Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
               Visibility="Collapsed">
+            <Grid.ChildrenTransitions>
+                <TransitionCollection>
+                    <EntranceThemeTransition />
+                </TransitionCollection>
+            </Grid.ChildrenTransitions>
+            
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     CornerRadius="12"
                     Padding="32"
@@ -855,4 +955,3 @@
         </Grid>
     </Grid>
 </Window>
-

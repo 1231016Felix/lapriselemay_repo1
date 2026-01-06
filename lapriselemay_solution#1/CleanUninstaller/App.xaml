@@ -17,6 +17,7 @@
             <converters:ConfidenceToColorConverter x:Key="ConfidenceToColor" />
             <converters:InstallerTypeToIconConverter x:Key="InstallerTypeToIcon" />
             <converters:StringToBrushConverter x:Key="StringToBrushConverter" />
+            <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter" />
 
             <!-- Couleurs personnalisées -->
             <SolidColorBrush x:Key="AccentBrush" Color="#0078D4" />

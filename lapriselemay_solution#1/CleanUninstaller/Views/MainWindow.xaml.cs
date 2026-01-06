@@ -58,6 +58,7 @@ public sealed partial class MainWindow : Window
 
     private bool _initialized;
     private bool _hasShownApproximateSizesDialog;
+    private const string TeachingTipShownKey = "WelcomeTeachingTipShown";
 
     private async void MainWindow_Activated(object sender, WindowActivatedEventArgs args)
     {
@@ -69,6 +70,46 @@ public sealed partial class MainWindow : Window
             ViewModel.XamlRoot = Content.XamlRoot;
             
             await LoadProgramsAsync();
+            
+            // Afficher le TeachingTip pour les nouveaux utilisateurs
+            ShowWelcomeTeachingTipIfNeeded();
+        }
+    }
+
+    private void ShowWelcomeTeachingTipIfNeeded()
+    {
+        try
+        {
+            var localSettings = Windows.Storage.ApplicationData.Current.LocalSettings;
+            if (localSettings.Values.TryGetValue(TeachingTipShownKey, out var shown) && (bool)shown)
+            {
+                return; // Déjà affiché
+            }
+            
+            // Afficher le TeachingTip après un court délai pour laisser le temps au UI de se charger
+            DispatcherQueue.TryEnqueue(async () =>
+            {
+                await Task.Delay(1500);
+                WelcomeTeachingTip.IsOpen = true;
+            });
+        }
+        catch
+        {
+            // Ignorer les erreurs de settings
+        }
+    }
+
+    private void WelcomeTeachingTip_ActionButtonClick(TeachingTip sender, object args)
+    {
+        try
+        {
+            var localSettings = Windows.Storage.ApplicationData.Current.LocalSettings;
+            localSettings.Values[TeachingTipShownKey] = true;
+            WelcomeTeachingTip.IsOpen = false;
+        }
+        catch
+        {
+            // Ignorer les erreurs de settings
         }
     }
 
@@ -497,6 +538,23 @@ public sealed partial class MainWindow : Window
     {
         var dialog = new SettingsDialog { XamlRoot = Content.XamlRoot };
         await dialog.ShowAsync();
+    }
+
+    private async void OrphanedPrograms_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OrphanedProgramsDialog { XamlRoot = Content.XamlRoot };
+        var result = await dialog.ShowAsync();
+        
+        if (dialog.CleanupPerformed)
+        {
+            ShowInfoBar(
+                "Nettoyage effectué", 
+                $"{dialog.CleanedCount} entrée(s) orpheline(s) supprimée(s) du registre.", 
+                InfoBarSeverity.Success);
+            
+            // Actualiser la liste des programmes au cas où
+            await LoadProgramsAsync();
+        }
     }
 
     #endregion
