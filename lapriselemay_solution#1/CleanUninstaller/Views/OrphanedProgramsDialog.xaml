@@ -19,7 +19,7 @@
         </Style>
     </ContentDialog.Resources>
 
-    <Grid Width="700" MaxHeight="550">
+    <Grid Width="850" MinWidth="850" MaxHeight="600">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -209,28 +209,34 @@
         </ListView>
 
         <!-- Message quand aucune entrée trouvée -->
-        <StackPanel x:Name="NoResultsPanel" 
-                    Grid.Row="3" 
-                    VerticalAlignment="Center"
-                    HorizontalAlignment="Center"
-                    Spacing="12"
-                    Visibility="Collapsed">
-            <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                    CornerRadius="50"
-                    Width="80" Height="80"
-                    HorizontalAlignment="Center">
-                <FontIcon Glyph="&#xE8FB;" FontSize="36" 
-                          Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
-            </Border>
-            <TextBlock Text="Aucune entrée orpheline détectée"
-                       Style="{StaticResource SubtitleTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       TextAlignment="Center" />
-            <TextBlock Text="Votre système est propre !"
-                       Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                       TextAlignment="Center" />
-        </StackPanel>
+        <Grid x:Name="NoResultsPanel" 
+              Grid.Row="3"
+              VerticalAlignment="Stretch"
+              Visibility="Collapsed">
+            <StackPanel VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Spacing="12">
+                <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                        CornerRadius="50"
+                        Width="80" Height="80"
+                        HorizontalAlignment="Center">
+                    <FontIcon Glyph="&#xE8FB;" FontSize="36" 
+                              Foreground="{ThemeResource SystemFillColorSuccessBrush}" />
+                </Border>
+                <TextBlock FontSize="20"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center">
+                    <Run Text="Aucune entrée orpheline"/><LineBreak/><Run Text="détectée"/>
+                </TextBlock>
+                <TextBlock Text="Votre système est propre !"
+                           FontSize="12"
+                           Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center" />
+            </StackPanel>
+        </Grid>
 
         <!-- Résumé du nettoyage -->
         <Border x:Name="SummaryPanel" 

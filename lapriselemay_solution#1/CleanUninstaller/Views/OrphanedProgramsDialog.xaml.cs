@@ -113,9 +113,8 @@ public sealed partial class OrphanedProgramsDialog : ContentDialog
                 NoResultsPanel.Visibility = Visibility.Visible;
                 IsSecondaryButtonEnabled = false;
                 
-                DescriptionInfoBar.Severity = InfoBarSeverity.Success;
-                DescriptionInfoBar.Title = "Système propre";
-                DescriptionInfoBar.Message = "Aucune entrée orpheline n'a été détectée dans votre registre.";
+                // Masquer l'InfoBar pour éviter la redondance avec NoResultsPanel
+                DescriptionInfoBar.IsOpen = false;
             }
         }
         catch (OperationCanceledException)

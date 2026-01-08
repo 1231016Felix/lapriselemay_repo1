@@ -22,6 +22,10 @@ public class OrphanedCleanupResult
 /// </summary>
 public partial class OrphanedProgramsService
 {
+    // Regex pour extraire les GUIDs
+    [GeneratedRegex(@"\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}", RegexOptions.Compiled)]
+    private static partial Regex GuidRegex();
+
     // Chemins de registre pour les programmes installés
     private static readonly (string Path, RegistryKey Root, string Source)[] UninstallRegistryPaths =
     [
@@ -40,6 +44,8 @@ public partial class OrphanedProgramsService
         "Visual Studio Installer",
         "VS Installer",
         "Windows SDK",
+        "Windows Software Development Kit",  // Nom complet du SDK
+        "Windows Kit",
         "Microsoft .NET",
         "Windows Desktop Runtime",
         "Microsoft ASP.NET",
@@ -53,7 +59,30 @@ public partial class OrphanedProgramsService
         "NVIDIA",
         "Intel",
         "AMD Software",
-        "Realtek"
+        "Realtek",
+        // Programmes courants avec désinstalleurs dans Package Cache
+        "AdGuard",
+        "qBittorrent",
+        "PotPlayer",
+        "Daum PotPlayer",
+        "Rustup",
+        "Rust",
+        "Visual Studio",
+        "Python",
+        "Node.js",
+        "Git for Windows",
+        "Git",
+        "CMake",
+        "7-Zip",
+        "WinRAR",
+        "VLC",
+        "Discord",
+        "Steam",
+        "Epic Games",
+        "OBS Studio",
+        "Notepad++",
+        "VSCode",
+        "Visual Studio Code"
     ];
 
     // Clés de registre exactes à ignorer (GUIDs connus pour des composants système)
@@ -90,6 +119,32 @@ public partial class OrphanedProgramsService
         ["Visual Studio Installer"] = [
             @"C:\Program Files (x86)\Microsoft Visual Studio\Installer",
             @"C:\Program Files\Microsoft Visual Studio\Installer"
+        ],
+        ["AdGuard"] = [
+            @"C:\Program Files\AdGuard",
+            @"C:\Program Files (x86)\AdGuard"
+        ],
+        ["qBittorrent"] = [
+            @"C:\Program Files\qBittorrent",
+            @"C:\Program Files (x86)\qBittorrent"
+        ],
+        ["PotPlayer"] = [
+            @"C:\Program Files\DAUM\PotPlayer",
+            @"C:\Program Files (x86)\DAUM\PotPlayer",
+            @"C:\Program Files\PotPlayer",
+            @"C:\Program Files (x86)\PotPlayer"
+        ],
+        ["Rustup"] = [
+            @"%USERPROFILE%\.rustup",
+            @"%USERPROFILE%\.cargo"
+        ],
+        ["Windows Software Development Kit"] = [
+            @"C:\Program Files (x86)\Windows Kits",
+            @"C:\Program Files\Windows Kits"
+        ],
+        ["Windows Kit"] = [
+            @"C:\Program Files (x86)\Windows Kits",
+            @"C:\Program Files\Windows Kits"
         ]
     };
 
@@ -269,6 +324,37 @@ public partial class OrphanedProgramsService
                 return null;
         }
 
+        // Vérification supplémentaire: si la chaîne de désinstallation contient des chemins connus
+        // mais qu'on n'a pas pu extraire le chemin, ne pas marquer comme orphelin
+        if (!string.IsNullOrWhiteSpace(uninstallString) && uninstallerPath == null)
+        {
+            // Vérifier si c'est un chemin Package Cache ou MSI
+            if (uninstallString.Contains("Package Cache", StringComparison.OrdinalIgnoreCase) ||
+                uninstallString.Contains("MsiExec", StringComparison.OrdinalIgnoreCase) ||
+                uninstallString.Contains("msiexec", StringComparison.OrdinalIgnoreCase))
+            {
+                // Essayer de valider en cherchant le programme dans les emplacements standards
+                if (ProgramExistsInStandardLocations(nameToCheck, keyName))
+                    return null;
+
+                // Pour les MSI, considérer comme probablement valide si le GUID existe
+                if (uninstallString.Contains("MsiExec", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Extraire le GUID du uninstallString
+                    var guidMatch = GuidRegex().Match(uninstallString);
+                    if (guidMatch.Success)
+                    {
+                        var guid = guidMatch.Value;
+                        if (IsMsiProductInstalled(guid))
+                            return null;
+                    }
+                    // Si c'est un MSI mais qu'on ne peut pas vérifier, ne pas marquer comme orphelin
+                    // car les MSI sont gérés par Windows Installer
+                    return null;
+                }
+            }
+        }
+
         // === PHASE 3: CLASSIFICATION DE L'ENTRÉE ORPHELINE ===
 
         var fullPath = $"{basePath}\\{keyName}";
@@ -319,7 +405,11 @@ public partial class OrphanedProgramsService
         // Vérifier les chemins connus par nom exact de clé
         if (KnownSystemPaths.TryGetValue(keyName, out var pathsByKey))
         {
-            if (pathsByKey.Any(p => Directory.Exists(p) && DirectoryHasContent(p)))
+            if (pathsByKey.Any(p => 
+            {
+                var expandedPath = Environment.ExpandEnvironmentVariables(p);
+                return Directory.Exists(expandedPath) && DirectoryHasContent(expandedPath);
+            }))
                 return true;
         }
 
@@ -329,12 +419,166 @@ public partial class OrphanedProgramsService
             if (displayName?.Contains(name, StringComparison.OrdinalIgnoreCase) == true ||
                 keyName.Contains(name, StringComparison.OrdinalIgnoreCase))
             {
-                if (paths.Any(p => Directory.Exists(p) && DirectoryHasContent(p)))
+                if (paths.Any(p => 
+                {
+                    var expandedPath = Environment.ExpandEnvironmentVariables(p);
+                    return Directory.Exists(expandedPath) && DirectoryHasContent(expandedPath);
+                }))
                     return true;
             }
         }
 
+        // Vérifier dans les emplacements d'installation standards
+        if (ProgramExistsInStandardLocations(displayName, keyName))
+            return true;
+
         return false;
+    }
+
+    /// <summary>
+    /// Vérifie si un programme existe dans les emplacements d'installation standards
+    /// </summary>
+    private bool ProgramExistsInStandardLocations(string? displayName, string keyName)
+    {
+        if (string.IsNullOrWhiteSpace(displayName) && string.IsNullOrWhiteSpace(keyName))
+            return false;
+
+        // Nom à rechercher (nettoyer les caractères spéciaux)
+        var searchName = !string.IsNullOrWhiteSpace(displayName) ? displayName : keyName;
+        
+        // Extraire le nom de base (sans version, architecture, etc.)
+        var baseName = ExtractProgramBaseName(searchName);
+        if (string.IsNullOrWhiteSpace(baseName))
+            return false;
+
+        // Emplacements standards à vérifier
+        var standardPaths = new[]
+        {
+            @"C:\Program Files",
+            @"C:\Program Files (x86)",
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)),
+            @"C:\ProgramData"
+        };
+
+        foreach (var basePath in standardPaths)
+        {
+            if (!Directory.Exists(basePath))
+                continue;
+
+            try
+            {
+                // Chercher un dossier qui correspond au nom du programme
+                var matchingDirs = Directory.EnumerateDirectories(basePath)
+                    .Where(d => 
+                    {
+                        var dirName = Path.GetFileName(d);
+                        return dirName.Contains(baseName, StringComparison.OrdinalIgnoreCase) ||
+                               baseName.Contains(dirName, StringComparison.OrdinalIgnoreCase);
+                    })
+                    .Take(1);  // On ne cherche que le premier
+
+                foreach (var dir in matchingDirs)
+                {
+                    if (DirectoryHasContent(dir))
+                        return true;
+                }
+            }
+            catch
+            {
+                // Ignorer les erreurs d'accès
+            }
+        }
+
+        // Vérifier spécifiquement dans Package Cache (pour les installeurs)
+        var packageCachePath = @"C:\ProgramData\Package Cache";
+        if (Directory.Exists(packageCachePath))
+        {
+            try
+            {
+                // Vérifier si un désinstalleur existe dans Package Cache pour ce programme
+                foreach (var cacheDir in Directory.EnumerateDirectories(packageCachePath))
+                {
+                    try
+                    {
+                        // Chercher des fichiers d'installation qui correspondent
+                        var files = Directory.EnumerateFiles(cacheDir, "*.exe", SearchOption.TopDirectoryOnly)
+                            .Concat(Directory.EnumerateFiles(cacheDir, "*.msi", SearchOption.TopDirectoryOnly));
+
+                        foreach (var file in files)
+                        {
+                            var fileName = Path.GetFileNameWithoutExtension(file);
+                            if (fileName.Contains(baseName, StringComparison.OrdinalIgnoreCase) ||
+                                baseName.Contains(fileName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+
+        // Vérifier dans les dossiers utilisateur courants
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var userPaths = new[]
+        {
+            Path.Combine(userProfile, ".cargo"),      // Rust/Rustup
+            Path.Combine(userProfile, ".rustup"),    // Rustup
+            Path.Combine(userProfile, "scoop"),      // Scoop
+            Path.Combine(userProfile, ".local"),     // Linux-style apps
+        };
+
+        foreach (var path in userPaths)
+        {
+            if (Directory.Exists(path))
+            {
+                // Vérifier si le nom du dossier correspond au programme
+                var folderName = Path.GetFileName(path).TrimStart('.');
+                if (searchName.Contains(folderName, StringComparison.OrdinalIgnoreCase) ||
+                    searchName.Contains("rust", StringComparison.OrdinalIgnoreCase) && path.Contains("rust", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Extrait le nom de base d'un programme (sans version, architecture, etc.)
+    /// </summary>
+    private string ExtractProgramBaseName(string programName)
+    {
+        if (string.IsNullOrWhiteSpace(programName))
+            return "";
+
+        var name = programName;
+
+        // Supprimer les patterns courants
+        var patternsToRemove = new[]
+        {
+            @"\s*\(x64\)",
+            @"\s*\(x86\)",
+            @"\s*\(64[- ]?bit\)",
+            @"\s*\(32[- ]?bit\)",
+            @"\s*64[- ]?bit",
+            @"\s*32[- ]?bit",
+            @"\s*-\s*Windows\s*\d+.*$",  // Ex: "- Windows 10.0.22621.5040"
+            @"\s+v?\d+\.\d+.*$",         // Versions
+            @"\s+\d+\.\d+\.\d+.*$",      // Versions longues
+        };
+
+        foreach (var pattern in patternsToRemove)
+        {
+            name = Regex.Replace(name, pattern, "", RegexOptions.IgnoreCase);
+        }
+
+        return name.Trim();
     }
 
     /// <summary>
@@ -430,6 +674,7 @@ public partial class OrphanedProgramsService
 
     /// <summary>
     /// Extrait le chemin de l'exécutable d'une chaîne de commande
+    /// Gère les chemins avec espaces (Program Files, Package Cache, etc.)
     /// </summary>
     private string? ExtractExecutablePath(string? commandLine)
     {
@@ -446,18 +691,116 @@ public partial class OrphanedProgramsService
                 return cleaned[1..endQuote];
         }
 
-        // Cas 2: MsiExec
+        // Cas 2: MsiExec - géré séparément
         if (cleaned.StartsWith("MsiExec", StringComparison.OrdinalIgnoreCase))
         {
-            return null; // MSI géré séparément
+            return null;
         }
 
-        // Cas 3: Chemin simple jusqu'au premier espace
+        // Cas 3: rundll32 - extraire la DLL
+        if (cleaned.StartsWith("rundll32", StringComparison.OrdinalIgnoreCase))
+        {
+            // Format: rundll32.exe "path.dll",EntryPoint ou rundll32.exe path.dll,EntryPoint
+            var afterRundll = cleaned.IndexOf("rundll32", StringComparison.OrdinalIgnoreCase) + 8;
+            if (afterRundll < cleaned.Length)
+            {
+                var rest = cleaned[afterRundll..].TrimStart('.', 'e', 'x', 'E', 'X', ' ');
+                if (rest.StartsWith('"'))
+                {
+                    var endQ = rest.IndexOf('"', 1);
+                    if (endQ > 1) return rest[1..endQ];
+                }
+                else
+                {
+                    var commaIdx = rest.IndexOf(',');
+                    if (commaIdx > 0) return rest[..commaIdx].Trim();
+                }
+            }
+            return null;
+        }
+
+        // Cas 4: Chemin avec extensions connues (.exe, .cmd, .bat, .msi)
+        // Chercher la fin de l'exécutable plutôt que le premier espace
+        var extensions = new[] { ".exe", ".cmd", ".bat", ".msi", ".com" };
+        foreach (var ext in extensions)
+        {
+            var extIndex = cleaned.IndexOf(ext, StringComparison.OrdinalIgnoreCase);
+            if (extIndex > 0)
+            {
+                // Vérifier si c'est vraiment la fin du chemin (suivi d'espace, de guillemet ou fin de chaîne)
+                var endIndex = extIndex + ext.Length;
+                if (endIndex >= cleaned.Length || 
+                    cleaned[endIndex] == ' ' || 
+                    cleaned[endIndex] == '"' ||
+                    cleaned[endIndex] == '/')
+                {
+                    var path = cleaned[..endIndex];
+                    // Nettoyer le chemin
+                    return path.TrimStart('"').TrimEnd('"');
+                }
+            }
+        }
+
+        // Cas 5: Chemin sans extension explicite - essayer de trouver un chemin valide
+        // Tester des préfixes connus avec espaces
+        var knownPrefixes = new[]
+        {
+            @"C:\Program Files (x86)\",
+            @"C:\Program Files\",
+            @"C:\ProgramData\Package Cache\",
+            @"C:\ProgramData\",
+            @"C:\Users\"
+        };
+
+        foreach (var prefix in knownPrefixes)
+        {
+            if (cleaned.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                // Trouver la fin du chemin en cherchant une extension
+                foreach (var ext in extensions)
+                {
+                    var idx = cleaned.IndexOf(ext, StringComparison.OrdinalIgnoreCase);
+                    if (idx > prefix.Length)
+                    {
+                        return cleaned[..(idx + ext.Length)];
+                    }
+                }
+            }
+        }
+
+        // Cas 6: Fallback - retourner le chemin entier si c'est un chemin simple
+        // Ne pas couper au premier espace si le chemin contient des répertoires connus
+        if (cleaned.Contains("Program Files", StringComparison.OrdinalIgnoreCase) ||
+            cleaned.Contains("Package Cache", StringComparison.OrdinalIgnoreCase) ||
+            cleaned.Contains("AppData", StringComparison.OrdinalIgnoreCase))
+        {
+            // Essayer de trouver la fin du chemin
+            foreach (var ext in extensions)
+            {
+                var idx = cleaned.IndexOf(ext, StringComparison.OrdinalIgnoreCase);
+                if (idx > 0)
+                {
+                    return cleaned[..(idx + ext.Length)];
+                }
+            }
+        }
+
+        // Cas 7: Dernier recours - chemin simple jusqu'au premier espace
+        // Mais seulement si le chemin ne contient pas de répertoires connus avec espaces
         var spaceIndex = cleaned.IndexOf(' ');
         if (spaceIndex > 0)
-            return cleaned[..spaceIndex];
+        {
+            var beforeSpace = cleaned[..spaceIndex];
+            // Vérifier si c'est un chemin tronqué invalide
+            if (beforeSpace.EndsWith(@"\Program", StringComparison.OrdinalIgnoreCase) ||
+                beforeSpace.EndsWith(@"\ProgramData\Package", StringComparison.OrdinalIgnoreCase))
+            {
+                // Chemin tronqué, retourner null pour ne pas avoir un faux positif
+                return null;
+            }
+            return beforeSpace;
+        }
 
-        // Cas 4: Chemin sans arguments
         return cleaned;
     }
 
