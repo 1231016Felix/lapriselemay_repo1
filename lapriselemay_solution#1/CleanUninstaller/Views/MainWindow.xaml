@@ -19,7 +19,7 @@
                 <EntranceThemeTransition />
             </TransitionCollection>
         </Grid.ChildrenTransitions>
-        
+
         <Grid.RowDefinitions>
             <RowDefinition Height="48" />
             <RowDefinition Height="Auto" />
@@ -27,13 +27,12 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Title Bar -->
         <Grid x:Name="AppTitleBar" Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            
+
             <StackPanel Orientation="Horizontal" Spacing="12" Margin="16,0">
                 <FontIcon Glyph="&#xE74D;" FontSize="18" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                 <TextBlock Text="Clean Uninstaller" 
@@ -44,7 +43,6 @@
             </StackPanel>
         </Grid>
 
-        <!-- CommandBar Toolbar -->
         <CommandBar Grid.Row="1" 
                     DefaultLabelPosition="Right"
                     Background="{ThemeResource LayerFillColorDefaultBrush}"
@@ -57,7 +55,7 @@
                                 Width="300"
                                 Margin="12,0" />
             </CommandBar.Content>
-            
+
             <AppBarButton x:Name="RefreshButton"
                           Icon="Refresh"
                           Label="Actualiser"
@@ -194,21 +192,19 @@
             </CommandBar.SecondaryCommands>
         </CommandBar>
 
-        <!-- Main Content -->
         <Grid Grid.Row="2">
             <Grid.ChildrenTransitions>
                 <TransitionCollection>
                     <ContentThemeTransition />
                 </TransitionCollection>
             </Grid.ChildrenTransitions>
-            
+
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="ProgramListColumn" Width="*" MinWidth="450" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition x:Name="DetailsPanelColumn" Width="380" MinWidth="280" MaxWidth="600" />
             </Grid.ColumnDefinitions>
 
-            <!-- Program List -->
             <Grid Padding="16">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -217,7 +213,6 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <!-- InfoBar pour les messages -->
                 <InfoBar x:Name="MainInfoBar" 
                          IsOpen="False" 
                          Severity="Informational"
@@ -254,21 +249,19 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- En-tête de colonnes -->
                 <Grid x:Name="HeaderGrid" Grid.Row="2" Margin="8,0,8,4" Padding="8,6">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="32" />          <!-- Checkbox -->
-                        <ColumnDefinition Width="40" />          <!-- Icône -->
+                        <ColumnDefinition Width="32" />
+                        <ColumnDefinition Width="40" />
                         <ColumnDefinition x:Name="NameColumn" Width="*" MinWidth="80" />
-                        <ColumnDefinition Width="3" />           <!-- Splitter -->
+                        <ColumnDefinition Width="3" />
                         <ColumnDefinition x:Name="PublisherColumn" Width="100" MinWidth="40" />
-                        <ColumnDefinition Width="3" />           <!-- Splitter -->
+                        <ColumnDefinition Width="3" />
                         <ColumnDefinition x:Name="DateColumn" Width="75" MinWidth="40" />
-                        <ColumnDefinition Width="3" />           <!-- Splitter -->
+                        <ColumnDefinition Width="3" />
                         <ColumnDefinition x:Name="SizeColumn" Width="60" MinWidth="40" />
                     </Grid.ColumnDefinitions>
-                    
-                    <!-- Nom -->
+
                     <Button Grid.Column="2" 
                             Style="{StaticResource SubtleButtonStyle}"
                             HorizontalAlignment="Left"
@@ -286,8 +279,7 @@
                                       Visibility="Visible" />
                         </StackPanel>
                     </Button>
-                    
-                    <!-- Splitter Nom/Éditeur -->
+
                     <controls:GridSplitter Grid.Column="3" 
                                            Width="3"
                                            ResizeBehavior="BasedOnAlignment"
@@ -296,8 +288,7 @@
                                            PointerPressed="GridSplitter_PointerPressed"
                                            PointerReleased="GridSplitter_PointerReleased"
                                            PointerCaptureLost="GridSplitter_PointerReleased" />
-                    
-                    <!-- Éditeur -->
+
                     <Button Grid.Column="4" 
                             Style="{StaticResource SubtleButtonStyle}"
                             HorizontalAlignment="Left"
@@ -315,8 +306,7 @@
                                       Visibility="Collapsed" />
                         </StackPanel>
                     </Button>
-                    
-                    <!-- Splitter Éditeur/Date -->
+
                     <controls:GridSplitter Grid.Column="5" 
                                            Width="3"
                                            ResizeBehavior="BasedOnAlignment"
@@ -325,8 +315,7 @@
                                            PointerPressed="GridSplitter_PointerPressed"
                                            PointerReleased="GridSplitter_PointerReleased"
                                            PointerCaptureLost="GridSplitter_PointerReleased" />
-                    
-                    <!-- Date d'installation -->
+
                     <Button Grid.Column="6" 
                             Style="{StaticResource SubtleButtonStyle}"
                             HorizontalAlignment="Left"
@@ -344,8 +333,7 @@
                                       Visibility="Collapsed" />
                         </StackPanel>
                     </Button>
-                    
-                    <!-- Splitter Date/Taille -->
+
                     <controls:GridSplitter Grid.Column="7" 
                                            Width="3"
                                            ResizeBehavior="BasedOnAlignment"
@@ -354,8 +342,7 @@
                                            PointerPressed="GridSplitter_PointerPressed"
                                            PointerReleased="GridSplitter_PointerReleased"
                                            PointerCaptureLost="GridSplitter_PointerReleased" />
-                    
-                    <!-- Taille -->
+
                     <Button x:Name="SizeColumnHeader"
                             Grid.Column="8" 
                             Style="{StaticResource SubtleButtonStyle}"
@@ -391,31 +378,31 @@
                     </ListView.ItemContainerTransitions>
                     <ListView.ItemContainerStyle>
                         <Style TargetType="ListViewItem">
+                            <Setter Property="VerticalContentAlignment" Value="Center" />
                             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             <Setter Property="Padding" Value="0" />
                         </Style>
                     </ListView.ItemContainerStyle>
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="models:InstalledProgram">
-                            <Grid x:Name="ItemGrid" Padding="8,6"
+                            <Grid x:Name="ItemGrid" Padding="8,6" VerticalAlignment="Center"
                                   ToolTipService.ToolTip="{x:Bind InstallerType}">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="32" />     <!-- Checkbox -->
-                                    <ColumnDefinition Width="40" />     <!-- Icône -->
-                                    <ColumnDefinition Width="*" MinWidth="80" />  <!-- Nom -->
-                                    <ColumnDefinition Width="3" />      <!-- Splitter space -->
-                                    <ColumnDefinition Width="100" MinWidth="40" /> <!-- Éditeur -->
-                                    <ColumnDefinition Width="3" />      <!-- Splitter space -->
-                                    <ColumnDefinition Width="75" MinWidth="40" /> <!-- Date -->
-                                    <ColumnDefinition Width="3" />      <!-- Splitter space -->
-                                    <ColumnDefinition Width="60" MinWidth="40" />  <!-- Taille -->
+                                    <ColumnDefinition Width="32" />
+                                    <ColumnDefinition Width="40" />
+                                    <ColumnDefinition Width="*" MinWidth="80" />
+                                    <ColumnDefinition Width="3" />
+                                    <ColumnDefinition Width="100" MinWidth="40" />
+                                    <ColumnDefinition Width="3" />
+                                    <ColumnDefinition Width="75" MinWidth="40" />
+                                    <ColumnDefinition Width="3" />
+                                    <ColumnDefinition Width="60" MinWidth="40" />
                                 </Grid.ColumnDefinitions>
 
                                 <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}"
                                           VerticalAlignment="Center"
                                           MinWidth="0" />
 
-                                <!-- Icône du programme -->
                                 <Grid Grid.Column="1" Width="28" Height="28" VerticalAlignment="Center">
                                     <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                             CornerRadius="4"
@@ -430,7 +417,6 @@
                                            Visibility="{x:Bind IconVisibility, Mode=OneWay}" />
                                 </Grid>
 
-                                <!-- Nom et badges -->
                                 <Grid Grid.Column="2" VerticalAlignment="Center"
                                       ToolTipService.ToolTip="{x:Bind DisplayName}">
                                     <Grid.RowDefinitions>
@@ -441,14 +427,13 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    
+
                                     <TextBlock Text="{x:Bind DisplayName}" 
                                                FontWeight="SemiBold"
                                                FontSize="13"
                                                TextTrimming="CharacterEllipsis"
                                                MaxLines="1" />
-                                    
-                                    <!-- Badges avec texte -->
+
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="4,0,0,0">
                                         <Border Visibility="{x:Bind IsWindowsApp}"
                                                 Background="{ThemeResource AccentFillColorDefaultBrush}"
@@ -463,7 +448,7 @@
                                             <TextBlock Text="SYS" FontSize="9" FontWeight="SemiBold" />
                                         </Border>
                                     </StackPanel>
-                                    
+
                                     <TextBlock Grid.Row="1" Grid.ColumnSpan="2"
                                                Text="{x:Bind Version}" 
                                                Style="{StaticResource CaptionTextBlockStyle}"
@@ -472,7 +457,6 @@
                                                TextTrimming="CharacterEllipsis" />
                                 </Grid>
 
-                                <!-- Éditeur -->
                                 <TextBlock Grid.Column="4" 
                                            Text="{x:Bind Publisher}" 
                                            FontSize="12"
@@ -482,7 +466,6 @@
                                            VerticalAlignment="Center"
                                            ToolTipService.ToolTip="{x:Bind Publisher}" />
 
-                                <!-- Date d'installation -->
                                 <TextBlock Grid.Column="6" 
                                            Text="{x:Bind FormattedInstallDate}" 
                                            FontSize="12"
@@ -490,7 +473,6 @@
                                            TextTrimming="CharacterEllipsis"
                                            VerticalAlignment="Center" />
 
-                                <!-- Taille -->
                                 <Border Grid.Column="8" 
                                         Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                         CornerRadius="3"
@@ -506,7 +488,6 @@
                     </ListView.ItemTemplate>
                 </ListView>
 
-                <!-- Loading overlay avec fond flou -->
                 <Grid x:Name="LoadingOverlay" 
                       Grid.Row="3" 
                       Visibility="Collapsed">
@@ -515,12 +496,10 @@
                             <EntranceThemeTransition />
                         </TransitionCollection>
                     </Grid.ChildrenTransitions>
-                    
-                    <!-- Fond semi-transparent avec effet de flou -->
+
                     <Border Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}" 
                             Opacity="0.95" />
-                    
-                    <!-- Panneau de chargement avec fond solide pour lisibilité -->
+
                     <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             CornerRadius="12"
                             Padding="32"
@@ -549,42 +528,38 @@
                 </Grid>
             </Grid>
 
-            <!-- GridSplitter pour redimensionner les panneaux -->
             <controls:GridSplitter Grid.Column="1" 
                                    Width="6"
                                    ResizeBehavior="BasedOnAlignment"
                                    ResizeDirection="Columns"
                                    Background="{ThemeResource ControlStrongFillColorDefaultBrush}" />
 
-            <!-- Details Panel -->
             <Grid Grid.Column="2" Padding="16">
                 <Grid.ChildrenTransitions>
                     <TransitionCollection>
                         <ContentThemeTransition HorizontalOffset="40" />
                     </TransitionCollection>
                 </Grid.ChildrenTransitions>
-                
+
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Program Details avec SettingsCards -->
                 <StackPanel x:Name="DetailsPanel" Visibility="Collapsed" Spacing="12">
                     <StackPanel.ChildrenTransitions>
                         <TransitionCollection>
                             <EntranceThemeTransition IsStaggeringEnabled="True" />
                         </TransitionCollection>
                     </StackPanel.ChildrenTransitions>
-                    
-                    <!-- Header avec icône et nom -->
+
                     <Grid Margin="0,0,0,8">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        
+
                         <Grid Width="56" Height="56" Margin="0,0,16,0">
                             <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                                     CornerRadius="12">
@@ -593,7 +568,7 @@
                             </Border>
                             <Image x:Name="DetailIcon" Width="48" Height="48" Stretch="Uniform" />
                         </Grid>
-                        
+
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                             <TextBlock x:Name="DetailNameText"
                                        FontWeight="SemiBold"
@@ -606,7 +581,6 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- SettingsCards pour les informations -->
                     <ctControls:SettingsCard Header="Version" IsClickEnabled="False">
                         <ctControls:SettingsCard.HeaderIcon>
                             <FontIcon Glyph="&#xE8EC;" />
@@ -641,7 +615,6 @@
                                    Style="{StaticResource BodyTextBlockStyle}" />
                     </ctControls:SettingsCard>
 
-                    <!-- Emplacement avec SettingsExpander -->
                     <ctControls:SettingsExpander Header="Emplacement" IsExpanded="False">
                         <ctControls:SettingsExpander.HeaderIcon>
                             <FontIcon Glyph="&#xE8B7;" />
@@ -663,19 +636,18 @@
                         </ctControls:SettingsExpander.Items>
                     </ctControls:SettingsExpander>
 
-                    <!-- Actions principales -->
                     <Grid Margin="0,8,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
-                        
+
                         <Button Content="Analyser les résidus"
                                 Click="ScanResidualsButton_Click"
                                 ToolTipService.ToolTip="Rechercher et supprimer les fichiers résiduels"
                                 Style="{StaticResource AccentButtonStyle}"
                                 HorizontalAlignment="Stretch" />
-                        
+
                         <Button x:Name="ModifyButton"
                                 Grid.Column="1"
                                 Content="Modifier"
@@ -685,7 +657,6 @@
                     </Grid>
                 </StackPanel>
 
-                <!-- Placeholder -->
                 <StackPanel x:Name="PlaceholderPanel"
                             VerticalAlignment="Center"
                             HorizontalAlignment="Center"
@@ -695,7 +666,7 @@
                             <EntranceThemeTransition />
                         </TransitionCollection>
                     </StackPanel.ChildrenTransitions>
-                    
+
                     <Border Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
                             CornerRadius="50"
                             Width="80" Height="80"
@@ -713,7 +684,6 @@
                                TextAlignment="Center" />
                 </StackPanel>
 
-                <!-- Residuals List -->
                 <Grid x:Name="ResidualsPanel" 
                       Grid.Row="1" 
                       Margin="0,16,0,0"
@@ -723,7 +693,7 @@
                             <EntranceThemeTransition />
                         </TransitionCollection>
                     </Grid.ChildrenTransitions>
-                    
+
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -750,7 +720,6 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- Légende confiance avec InfoBadge -->
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,8">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <InfoBadge Style="{StaticResource SuccessIconInfoBadgeStyle}" Width="12" Height="12" />
@@ -794,11 +763,9 @@
 
                                     <CheckBox IsChecked="{x:Bind IsSelected, Mode=TwoWay}" MinWidth="20" VerticalAlignment="Center" />
 
-                                    <!-- Indicateur de confiance avec convertisseur -->
                                     <Border Grid.Column="1" 
                                             Width="4" 
                                             CornerRadius="2"
-                                            
                                             Background="{x:Bind ConfidenceBrush}" />
 
                                     <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center" Margin="4,0,0,0">
@@ -827,7 +794,6 @@
                     </ListView>
                 </Grid>
 
-                <!-- Cleanup Actions -->
                 <Border x:Name="CleanupActionsPanel" 
                         Grid.Row="2"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -840,7 +806,7 @@
                             <EntranceThemeTransition />
                         </TransitionCollection>
                     </Border.Transitions>
-                    
+
                     <StackPanel Spacing="12">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -866,7 +832,6 @@
             </Grid>
         </Grid>
 
-        <!-- Status Bar -->
         <Grid Grid.Row="3" 
               Padding="16,10"
               Background="{ThemeResource LayerFillColorDefaultBrush}"
@@ -898,7 +863,6 @@
                          Visibility="Collapsed" />
         </Grid>
 
-        <!-- TeachingTip pour les nouveaux utilisateurs -->
         <TeachingTip x:Name="WelcomeTeachingTip"
                      Target="{x:Bind UninstallButton}"
                      Title="Bienvenue dans Clean Uninstaller"
@@ -909,7 +873,6 @@
                      ActionButtonContent="Ne plus afficher"
                      ActionButtonClick="WelcomeTeachingTip_ActionButtonClick" />
 
-        <!-- Uninstall Overlay -->
         <Grid x:Name="UninstallOverlay"
               Grid.RowSpan="4"
               Background="{ThemeResource AcrylicBackgroundFillColorDefaultBrush}"
@@ -919,7 +882,7 @@
                     <EntranceThemeTransition />
                 </TransitionCollection>
             </Grid.ChildrenTransitions>
-            
+
             <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                     CornerRadius="12"
                     Padding="32"
