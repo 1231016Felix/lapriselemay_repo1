@@ -14,15 +14,20 @@ public static class LaunchService
             {
                 case ResultType.Application:
                 case ResultType.File:
-                    StartProcess(item.Path);
+                    LaunchApplication(item.Path);
                     break;
                 
                 case ResultType.StoreApp:
-                    StoreAppService.LaunchApp(item.Path);
+                    // Utiliser shell:AppsFolder pour toutes les apps de AppsFolder
+                    if (!StoreAppService.LaunchApp(item.Path))
+                    {
+                        // Fallback: essayer de lancer directement
+                        LaunchApplication(item.Path);
+                    }
                     break;
                     
                 case ResultType.Folder:
-                    StartProcess("explorer.exe", item.Path);
+                    StartProcess("explorer.exe", $"\"{item.Path}\"");
                     break;
                     
                 case ResultType.Script:
@@ -46,6 +51,43 @@ public static class LaunchService
         {
             Debug.WriteLine($"Erreur lancement: {ex.Message}");
         }
+    }
+
+    private static void LaunchApplication(string path)
+    {
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        
+        // Pour les fichiers .lnk, résoudre le raccourci si nécessaire
+        if (ext == ".lnk")
+        {
+            var info = ShortcutHelper.ResolveShortcut(path);
+            if (info != null && !string.IsNullOrEmpty(info.TargetPath))
+            {
+                // Vérifier si la cible existe
+                if (File.Exists(info.TargetPath) || Directory.Exists(info.TargetPath))
+                {
+                    var workingDir = !string.IsNullOrEmpty(info.WorkingDirectory) 
+                        ? info.WorkingDirectory 
+                        : Path.GetDirectoryName(info.TargetPath);
+                    
+                    if (!string.IsNullOrEmpty(info.Arguments))
+                        StartProcess(info.TargetPath, info.Arguments, workingDir);
+                    else
+                        StartProcess(info.TargetPath, workingDirectory: workingDir);
+                    return;
+                }
+                
+                // La cible n'existe pas mais c'est peut-être une URL ou un protocole
+                if (info.TargetPath.Contains("://") || info.TargetPath.StartsWith("steam:"))
+                {
+                    StartProcess(info.TargetPath);
+                    return;
+                }
+            }
+        }
+        
+        // Lancement direct (fonctionne pour .exe, .lnk avec UseShellExecute, URLs, etc.)
+        StartProcess(path);
     }
 
     private static void LaunchScript(SearchResult item)

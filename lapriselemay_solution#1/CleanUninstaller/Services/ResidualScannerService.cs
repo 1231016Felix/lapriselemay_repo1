@@ -7,9 +7,144 @@ namespace CleanUninstaller.Services;
 /// <summary>
 /// Service de scan des résidus avancé inspiré de BCUninstaller
 /// Détecte les fichiers, dossiers, clés de registre, services et tâches planifiées orphelins
+/// SÉCURISÉ: Protège les fichiers système, SDK, et outils de développement
 /// </summary>
 public partial class ResidualScannerService
 {
+    #region Protected Paths and Folders - CRITICAL SAFETY
+
+    /// <summary>
+    /// Dossiers ABSOLUMENT protégés - Ne jamais suggérer leur suppression
+    /// </summary>
+    private static readonly HashSet<string> ProtectedFolderNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Windows Core
+        "Windows", "System32", "SysWOW64", "WinSxS", "assembly",
+        "Microsoft.NET", "dotnet", ".NET", "Reference Assemblies",
+        
+        // Visual Studio et outils de développement
+        "Microsoft Visual Studio", "Visual Studio", "Visual Studio 2019", "Visual Studio 2022",
+        "Visual Studio 2017", "Visual Studio 14.0", "Visual Studio 15.0", "Visual Studio 16.0",
+        "Visual Studio 17.0", "VS2019", "VS2022", "VC", "MSVC",
+        "MSBuild", "Microsoft SDKs", "Windows Kits", "Windows SDK",
+        "Debug Interface Access", "DIA SDK", "Debuggers",
+        
+        // SDK et runtimes
+        "Android", "Android SDK", "Java", "JDK", "JRE", "Oracle",
+        "Python", "Python27", "Python38", "Python39", "Python310", "Python311", "Python312",
+        "nodejs", "node_modules", "npm", "Go", "Rust", "cargo",
+        
+        // Frameworks et runtimes Windows
+        "IIS", "IIS Express", "SQL Server", "Microsoft SQL Server",
+        "Windows Defender", "Windows Security", "WindowsPowerShell", "PowerShell",
+        "Package Cache", "installer", "Uninstall Information",
+        "Internet Explorer", "Microsoft Edge", "Edge",
+        
+        // Composants système
+        "Windows Mail", "Windows Media Player", "Windows NT",
+        "Windows Photo Viewer", "Windows Portable Devices", "Windows Sidebar",
+        "WindowsApps", "SystemApps", "Microsoft Office", "Office",
+        
+        // Outils de développement tiers courants
+        "Git", "GitHub", "GitLab", "Perforce", "SVN", "TortoiseSVN", "TortoiseGit",
+        "CMake", "Ninja", "LLVM", "Clang", "MinGW", "Cygwin", "MSYS2",
+        "Docker", "Containers", "WSL", "Linux",
+        
+        // Pilotes et matériel
+        "NVIDIA", "NVIDIA Corporation", "AMD", "Intel", "Realtek",
+        "drivers", "DriverStore",
+        
+        // Sécurité
+        "Kaspersky", "Norton", "Avast", "AVG", "Bitdefender", "McAfee", "ESET",
+        "Malwarebytes", "Windows Defender Advanced Threat Protection",
+        
+        // Autres critiques
+        "Common Files", "Uninstall Information", "MicrosoftEdgeWebView"
+    };
+
+    /// <summary>
+    /// Chemins complets protégés (patterns)
+    /// </summary>
+    private static readonly string[] ProtectedPathPatterns =
+    [
+        @"Program Files\Microsoft Visual Studio",
+        @"Program Files (x86)\Microsoft Visual Studio",
+        @"Program Files\Windows Kits",
+        @"Program Files (x86)\Windows Kits",
+        @"Program Files\Microsoft SDKs",
+        @"Program Files (x86)\Microsoft SDKs",
+        @"Program Files\dotnet",
+        @"Program Files\Microsoft SQL Server",
+        @"Program Files (x86)\Microsoft SQL Server",
+        @"Program Files\IIS",
+        @"Program Files\IIS Express",
+        @"Program Files (x86)\IIS Express",
+        @"Program Files\Git",
+        @"Program Files\NVIDIA",
+        @"Program Files\NVIDIA Corporation",
+        @"Program Files\AMD",
+        @"Program Files\Intel",
+        @"Program Files\Common Files\Microsoft",
+        @"Program Files (x86)\Common Files\Microsoft",
+        @"Program Files\Reference Assemblies",
+        @"Program Files (x86)\Reference Assemblies",
+        @"Program Files\MSBuild",
+        @"Program Files (x86)\MSBuild",
+        @"Program Files\PowerShell",
+        @"ProgramData\Microsoft",
+        @"ProgramData\Package Cache",
+        @"Windows\Microsoft.NET",
+        @"Windows\assembly",
+        @"Windows\System32",
+        @"Windows\SysWOW64",
+        @"Windows\WinSxS"
+    ];
+
+    /// <summary>
+    /// Clés de registre protégées (ne jamais supprimer)
+    /// </summary>
+    private static readonly HashSet<string> ProtectedRegistryKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Microsoft", "Windows", "Classes", "Policies", "CurrentVersion",
+        "Explorer", "Shell", "Run", "RunOnce", "Uninstall",
+        ".NET", "dotnet", "Visual Studio", "MSBuild", "DevDiv",
+        "NVIDIA", "AMD", "Intel", "Realtek",
+        "MicrosoftEdge", "Edge", "Internet Explorer"
+    };
+
+    /// <summary>
+    /// Mots-clés trop génériques qui ne doivent PAS déclencher une détection seuls
+    /// </summary>
+    private static readonly HashSet<string> TooGenericKeywords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Termes graphiques/média (pourraient matcher des SDK)
+        "video", "audio", "media", "graphics", "image", "picture", "photo",
+        "sound", "music", "player", "viewer", "display", "screen", "render",
+        "codec", "encoder", "decoder", "stream", "recording", "capture",
+        
+        // Termes de communication (pourraient matcher des SDK)
+        "communication", "network", "connect", "share", "sync", "cloud",
+        "remote", "online", "web", "internet", "download", "upload",
+        
+        // Termes de zoom/vue (confusion avec Zoom app)
+        "zoom", "scale", "view", "window", "pane", "panel",
+        
+        // Termes système génériques
+        "system", "service", "helper", "host", "client", "server",
+        "manager", "monitor", "updater", "installer", "setup",
+        "runtime", "framework", "library", "component", "module",
+        "driver", "device", "hardware", "software",
+        
+        // Termes de données
+        "data", "cache", "temp", "log", "config", "settings", "preferences",
+        "backup", "restore", "recovery",
+        
+        // Termes d'application génériques
+        "app", "application", "program", "tool", "utility", "launcher"
+    };
+
+    #endregion
+
     // Dossiers communs à scanner (données utilisateur)
     private static readonly string[] CommonDataFolders =
     [
@@ -20,12 +155,11 @@ public partial class ResidualScannerService
         Environment.GetFolderPath(Environment.SpecialFolder.Recent),
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Documents"),
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads"),
-        // Dossiers d'installation courants - CRITIQUE pour détecter les résidus Program Files
+        // Dossiers d'installation courants
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Common Files"),
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Common Files"),
-        // Autres emplacements d'installation courants
         @"C:\Program Files",
         @"C:\Program Files (x86)",
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs"),
@@ -45,6 +179,101 @@ public partial class ResidualScannerService
         (@"SOFTWARE\Classes", Registry.CurrentUser),
         (@"SOFTWARE\Classes", Registry.LocalMachine)
     ];
+
+
+    #region Path Protection Methods
+
+    /// <summary>
+    /// Vérifie si un chemin est protégé et ne doit JAMAIS être supprimé
+    /// </summary>
+    private static bool IsProtectedPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return true; // Par sécurité
+
+        var normalizedPath = path.Replace('/', '\\').TrimEnd('\\');
+
+        // Vérifier les patterns de chemins protégés
+        foreach (var pattern in ProtectedPathPatterns)
+        {
+            if (normalizedPath.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        // Vérifier le nom du dossier
+        var folderName = Path.GetFileName(normalizedPath);
+        if (ProtectedFolderNames.Contains(folderName))
+            return true;
+
+        // Vérifier les dossiers parents
+        var parts = normalizedPath.Split('\\');
+        foreach (var part in parts)
+        {
+            if (ProtectedFolderNames.Contains(part))
+                return true;
+        }
+
+        // Protection spéciale: tout ce qui contient "SDK", "Kit", "Visual Studio"
+        if (normalizedPath.Contains("SDK", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.Contains("Kit", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.Contains("Visual Studio", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.Contains("Debugger", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Vérifie si une clé de registre est protégée
+    /// </summary>
+    private static bool IsProtectedRegistryPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return true;
+
+        // Ne jamais toucher aux clés Microsoft/Windows directement
+        if (path.Contains(@"\Microsoft\", StringComparison.OrdinalIgnoreCase) ||
+            path.Contains(@"\Windows\", StringComparison.OrdinalIgnoreCase))
+        {
+            // Exception: les clés spécifiques d'applications tierces sous Microsoft
+            // Ex: HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\AppName
+            // Mais pas les clés système comme Run, Shell, etc.
+            var lastPart = path.Split('\\').LastOrDefault() ?? "";
+            if (ProtectedRegistryKeys.Contains(lastPart))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Filtre les mots-clés pour ne garder que les spécifiques au programme
+    /// </summary>
+    private static HashSet<string> FilterKeywords(HashSet<string> keywords)
+    {
+        var filtered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        
+        foreach (var keyword in keywords)
+        {
+            // Ignorer les mots-clés trop courts
+            if (keyword.Length < 4) continue;
+            
+            // Ignorer les mots-clés trop génériques
+            if (TooGenericKeywords.Contains(keyword)) continue;
+            
+            // Ignorer les mots-clés qui sont des noms de dossiers protégés
+            if (ProtectedFolderNames.Contains(keyword)) continue;
+            
+            filtered.Add(keyword);
+        }
+
+        return filtered;
+    }
+
+    #endregion
+
+
+    #region Main Scan Methods
 
     /// <summary>
     /// Scan complet des résidus pour un programme
@@ -66,7 +295,8 @@ public partial class ResidualScannerService
         CancellationToken cancellationToken = default)
     {
         var residuals = new List<ResidualItem>();
-        var keywords = ExtractKeywords(program);
+        var rawKeywords = ExtractKeywords(program);
+        var keywords = FilterKeywords(rawKeywords); // FILTRER les mots-clés génériques
 
         if (keywords.Count == 0)
         {
@@ -130,8 +360,14 @@ public partial class ResidualScannerService
 
         progress?.Report(new ScanProgress(100, $"{residuals.Count} résidus trouvés"));
 
+        // FILTRE FINAL DE SÉCURITÉ: Éliminer tout chemin protégé qui aurait passé les filtres
+        var safeResiduals = residuals
+            .Where(r => !IsProtectedPath(r.Path))
+            .Where(r => r.Type != ResidualType.RegistryKey || !IsProtectedRegistryPath(r.Path))
+            .ToList();
+
         // Dédupliquer et trier par confiance
-        return residuals
+        return safeResiduals
             .GroupBy(r => r.Path.ToLowerInvariant())
             .Select(g => g.OrderByDescending(r => r.Confidence).First())
             .OrderByDescending(r => r.Confidence)
@@ -147,7 +383,8 @@ public partial class ResidualScannerService
         CancellationToken cancellationToken = default)
     {
         var residuals = new List<ResidualItem>();
-        var keywords = ExtractKeywords(program);
+        var rawKeywords = ExtractKeywords(program);
+        var keywords = FilterKeywords(rawKeywords);
 
         if (keywords.Count == 0) return residuals;
 
@@ -159,11 +396,17 @@ public partial class ResidualScannerService
         residuals.AddRange(folderTask.Result);
         residuals.AddRange(registryTask.Result);
 
+        // FILTRE DE SÉCURITÉ
         return residuals
+            .Where(r => !IsProtectedPath(r.Path))
+            .Where(r => r.Type != ResidualType.RegistryKey || !IsProtectedRegistryPath(r.Path))
             .GroupBy(r => r.Path.ToLowerInvariant())
             .Select(g => g.First())
             .ToList();
     }
+
+    #endregion
+
 
     #region Keyword Extraction
 
@@ -191,11 +434,13 @@ public partial class ResidualScannerService
             }
         }
 
-        // Éditeur
+        // Éditeur - SEULEMENT si c'est un éditeur spécifique (pas Microsoft, etc.)
         if (!string.IsNullOrEmpty(program.Publisher))
         {
             var publisherClean = CleanNameRegex().Replace(program.Publisher, "");
-            if (publisherClean.Length >= 3 && !IsCommonPublisher(publisherClean))
+            if (publisherClean.Length >= 3 && 
+                !IsCommonPublisher(publisherClean) &&
+                !ProtectedFolderNames.Contains(publisherClean))
             {
                 keywords.Add(publisherClean);
             }
@@ -205,7 +450,9 @@ public partial class ResidualScannerService
         if (!string.IsNullOrEmpty(program.InstallLocation))
         {
             var folderName = Path.GetFileName(program.InstallLocation.TrimEnd('\\'));
-            if (!string.IsNullOrEmpty(folderName) && folderName.Length >= 3)
+            if (!string.IsNullOrEmpty(folderName) && 
+                folderName.Length >= 3 &&
+                !ProtectedFolderNames.Contains(folderName))
             {
                 keywords.Add(folderName);
             }
@@ -217,45 +464,44 @@ public partial class ResidualScannerService
             keywords.Add(program.RegistryKeyName);
         }
 
-        // NOUVEAU: Extraire depuis UninstallString - critique pour les résidus Program Files
+        // Extraire depuis UninstallString
         ExtractKeywordsFromUninstallString(program.UninstallString, keywords);
         ExtractKeywordsFromUninstallString(program.QuietUninstallString, keywords);
 
         return keywords;
     }
 
-    /// <summary>
-    /// Extrait les mots-clés depuis une chaîne de désinstallation
-    /// Permet de détecter le dossier d'installation même si InstallLocation est vide
-    /// </summary>
     private static void ExtractKeywordsFromUninstallString(string uninstallString, HashSet<string> keywords)
     {
         if (string.IsNullOrEmpty(uninstallString)) return;
 
         try
         {
-            // Extraire le chemin de l'exécutable
             var exePath = ExtractExecutablePath(uninstallString);
             if (string.IsNullOrEmpty(exePath)) return;
 
-            // Nom du dossier parent (souvent le nom du programme)
             var directory = Path.GetDirectoryName(exePath);
             if (!string.IsNullOrEmpty(directory))
             {
                 var folderName = Path.GetFileName(directory.TrimEnd('\\'));
-                if (!string.IsNullOrEmpty(folderName) && folderName.Length >= 3 && !IsSystemFolder(folderName))
+                if (!string.IsNullOrEmpty(folderName) && 
+                    folderName.Length >= 3 && 
+                    !IsSystemFolder(folderName) &&
+                    !ProtectedFolderNames.Contains(folderName))
                 {
                     keywords.Add(folderName);
                 }
 
-                // Remonter d'un niveau si c'est un sous-dossier commun
                 if (IsCommonSubfolder(folderName))
                 {
                     var parentDir = Path.GetDirectoryName(directory);
                     if (!string.IsNullOrEmpty(parentDir))
                     {
                         var parentName = Path.GetFileName(parentDir.TrimEnd('\\'));
-                        if (!string.IsNullOrEmpty(parentName) && parentName.Length >= 3 && !IsSystemFolder(parentName))
+                        if (!string.IsNullOrEmpty(parentName) && 
+                            parentName.Length >= 3 && 
+                            !IsSystemFolder(parentName) &&
+                            !ProtectedFolderNames.Contains(parentName))
                         {
                             keywords.Add(parentName);
                         }
@@ -263,29 +509,21 @@ public partial class ResidualScannerService
                 }
             }
 
-            // Nom de l'exécutable (sans extension)
             var exeName = Path.GetFileNameWithoutExtension(exePath);
             if (!string.IsNullOrEmpty(exeName) && exeName.Length >= 3 && !IsCommonUninstallerName(exeName))
             {
                 keywords.Add(exeName);
             }
         }
-        catch
-        {
-            // Ignorer les erreurs de parsing
-        }
+        catch { }
     }
 
-    /// <summary>
-    /// Extrait le chemin d'un exécutable depuis une ligne de commande
-    /// </summary>
     private static string ExtractExecutablePath(string commandLine)
     {
         if (string.IsNullOrEmpty(commandLine)) return "";
 
         commandLine = commandLine.Trim();
 
-        // Chemin entre guillemets
         if (commandLine.StartsWith('"'))
         {
             var endQuote = commandLine.IndexOf('"', 1);
@@ -295,14 +533,12 @@ public partial class ResidualScannerService
             }
         }
 
-        // Chemin sans guillemets (prendre jusqu'au premier espace après .exe)
         var exeIndex = commandLine.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
         if (exeIndex > 0)
         {
             return commandLine.Substring(0, exeIndex + 4);
         }
 
-        // Prendre le premier mot
         var spaceIndex = commandLine.IndexOf(' ');
         return spaceIndex > 0 ? commandLine.Substring(0, spaceIndex) : commandLine;
     }
@@ -351,12 +587,14 @@ public partial class ResidualScannerService
     {
         var common = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "microsoft", "windows", "corporation", "inc", "llc", "ltd", "company"
+            "microsoft", "windows", "corporation", "inc", "llc", "ltd", "company",
+            "nvidia", "intel", "amd", "google", "apple"
         };
         return common.Contains(publisher);
     }
 
     #endregion
+
 
     #region Folder Scanning
 
@@ -381,7 +619,14 @@ public partial class ResidualScannerService
                     {
                         cancellationToken.ThrowIfCancellationRequested();
 
+                        // SÉCURITÉ: Ignorer les chemins protégés
+                        if (IsProtectedPath(dir)) continue;
+
                         var dirName = Path.GetFileName(dir);
+                        
+                        // SÉCURITÉ: Ignorer les dossiers protégés
+                        if (ProtectedFolderNames.Contains(dirName)) continue;
+
                         var confidence = CalculateFolderConfidence(dirName, keywords, program);
 
                         if (confidence >= ConfidenceLevel.Low)
@@ -417,6 +662,9 @@ public partial class ResidualScannerService
                                 if (dir.Equals(program.InstallLocation, StringComparison.OrdinalIgnoreCase))
                                     continue;
 
+                                // SÉCURITÉ: Vérifier la protection
+                                if (IsProtectedPath(dir)) continue;
+
                                 var size = CalculateDirectorySize(dir);
                                 residuals.Add(new ResidualItem
                                 {
@@ -437,6 +685,9 @@ public partial class ResidualScannerService
         return residuals;
     }
 
+    /// <summary>
+    /// Calcul de confiance DURCI - nécessite des correspondances plus fortes
+    /// </summary>
     private static ConfidenceLevel CalculateFolderConfidence(
         string folderName,
         HashSet<string> keywords,
@@ -444,33 +695,50 @@ public partial class ResidualScannerService
     {
         var lowerName = folderName.ToLowerInvariant();
 
-        // Correspondance exacte avec le nom du programme
+        // SÉCURITÉ: Jamais de haute confiance pour les dossiers système
+        if (ProtectedFolderNames.Any(p => lowerName.Contains(p.ToLowerInvariant())))
+            return ConfidenceLevel.None;
+
+        // Correspondance EXACTE avec le nom du programme nettoyé
         if (!string.IsNullOrEmpty(program.DisplayName))
         {
             var cleanDisplayName = CleanNameRegex().Replace(program.DisplayName, "").ToLowerInvariant();
-            if (lowerName == cleanDisplayName || lowerName.Contains(cleanDisplayName))
+            
+            // VeryHigh: Nom IDENTIQUE (pas juste "contient")
+            if (lowerName == cleanDisplayName)
             {
                 return ConfidenceLevel.VeryHigh;
             }
+            
+            // High: Le nom du dossier COMMENCE par le nom du programme
+            if (lowerName.StartsWith(cleanDisplayName) && cleanDisplayName.Length >= 5)
+            {
+                return ConfidenceLevel.High;
+            }
         }
 
-        // Correspondance avec la clé de registre
-        if (!string.IsNullOrEmpty(program.RegistryKeyName) &&
-            lowerName.Contains(program.RegistryKeyName.ToLowerInvariant()))
+        // Correspondance avec la clé de registre (exacte)
+        if (!string.IsNullOrEmpty(program.RegistryKeyName))
         {
-            return ConfidenceLevel.High;
+            var regKeyLower = program.RegistryKeyName.ToLowerInvariant();
+            if (lowerName == regKeyLower)
+            {
+                return ConfidenceLevel.High;
+            }
         }
 
-        // Correspondance avec les mots-clés
-        int matchCount = keywords.Count(k => lowerName.Contains(k.ToLowerInvariant()));
+        // Correspondance avec les mots-clés - DURCIE
+        // Seuls les mots-clés LONGS et SPÉCIFIQUES comptent
+        var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToList();
+        int exactMatches = strongKeywords.Count(k => lowerName == k.ToLowerInvariant());
+        int containsMatches = strongKeywords.Count(k => lowerName.Contains(k.ToLowerInvariant()));
         
-        return matchCount switch
-        {
-            >= 3 => ConfidenceLevel.High,
-            2 => ConfidenceLevel.Medium,
-            1 => ConfidenceLevel.Low,
-            _ => ConfidenceLevel.None
-        };
+        // DURCI: Besoin de correspondance EXACTE ou plusieurs correspondances fortes
+        if (exactMatches >= 1) return ConfidenceLevel.High;
+        if (containsMatches >= 3) return ConfidenceLevel.Medium;
+        if (containsMatches >= 2) return ConfidenceLevel.Low;
+        
+        return ConfidenceLevel.None;
     }
 
     private static long CalculateDirectorySize(string path)
@@ -488,6 +756,7 @@ public partial class ResidualScannerService
     }
 
     #endregion
+
 
     #region Registry Scanning
 
@@ -528,7 +797,7 @@ public partial class ResidualScannerService
         int depth,
         CancellationToken cancellationToken)
     {
-        if (depth > 3) return; // Limiter la profondeur
+        if (depth > 3) return;
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -537,6 +806,11 @@ public partial class ResidualScannerService
             foreach (var subKeyName in key.GetSubKeyNames())
             {
                 var subKeyPath = $"{fullPath}\\{subKeyName}";
+                
+                // SÉCURITÉ: Ignorer les clés protégées
+                if (IsProtectedRegistryPath(subKeyPath)) continue;
+                if (ProtectedRegistryKeys.Contains(subKeyName)) continue;
+
                 var confidence = CalculateRegistryConfidence(subKeyName, keywords, program);
 
                 if (confidence >= ConfidenceLevel.Medium)
@@ -551,7 +825,6 @@ public partial class ResidualScannerService
                 }
                 else if (confidence >= ConfidenceLevel.Low && depth < 2)
                 {
-                    // Scanner plus profondément
                     try
                     {
                         using var subKey = key.OpenSubKey(subKeyName);
@@ -571,6 +844,10 @@ public partial class ResidualScannerService
                 if (string.IsNullOrEmpty(valueName)) continue;
 
                 var value = key.GetValue(valueName)?.ToString() ?? "";
+                
+                // SÉCURITÉ: Ne pas signaler de valeurs pointant vers des chemins protégés
+                if (IsProtectedPath(value)) continue;
+                
                 if (ContainsKeyword(value, keywords) || ContainsKeyword(valueName, keywords))
                 {
                     residuals.Add(new ResidualItem
@@ -593,7 +870,11 @@ public partial class ResidualScannerService
     {
         var lowerName = keyName.ToLowerInvariant();
 
-        // Correspondance exacte
+        // SÉCURITÉ: Jamais de haute confiance pour les clés système
+        if (ProtectedRegistryKeys.Contains(keyName))
+            return ConfidenceLevel.None;
+
+        // Correspondance exacte avec la clé de registre du programme
         if (!string.IsNullOrEmpty(program.RegistryKeyName) &&
             lowerName == program.RegistryKeyName.ToLowerInvariant())
         {
@@ -609,19 +890,24 @@ public partial class ResidualScannerService
             }
         }
 
-        int matchCount = keywords.Count(k => lowerName.Contains(k.ToLowerInvariant()));
-        return matchCount switch
-        {
-            >= 2 => ConfidenceLevel.High,
-            1 => ConfidenceLevel.Medium,
-            _ => ConfidenceLevel.None
-        };
+        // DURCI: Besoin de correspondances fortes
+        var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToList();
+        int exactMatches = strongKeywords.Count(k => lowerName == k.ToLowerInvariant());
+        int containsMatches = strongKeywords.Count(k => lowerName.Contains(k.ToLowerInvariant()));
+        
+        if (exactMatches >= 1) return ConfidenceLevel.High;
+        if (containsMatches >= 2) return ConfidenceLevel.Medium;
+        
+        return ConfidenceLevel.None;
     }
 
     private static bool ContainsKeyword(string text, HashSet<string> keywords)
     {
         var lowerText = text.ToLowerInvariant();
-        return keywords.Any(k => lowerText.Contains(k.ToLowerInvariant()));
+        // DURCI: Seuls les mots-clés longs comptent
+        return keywords
+            .Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k))
+            .Any(k => lowerText.Contains(k.ToLowerInvariant()));
     }
 
     private static string GetRootName(RegistryKey root)
@@ -633,6 +919,7 @@ public partial class ResidualScannerService
     }
 
     #endregion
+
 
     #region Services Scanning
 
@@ -659,9 +946,15 @@ public partial class ResidualScannerService
                     var displayName = serviceKey.GetValue("DisplayName")?.ToString() ?? "";
                     var imagePath = serviceKey.GetValue("ImagePath")?.ToString() ?? "";
 
-                    if (ContainsKeyword(serviceName, keywords) ||
-                        ContainsKeyword(displayName, keywords) ||
-                        ContainsKeyword(imagePath, keywords))
+                    // SÉCURITÉ: Ignorer les services pointant vers des chemins protégés
+                    if (IsProtectedPath(imagePath)) continue;
+
+                    // DURCI: Utiliser uniquement des mots-clés forts
+                    var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToHashSet();
+                    
+                    if (ContainsStrongKeyword(serviceName, strongKeywords) ||
+                        ContainsStrongKeyword(displayName, strongKeywords) ||
+                        ContainsStrongKeyword(imagePath, strongKeywords))
                     {
                         residuals.Add(new ResidualItem
                         {
@@ -677,6 +970,13 @@ public partial class ResidualScannerService
         }, cancellationToken);
 
         return residuals;
+    }
+
+    private static bool ContainsStrongKeyword(string text, HashSet<string> strongKeywords)
+    {
+        if (string.IsNullOrEmpty(text)) return false;
+        var lowerText = text.ToLowerInvariant();
+        return strongKeywords.Any(k => lowerText.Contains(k.ToLowerInvariant()));
     }
 
     #endregion
@@ -697,6 +997,8 @@ public partial class ResidualScannerService
 
             if (!Directory.Exists(taskFolder)) return;
 
+            var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToHashSet();
+
             try
             {
                 foreach (var taskFile in Directory.EnumerateFiles(taskFolder, "*", SearchOption.AllDirectories))
@@ -705,7 +1007,7 @@ public partial class ResidualScannerService
 
                     var taskName = Path.GetFileNameWithoutExtension(taskFile);
                     
-                    if (ContainsKeyword(taskName, keywords))
+                    if (ContainsStrongKeyword(taskName, strongKeywords))
                     {
                         residuals.Add(new ResidualItem
                         {
@@ -717,11 +1019,14 @@ public partial class ResidualScannerService
                     }
                     else
                     {
-                        // Lire le contenu du fichier pour vérifier
                         try
                         {
                             var content = File.ReadAllText(taskFile);
-                            if (ContainsKeyword(content, keywords))
+                            
+                            // SÉCURITÉ: Vérifier que le contenu ne pointe pas vers des chemins protégés
+                            if (IsProtectedPath(content)) continue;
+                            
+                            if (ContainsStrongKeyword(content, strongKeywords))
                             {
                                 residuals.Add(new ResidualItem
                                 {
@@ -763,6 +1068,8 @@ public partial class ResidualScannerService
                 @"Microsoft\Internet Explorer\Quick Launch")
         };
 
+        var strongKeywords = keywords.Where(k => k.Length >= 4 && !TooGenericKeywords.Contains(k)).ToHashSet();
+
         await Task.Run(() =>
         {
             foreach (var folder in shortcutFolders)
@@ -776,7 +1083,7 @@ public partial class ResidualScannerService
                         cancellationToken.ThrowIfCancellationRequested();
 
                         var fileName = Path.GetFileNameWithoutExtension(file);
-                        if (ContainsKeyword(fileName, keywords))
+                        if (ContainsStrongKeyword(fileName, strongKeywords))
                         {
                             residuals.Add(new ResidualItem
                             {
@@ -812,6 +1119,8 @@ public partial class ResidualScannerService
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Temp")
         };
 
+        var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToHashSet();
+
         await Task.Run(() =>
         {
             foreach (var tempFolder in tempFolders)
@@ -825,7 +1134,7 @@ public partial class ResidualScannerService
                         cancellationToken.ThrowIfCancellationRequested();
 
                         var dirName = Path.GetFileName(dir);
-                        if (ContainsKeyword(dirName, keywords))
+                        if (ContainsStrongKeyword(dirName, strongKeywords))
                         {
                             var size = CalculateDirectorySize(dir);
                             residuals.Add(new ResidualItem
@@ -833,7 +1142,7 @@ public partial class ResidualScannerService
                                 Path = dir,
                                 Type = ResidualType.Folder,
                                 Size = size,
-                                Confidence = ConfidenceLevel.Low,
+                                Confidence = ConfidenceLevel.Low, // Temp = toujours Low
                                 Description = $"Dossier temporaire: {dirName}"
                             });
                         }
@@ -848,12 +1157,9 @@ public partial class ResidualScannerService
 
     #endregion
 
+
     #region Install Location Scanning
 
-    /// <summary>
-    /// Scan approfondi du dossier d'installation et des Program Files
-    /// Détecte les dossiers orphelins laissés après désinstallation
-    /// </summary>
     private async Task<List<ResidualItem>> ScanInstallLocationAsync(
         HashSet<string> keywords,
         InstalledProgram program,
@@ -866,43 +1172,53 @@ public partial class ResidualScannerService
             // 1. Vérifier si le dossier d'installation existe toujours
             if (!string.IsNullOrEmpty(program.InstallLocation) && Directory.Exists(program.InstallLocation))
             {
-                var size = CalculateDirectorySize(program.InstallLocation);
-                residuals.Add(new ResidualItem
+                // SÉCURITÉ: Ne pas supprimer les dossiers protégés même s'ils sont listés comme InstallLocation
+                if (!IsProtectedPath(program.InstallLocation))
                 {
-                    Path = program.InstallLocation,
-                    Type = ResidualType.Folder,
-                    Size = size,
-                    Confidence = ConfidenceLevel.VeryHigh,
-                    Description = $"Dossier d'installation: {Path.GetFileName(program.InstallLocation)}"
-                });
+                    var size = CalculateDirectorySize(program.InstallLocation);
+                    residuals.Add(new ResidualItem
+                    {
+                        Path = program.InstallLocation,
+                        Type = ResidualType.Folder,
+                        Size = size,
+                        Confidence = ConfidenceLevel.VeryHigh,
+                        Description = $"Dossier d'installation: {Path.GetFileName(program.InstallLocation)}"
+                    });
+                }
             }
 
             // 2. Extraire le chemin depuis UninstallString et vérifier
             var uninstallPath = ExtractInstallPathFromUninstallString(program.UninstallString);
             if (!string.IsNullOrEmpty(uninstallPath) && Directory.Exists(uninstallPath))
             {
-                // Éviter les doublons avec InstallLocation
-                if (string.IsNullOrEmpty(program.InstallLocation) || 
-                    !uninstallPath.Equals(program.InstallLocation, StringComparison.OrdinalIgnoreCase))
+                // SÉCURITÉ
+                if (!IsProtectedPath(uninstallPath))
                 {
-                    var size = CalculateDirectorySize(uninstallPath);
-                    residuals.Add(new ResidualItem
+                    if (string.IsNullOrEmpty(program.InstallLocation) || 
+                        !uninstallPath.Equals(program.InstallLocation, StringComparison.OrdinalIgnoreCase))
                     {
-                        Path = uninstallPath,
-                        Type = ResidualType.Folder,
-                        Size = size,
-                        Confidence = ConfidenceLevel.VeryHigh,
-                        Description = $"Dossier détecté depuis désinstalleur: {Path.GetFileName(uninstallPath)}"
-                    });
+                        var size = CalculateDirectorySize(uninstallPath);
+                        residuals.Add(new ResidualItem
+                        {
+                            Path = uninstallPath,
+                            Type = ResidualType.Folder,
+                            Size = size,
+                            Confidence = ConfidenceLevel.VeryHigh,
+                            Description = $"Dossier détecté depuis désinstalleur: {Path.GetFileName(uninstallPath)}"
+                        });
+                    }
                 }
             }
 
-            // 3. Scanner Program Files pour les dossiers correspondants
+            // 3. Scanner Program Files - UNIQUEMENT pour correspondance EXACTE
             var programFilesFolders = new[]
             {
                 Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                 Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86)
             };
+
+            // DURCI: Seuls les mots-clés EXACTS et LONGS
+            var exactKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToList();
 
             foreach (var pf in programFilesFolders.Where(p => !string.IsNullOrEmpty(p) && Directory.Exists(p)))
             {
@@ -912,12 +1228,14 @@ public partial class ResidualScannerService
                 {
                     foreach (var dir in Directory.EnumerateDirectories(pf))
                     {
+                        // SÉCURITÉ
+                        if (IsProtectedPath(dir)) continue;
+
                         var dirName = Path.GetFileName(dir);
                         
-                        // Correspondance forte avec les mots-clés
-                        if (keywords.Any(k => dirName.Equals(k, StringComparison.OrdinalIgnoreCase)))
+                        // DURCI: Correspondance EXACTE seulement (pas "contains")
+                        if (exactKeywords.Any(k => dirName.Equals(k, StringComparison.OrdinalIgnoreCase)))
                         {
-                            // Éviter les doublons
                             if (!residuals.Any(r => r.Path.Equals(dir, StringComparison.OrdinalIgnoreCase)))
                             {
                                 var size = CalculateDirectorySize(dir);
@@ -940,9 +1258,6 @@ public partial class ResidualScannerService
         return residuals;
     }
 
-    /// <summary>
-    /// Extrait le dossier d'installation depuis UninstallString
-    /// </summary>
     private static string ExtractInstallPathFromUninstallString(string uninstallString)
     {
         if (string.IsNullOrEmpty(uninstallString)) return "";
@@ -955,7 +1270,6 @@ public partial class ResidualScannerService
 
         var folderName = Path.GetFileName(directory);
         
-        // Si c'est un sous-dossier commun, remonter d'un niveau
         if (IsCommonSubfolder(folderName))
         {
             return Path.GetDirectoryName(directory) ?? "";
@@ -968,19 +1282,16 @@ public partial class ResidualScannerService
 
     #region File Associations Scanning
 
-    /// <summary>
-    /// Scanne les associations de fichiers orphelines dans le registre
-    /// </summary>
     private async Task<List<ResidualItem>> ScanFileAssociationsAsync(
         HashSet<string> keywords,
         InstalledProgram program,
         CancellationToken cancellationToken)
     {
         var residuals = new List<ResidualItem>();
+        var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToHashSet();
 
         await Task.Run(() =>
         {
-            // Scanner HKCR pour les extensions et ProgIDs
             try
             {
                 using var classesRoot = Registry.ClassesRoot;
@@ -989,13 +1300,15 @@ public partial class ResidualScannerService
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
+                    // Ignorer les clés système
+                    if (ProtectedRegistryKeys.Contains(subKeyName)) continue;
+
                     try
                     {
                         using var subKey = classesRoot.OpenSubKey(subKeyName);
                         if (subKey == null) continue;
 
-                        // Vérifier le nom de la clé
-                        if (ContainsKeyword(subKeyName, keywords))
+                        if (ContainsStrongKeyword(subKeyName, strongKeywords))
                         {
                             residuals.Add(new ResidualItem
                             {
@@ -1007,11 +1320,10 @@ public partial class ResidualScannerService
                             continue;
                         }
 
-                        // Pour les extensions (.xxx), vérifier la valeur par défaut et OpenWithProgids
                         if (subKeyName.StartsWith('.'))
                         {
                             var defaultValue = subKey.GetValue("")?.ToString() ?? "";
-                            if (ContainsKeyword(defaultValue, keywords))
+                            if (ContainsStrongKeyword(defaultValue, strongKeywords))
                             {
                                 residuals.Add(new ResidualItem
                                 {
@@ -1022,13 +1334,12 @@ public partial class ResidualScannerService
                                 });
                             }
 
-                            // Vérifier OpenWithProgids
                             using var openWithKey = subKey.OpenSubKey("OpenWithProgids");
                             if (openWithKey != null)
                             {
                                 foreach (var progId in openWithKey.GetValueNames())
                                 {
-                                    if (ContainsKeyword(progId, keywords))
+                                    if (ContainsStrongKeyword(progId, strongKeywords))
                                     {
                                         residuals.Add(new ResidualItem
                                         {
@@ -1047,8 +1358,7 @@ public partial class ResidualScannerService
             }
             catch { }
 
-            // Scanner les associations utilisateur dans HKCU
-            ScanUserFileAssociations(keywords, residuals, cancellationToken);
+            ScanUserFileAssociations(strongKeywords, residuals, cancellationToken);
 
         }, cancellationToken);
 
@@ -1056,7 +1366,7 @@ public partial class ResidualScannerService
     }
 
     private static void ScanUserFileAssociations(
-        HashSet<string> keywords,
+        HashSet<string> strongKeywords,
         List<ResidualItem> residuals,
         CancellationToken cancellationToken)
     {
@@ -1077,7 +1387,7 @@ public partial class ResidualScannerService
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    if (ContainsKeyword(subKeyName, keywords))
+                    if (ContainsStrongKeyword(subKeyName, strongKeywords))
                     {
                         residuals.Add(new ResidualItem
                         {
@@ -1095,17 +1405,16 @@ public partial class ResidualScannerService
 
     #endregion
 
+
     #region COM Components Scanning
 
-    /// <summary>
-    /// Scanne les composants COM/CLSID orphelins
-    /// </summary>
     private async Task<List<ResidualItem>> ScanComComponentsAsync(
         HashSet<string> keywords,
         InstalledProgram program,
         CancellationToken cancellationToken)
     {
         var residuals = new List<ResidualItem>();
+        var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToHashSet();
 
         await Task.Run(() =>
         {
@@ -1136,15 +1445,16 @@ public partial class ResidualScannerService
                             using var clsidKey = baseKey.OpenSubKey(clsid);
                             if (clsidKey == null) continue;
 
-                            // Vérifier le nom d'affichage
                             var displayName = clsidKey.GetValue("")?.ToString() ?? "";
-                            
-                            // Vérifier InprocServer32 ou LocalServer32
                             var serverPath = GetComServerPath(clsidKey);
 
-                            if (ContainsKeyword(displayName, keywords) ||
-                                ContainsKeyword(clsid, keywords) ||
-                                (!string.IsNullOrEmpty(serverPath) && MatchesInstallPath(serverPath, program, keywords)))
+                            // SÉCURITÉ: Ignorer les composants pointant vers des chemins protégés
+                            if (!string.IsNullOrEmpty(serverPath) && IsProtectedPath(serverPath))
+                                continue;
+
+                            if (ContainsStrongKeyword(displayName, strongKeywords) ||
+                                ContainsStrongKeyword(clsid, strongKeywords) ||
+                                (!string.IsNullOrEmpty(serverPath) && MatchesInstallPath(serverPath, program, strongKeywords)))
                             {
                                 var rootName = root == Registry.LocalMachine ? "HKLM" : "HKCU";
                                 residuals.Add(new ResidualItem
@@ -1188,28 +1498,26 @@ public partial class ResidualScannerService
         return "";
     }
 
-    private static bool MatchesInstallPath(string path, InstalledProgram program, HashSet<string> keywords)
+    private static bool MatchesInstallPath(string path, InstalledProgram program, HashSet<string> strongKeywords)
     {
         if (string.IsNullOrEmpty(path)) return false;
 
-        // Vérifier correspondance avec InstallLocation
+        // SÉCURITÉ: Ne pas matcher si c'est un chemin protégé
+        if (IsProtectedPath(path)) return false;
+
         if (!string.IsNullOrEmpty(program.InstallLocation) &&
             path.Contains(program.InstallLocation, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
-        // Vérifier correspondance avec les mots-clés
-        return keywords.Any(k => path.Contains(k, StringComparison.OrdinalIgnoreCase));
+        return strongKeywords.Any(k => path.Contains(k, StringComparison.OrdinalIgnoreCase));
     }
 
     #endregion
 
     #region Environment PATH Scanning
 
-    /// <summary>
-    /// Scanne les entrées PATH invalides ou orphelines
-    /// </summary>
     private async Task<List<ResidualItem>> ScanEnvironmentPathAsync(
         HashSet<string> keywords,
         InstalledProgram program,
@@ -1219,7 +1527,6 @@ public partial class ResidualScannerService
 
         await Task.Run(() =>
         {
-            // PATH système
             ScanPathVariable(
                 Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine) ?? "",
                 "Système",
@@ -1228,7 +1535,6 @@ public partial class ResidualScannerService
                 residuals,
                 cancellationToken);
 
-            // PATH utilisateur
             ScanPathVariable(
                 Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "",
                 "Utilisateur",
@@ -1237,7 +1543,6 @@ public partial class ResidualScannerService
                 residuals,
                 cancellationToken);
 
-            // Autres variables d'environnement potentiellement liées
             ScanOtherEnvironmentVariables(keywords, program, residuals);
 
         }, cancellationToken);
@@ -1256,6 +1561,7 @@ public partial class ResidualScannerService
         if (string.IsNullOrEmpty(pathValue)) return;
 
         var paths = pathValue.Split(';', StringSplitOptions.RemoveEmptyEntries);
+        var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToHashSet();
 
         foreach (var path in paths)
         {
@@ -1264,19 +1570,19 @@ public partial class ResidualScannerService
             var trimmedPath = path.Trim();
             if (string.IsNullOrEmpty(trimmedPath)) continue;
 
-            // Vérifier si le chemin correspond au programme
+            // SÉCURITÉ: Ignorer les chemins protégés
+            if (IsProtectedPath(trimmedPath)) continue;
+
             bool matches = false;
             string reason = "";
 
-            // Correspondance avec InstallLocation
             if (!string.IsNullOrEmpty(program.InstallLocation) &&
                 trimmedPath.StartsWith(program.InstallLocation, StringComparison.OrdinalIgnoreCase))
             {
                 matches = true;
                 reason = "correspond au dossier d'installation";
             }
-            // Correspondance avec les mots-clés
-            else if (keywords.Any(k => trimmedPath.Contains(k, StringComparison.OrdinalIgnoreCase)))
+            else if (strongKeywords.Any(k => trimmedPath.Contains(k, StringComparison.OrdinalIgnoreCase)))
             {
                 matches = true;
                 reason = "contient un mot-clé du programme";
@@ -1284,7 +1590,6 @@ public partial class ResidualScannerService
 
             if (matches)
             {
-                // Vérifier si le chemin existe toujours
                 var pathExists = Directory.Exists(trimmedPath);
                 
                 residuals.Add(new ResidualItem
@@ -1304,6 +1609,7 @@ public partial class ResidualScannerService
         List<ResidualItem> residuals)
     {
         var targets = new[] { EnvironmentVariableTarget.Machine, EnvironmentVariableTarget.User };
+        var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToHashSet();
 
         foreach (var target in targets)
         {
@@ -1319,13 +1625,14 @@ public partial class ResidualScannerService
                     var varName = key.ToString() ?? "";
                     var varValue = envVars[key]?.ToString() ?? "";
 
-                    // Ignorer PATH (déjà traité) et les variables système communes
                     if (varName.Equals("PATH", StringComparison.OrdinalIgnoreCase) ||
                         IsCommonEnvironmentVariable(varName))
                         continue;
 
-                    // Vérifier si le nom ou la valeur correspond
-                    if (ContainsKeyword(varName, keywords) ||
+                    // SÉCURITÉ: Ignorer les variables pointant vers des chemins protégés
+                    if (IsProtectedPath(varValue)) continue;
+
+                    if (ContainsStrongKeyword(varName, strongKeywords) ||
                         (!string.IsNullOrEmpty(program.InstallLocation) && 
                          varValue.Contains(program.InstallLocation, StringComparison.OrdinalIgnoreCase)))
                     {
@@ -1358,11 +1665,9 @@ public partial class ResidualScannerService
 
     #endregion
 
+
     #region Deep Scan Program Files
 
-    /// <summary>
-    /// Scan approfondi des Program Files pour trouver des fichiers orphelins
-    /// </summary>
     private async Task<List<ResidualItem>> DeepScanProgramFilesAsync(
         HashSet<string> keywords,
         InstalledProgram program,
@@ -1380,12 +1685,8 @@ public partial class ResidualScannerService
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs")
             };
 
-            // Ajouter Common Files
-            var commonFiles = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Common Files");
-            if (Directory.Exists(commonFiles)) foldersToScan.Add(commonFiles);
-            
-            var commonFilesX86 = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Common Files");
-            if (Directory.Exists(commonFilesX86)) foldersToScan.Add(commonFilesX86);
+            // NE PAS scanner Common Files - trop de risques de faux positifs
+            // var commonFiles = Path.Combine(..., "Common Files");  // RETIRÉ
 
             foreach (var baseFolder in foldersToScan.Where(Directory.Exists).Distinct())
             {
@@ -1406,8 +1707,8 @@ public partial class ResidualScannerService
         int depth,
         CancellationToken cancellationToken)
     {
-        // Limiter la profondeur pour éviter les scans trop longs
-        if (depth > 3) return;
+        // DURCI: Limiter la profondeur à 2 niveaux
+        if (depth > 2) return;
 
         try
         {
@@ -1417,15 +1718,14 @@ public partial class ResidualScannerService
 
                 var dirName = Path.GetFileName(dir);
                 
-                // Ignorer certains dossiers système
+                // SÉCURITÉ: Ignorer les dossiers protégés
+                if (IsProtectedPath(dir)) continue;
                 if (IsSystemOrCommonFolder(dirName)) continue;
 
-                // Vérifier correspondance
                 var confidence = CalculateDeepScanConfidence(dir, dirName, keywords, program);
                 
-                if (confidence >= ConfidenceLevel.Medium)
+                if (confidence >= ConfidenceLevel.High) // DURCI: Seulement High ou plus
                 {
-                    // Éviter les doublons
                     if (!residuals.Any(r => r.Path.Equals(dir, StringComparison.OrdinalIgnoreCase)))
                     {
                         var size = CalculateDirectorySize(dir);
@@ -1439,15 +1739,14 @@ public partial class ResidualScannerService
                         });
                     }
                 }
-                else if (depth < 2)
+                else if (depth < 1) // DURCI: Ne scanner qu'un niveau si pas de correspondance
                 {
-                    // Scanner récursivement si pas de correspondance directe
                     DeepScanFolder(dir, keywords, program, residuals, depth + 1, cancellationToken);
                 }
             }
 
-            // Scanner aussi les fichiers à la racine (DLLs orphelines, etc.)
-            if (depth <= 1)
+            // Scanner les fichiers orphelins - SEULEMENT au premier niveau
+            if (depth == 0)
             {
                 ScanOrphanFiles(folder, keywords, program, residuals, cancellationToken);
             }
@@ -1456,6 +1755,9 @@ public partial class ResidualScannerService
         catch (IOException) { }
     }
 
+    /// <summary>
+    /// Calcul de confiance TRÈS DURCI pour le deep scan
+    /// </summary>
     private static ConfidenceLevel CalculateDeepScanConfidence(
         string path,
         string folderName,
@@ -1465,27 +1767,36 @@ public partial class ResidualScannerService
         var lowerName = folderName.ToLowerInvariant();
         var lowerPath = path.ToLowerInvariant();
 
-        // Correspondance exacte avec un mot-clé
-        foreach (var keyword in keywords)
-        {
-            if (lowerName.Equals(keyword.ToLowerInvariant()))
-                return ConfidenceLevel.High;
-        }
+        // SÉCURITÉ: Jamais pour les chemins protégés
+        if (IsProtectedPath(path)) return ConfidenceLevel.None;
 
-        // Le chemin contient InstallLocation (sous-dossier)
+        // Le chemin contient InstallLocation (sous-dossier) = VeryHigh
         if (!string.IsNullOrEmpty(program.InstallLocation) &&
             lowerPath.StartsWith(program.InstallLocation.ToLowerInvariant()))
         {
             return ConfidenceLevel.VeryHigh;
         }
 
-        // Correspondance partielle forte
-        int strongMatches = keywords.Count(k => 
-            lowerName.Contains(k.ToLowerInvariant()) && k.Length >= 4);
-        
-        if (strongMatches >= 2) return ConfidenceLevel.High;
-        if (strongMatches == 1) return ConfidenceLevel.Medium;
+        // DURCI: Seuls les mots-clés LONGS et SPÉCIFIQUES
+        var strongKeywords = keywords
+            .Where(k => k.Length >= 6 && !TooGenericKeywords.Contains(k))
+            .ToList();
 
+        // Correspondance EXACTE avec un mot-clé fort = High
+        foreach (var keyword in strongKeywords)
+        {
+            if (lowerName.Equals(keyword.ToLowerInvariant()))
+                return ConfidenceLevel.High;
+        }
+
+        // DURCI: Correspondance partielle nécessite 3+ mots-clés forts
+        int strongMatches = strongKeywords.Count(k => 
+            lowerName.Contains(k.ToLowerInvariant()));
+        
+        if (strongMatches >= 3) return ConfidenceLevel.High;
+        if (strongMatches >= 2) return ConfidenceLevel.Medium;
+
+        // Pas de correspondance simple = None (pas Low!)
         return ConfidenceLevel.None;
     }
 
@@ -1496,8 +1807,8 @@ public partial class ResidualScannerService
         List<ResidualItem> residuals,
         CancellationToken cancellationToken)
     {
-        // Extensions de fichiers potentiellement orphelins
         var targetExtensions = new[] { ".dll", ".exe", ".ocx", ".sys", ".drv" };
+        var strongKeywords = keywords.Where(k => k.Length >= 6 && !TooGenericKeywords.Contains(k)).ToHashSet();
 
         try
         {
@@ -1505,12 +1816,16 @@ public partial class ResidualScannerService
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
+                // SÉCURITÉ: Ignorer les fichiers dans des chemins protégés
+                if (IsProtectedPath(file)) continue;
+
                 var ext = Path.GetExtension(file).ToLowerInvariant();
                 if (!targetExtensions.Contains(ext)) continue;
 
                 var fileName = Path.GetFileNameWithoutExtension(file);
                 
-                if (ContainsKeyword(fileName, keywords))
+                // DURCI: Correspondance EXACTE seulement
+                if (strongKeywords.Any(k => fileName.Equals(k, StringComparison.OrdinalIgnoreCase)))
                 {
                     var fileInfo = new FileInfo(file);
                     residuals.Add(new ResidualItem
@@ -1518,7 +1833,7 @@ public partial class ResidualScannerService
                         Path = file,
                         Type = ResidualType.File,
                         Size = fileInfo.Length,
-                        Confidence = ConfidenceLevel.Medium,
+                        Confidence = ConfidenceLevel.Medium, // Jamais High pour des fichiers isolés
                         Description = $"Fichier orphelin: {Path.GetFileName(file)}"
                     });
                 }
@@ -1527,19 +1842,35 @@ public partial class ResidualScannerService
         catch { }
     }
 
+    /// <summary>
+    /// Liste ÉTENDUE des dossiers système et communs à ne JAMAIS toucher
+    /// </summary>
     private static bool IsSystemOrCommonFolder(string folderName)
     {
-        var systemFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        // Utiliser la liste principale de protection
+        if (ProtectedFolderNames.Contains(folderName))
+            return true;
+
+        // Vérifications supplémentaires par pattern
+        var lowerName = folderName.ToLowerInvariant();
+        
+        // Tout ce qui contient ces termes est protégé
+        if (lowerName.Contains("microsoft") ||
+            lowerName.Contains("windows") ||
+            lowerName.Contains("visual studio") ||
+            lowerName.Contains("sdk") ||
+            lowerName.Contains("kit") ||
+            lowerName.Contains("debugger") ||
+            lowerName.Contains(".net") ||
+            lowerName.Contains("dotnet") ||
+            lowerName.Contains("nvidia") ||
+            lowerName.Contains("intel") ||
+            lowerName.Contains("amd"))
         {
-            "Microsoft", "Windows", "WindowsApps", "Microsoft.NET", "dotnet",
-            "Internet Explorer", "Windows Defender", "Windows Mail", "Windows Media Player",
-            "Windows NT", "Windows Photo Viewer", "Windows Portable Devices",
-            "Windows Security", "Windows Sidebar", "WindowsPowerShell",
-            "Reference Assemblies", "MSBuild", "IIS", "IIS Express",
-            "Microsoft SDKs", "Microsoft SQL Server", "Microsoft Visual Studio",
-            "Package Cache", "Uninstall Information", "installer"
-        };
-        return systemFolders.Contains(folderName);
+            return true;
+        }
+
+        return false;
     }
 
     #endregion

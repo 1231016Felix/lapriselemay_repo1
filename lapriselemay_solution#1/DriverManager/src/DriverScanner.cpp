@@ -332,8 +332,8 @@ namespace DriverManager {
     }
 
     bool DriverScanner::EnableDriver(const DriverInfo& driver) {
-        HDEVINFO deviceInfoSet = SetupDiGetClassDevsW(nullptr, driver.deviceInstanceId.c_str(), 
-            nullptr, DIGCF_DEVICEINTERFACE | DIGCF_ALLCLASSES);
+        // Create an empty device info set
+        HDEVINFO deviceInfoSet = SetupDiCreateDeviceInfoList(nullptr, nullptr);
         
         if (deviceInfoSet == INVALID_HANDLE_VALUE) {
             return false;
@@ -343,7 +343,11 @@ namespace DriverManager {
         deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
         
         bool success = false;
-        if (SetupDiEnumDeviceInfo(deviceInfoSet, 0, &deviceInfoData)) {
+        
+        // Open the specific device by its instance ID
+        if (SetupDiOpenDeviceInfoW(deviceInfoSet, driver.deviceInstanceId.c_str(), 
+            nullptr, 0, &deviceInfoData)) {
+            
             SP_PROPCHANGE_PARAMS params;
             params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
             params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
@@ -362,8 +366,8 @@ namespace DriverManager {
     }
 
     bool DriverScanner::DisableDriver(const DriverInfo& driver) {
-        HDEVINFO deviceInfoSet = SetupDiGetClassDevsW(nullptr, driver.deviceInstanceId.c_str(), 
-            nullptr, DIGCF_DEVICEINTERFACE | DIGCF_ALLCLASSES);
+        // Create an empty device info set
+        HDEVINFO deviceInfoSet = SetupDiCreateDeviceInfoList(nullptr, nullptr);
         
         if (deviceInfoSet == INVALID_HANDLE_VALUE) {
             return false;
@@ -373,7 +377,11 @@ namespace DriverManager {
         deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
         
         bool success = false;
-        if (SetupDiEnumDeviceInfo(deviceInfoSet, 0, &deviceInfoData)) {
+        
+        // Open the specific device by its instance ID
+        if (SetupDiOpenDeviceInfoW(deviceInfoSet, driver.deviceInstanceId.c_str(), 
+            nullptr, 0, &deviceInfoData)) {
+            
             SP_PROPCHANGE_PARAMS params;
             params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
             params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
@@ -392,8 +400,8 @@ namespace DriverManager {
     }
 
     bool DriverScanner::UninstallDriver(const DriverInfo& driver) {
-        HDEVINFO deviceInfoSet = SetupDiGetClassDevsW(nullptr, driver.deviceInstanceId.c_str(), 
-            nullptr, DIGCF_DEVICEINTERFACE | DIGCF_ALLCLASSES);
+        // Create an empty device info set
+        HDEVINFO deviceInfoSet = SetupDiCreateDeviceInfoList(nullptr, nullptr);
         
         if (deviceInfoSet == INVALID_HANDLE_VALUE) {
             return false;
@@ -403,7 +411,10 @@ namespace DriverManager {
         deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
         
         bool success = false;
-        if (SetupDiEnumDeviceInfo(deviceInfoSet, 0, &deviceInfoData)) {
+        
+        // Open the specific device by its instance ID
+        if (SetupDiOpenDeviceInfoW(deviceInfoSet, driver.deviceInstanceId.c_str(), 
+            nullptr, 0, &deviceInfoData)) {
             success = SetupDiCallClassInstaller(DIF_REMOVE, deviceInfoSet, &deviceInfoData);
         }
 

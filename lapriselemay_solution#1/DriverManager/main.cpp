@@ -6,9 +6,12 @@
 #include "imgui/imgui_impl_dx11.h"
 #include <d3d11.h>
 #include <tchar.h>
+#include <shellapi.h>
 #include <thread>
 #include <future>
 #include <algorithm>
+#include <sstream>
+#include <iomanip>
 
 #include "src/DriverScanner.h"
 #include "src/DriverInfo.h"
@@ -38,6 +41,7 @@ struct AppState {
     bool showDetailsWindow = false;
     bool showAboutWindow = false;
     bool showExportDialog = false;
+    bool showUpdateHelpWindow = false;
     DriverManager::DriverInfo* selectedDriver = nullptr;
     std::string statusMessage;
     std::string searchFilter;
@@ -45,6 +49,11 @@ struct AppState {
     std::future<void> scanFuture;
     float scanProgress = 0.0f;
     std::wstring currentScanItem;
+    
+    // Sorting state - persisted across frames
+    int sortColumnIndex = 0;          // Default sort by Name
+    bool sortAscending = true;        // Default ascending
+    bool sortSpecsInitialized = false;
 };
 
 // Custom ImGui style
@@ -124,13 +133,20 @@ void RenderMenuBar(AppState& state) {
         }
         
         if (ImGui::BeginMenu("Affichage")) {
-            if (ImGui::MenuItem("Détails", nullptr, state.showDetailsWindow)) {
+            if (ImGui::MenuItem("Détails en fenêtre", nullptr, state.showDetailsWindow)) {
                 state.showDetailsWindow = !state.showDetailsWindow;
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Afficher les détails dans une fenêtre séparée");
             }
             ImGui::EndMenu();
         }
         
         if (ImGui::BeginMenu("Aide")) {
+            if (ImGui::MenuItem("Mise à jour des pilotes")) {
+                state.showUpdateHelpWindow = true;
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("À propos")) {
                 state.showAboutWindow = true;
             }
@@ -191,6 +207,20 @@ void RenderToolbar(AppState& state) {
     
     ImGui::EndDisabled();
     
+    // Update button (always enabled)
+    ImGui::SameLine();
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.55f, 0.20f, 0.70f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.65f, 0.25f, 0.85f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.25f, 0.75f, 0.30f, 1.00f));
+    if (ImGui::Button("Mise à jour")) {
+        state.showUpdateHelpWindow = true;
+    }
+    ImGui::PopStyleColor(3);
+    
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Aide sur la mise à jour des pilotes");
+    }
+    
     // Confirm uninstall popup
     if (ImGui::BeginPopupModal("Confirmer désinstallation", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Voulez-vous vraiment désinstaller ce pilote ?");
@@ -223,10 +253,11 @@ void RenderToolbar(AppState& state) {
     ImGui::PopStyleVar();
 }
 
-// Helper function for sorting drivers
+// Helper function for sorting drivers with grouping by name
 static int CompareDrivers(const DriverManager::DriverInfo* a, const DriverManager::DriverInfo* b, int columnIndex, bool ascending) {
     int result = 0;
     
+    // Primary sort by selected column
     switch (columnIndex) {
         case 0: // Nom
             result = a->deviceName.compare(b->deviceName);
@@ -247,15 +278,32 @@ static int CompareDrivers(const DriverManager::DriverInfo* a, const DriverManage
             result = 0;
     }
     
+    // Secondary sort by name to group drivers with same name together
+    // (only if primary column is not already Name)
+    if (result == 0 && columnIndex != 0) {
+        result = a->deviceName.compare(b->deviceName);
+    }
+    
+    // Tertiary sort by deviceInstanceId for stable ordering
+    if (result == 0) {
+        result = a->deviceInstanceId.compare(b->deviceInstanceId);
+    }
+    
     return ascending ? result : -result;
 }
 
-// Render driver list
+// Render driver list with integrated details panel
 void RenderDriverList(AppState& state) {
     const auto& categories = state.scanner.GetCategories();
     
+    // Calculate panel widths
+    float availableWidth = ImGui::GetContentRegionAvail().x;
+    float categoriesWidth = 180.0f;
+    float detailsWidth = state.selectedDriver ? 300.0f : 0.0f;
+    float driverListWidth = availableWidth - categoriesWidth - detailsWidth - 16.0f; // 16 for spacing
+    
     // Left panel - Categories
-    ImGui::BeginChild("Categories", ImVec2(200, 0), true);
+    ImGui::BeginChild("Categories", ImVec2(categoriesWidth, 0), true);
     
     if (ImGui::Selectable("Tous les pilotes", state.selectedCategory == -1)) {
         state.selectedCategory = -1;
@@ -271,7 +319,6 @@ void RenderDriverList(AppState& state) {
         snprintf(label, sizeof(label), "%s (%zu)", 
             DriverManager::GetTypeText(cat.type), cat.drivers.size());
         
-        // Use PushID/PopID to ensure unique IDs for categories
         ImGui::PushID(i);
         if (ImGui::Selectable(label, state.selectedCategory == i)) {
             state.selectedCategory = i;
@@ -283,18 +330,18 @@ void RenderDriverList(AppState& state) {
     
     ImGui::SameLine();
     
-    // Right panel - Driver table
-    ImGui::BeginChild("DriverList", ImVec2(0, 0), true);
+    // Center panel - Driver table
+    ImGui::BeginChild("DriverList", ImVec2(driverListWidth, 0), true);
     
     if (ImGui::BeginTable("Drivers", 5, 
         ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable | 
         ImGuiTableFlags_Sortable | ImGuiTableFlags_SortMulti | ImGuiTableFlags_ScrollY)) {
         
-        ImGui::TableSetupColumn("Nom", ImGuiTableColumnFlags_DefaultSort, 250.0f);
-        ImGui::TableSetupColumn("Fabricant", ImGuiTableColumnFlags_None, 150.0f);
-        ImGui::TableSetupColumn("Version", ImGuiTableColumnFlags_None, 100.0f);
-        ImGui::TableSetupColumn("Date", ImGuiTableColumnFlags_None, 100.0f);
-        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_None, 80.0f);
+        ImGui::TableSetupColumn("Nom", ImGuiTableColumnFlags_DefaultSort, 200.0f);
+        ImGui::TableSetupColumn("Fabricant", ImGuiTableColumnFlags_None, 120.0f);
+        ImGui::TableSetupColumn("Version", ImGuiTableColumnFlags_None, 80.0f);
+        ImGui::TableSetupColumn("Date", ImGuiTableColumnFlags_None, 90.0f);
+        ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_None, 70.0f);
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableHeadersRow();
         
@@ -312,7 +359,6 @@ void RenderDriverList(AppState& state) {
                     std::string name = DriverManager::WideToUtf8(driver.deviceName);
                     std::string mfg = DriverManager::WideToUtf8(driver.manufacturer);
                     
-                    // Simple case-insensitive search
                     std::string filter = state.searchFilter;
                     std::transform(filter.begin(), filter.end(), filter.begin(), ::tolower);
                     std::transform(name.begin(), name.end(), name.begin(), ::tolower);
@@ -331,19 +377,18 @@ void RenderDriverList(AppState& state) {
         // Handle sorting
         if (ImGuiTableSortSpecs* sortSpecs = ImGui::TableGetSortSpecs()) {
             if (sortSpecs->SpecsDirty && sortSpecs->SpecsCount > 0) {
-                // Sort by first sort spec (primary sort column)
                 const ImGuiTableColumnSortSpecs& spec = sortSpecs->Specs[0];
-                int columnIndex = spec.ColumnIndex;
-                bool ascending = (spec.SortDirection == ImGuiSortDirection_Ascending);
-                
-                std::sort(displayDrivers.begin(), displayDrivers.end(),
-                    [columnIndex, ascending](const DriverManager::DriverInfo* a, const DriverManager::DriverInfo* b) {
-                        return CompareDrivers(a, b, columnIndex, ascending) < 0;
-                    });
-                
+                state.sortColumnIndex = spec.ColumnIndex;
+                state.sortAscending = (spec.SortDirection == ImGuiSortDirection_Ascending);
+                state.sortSpecsInitialized = true;
                 sortSpecs->SpecsDirty = false;
             }
         }
+        
+        std::sort(displayDrivers.begin(), displayDrivers.end(),
+            [&state](const DriverManager::DriverInfo* a, const DriverManager::DriverInfo* b) {
+                return CompareDrivers(a, b, state.sortColumnIndex, state.sortAscending) < 0;
+            });
         
         // Render driver rows
         ImGuiListClipper clipper;
@@ -355,32 +400,25 @@ void RenderDriverList(AppState& state) {
                 
                 ImGui::TableNextRow();
                 
-                // Name column with unique ID using PushID
                 ImGui::TableNextColumn();
                 bool isSelected = (state.selectedDriver == driver);
                 
-                // Use PushID with row index to ensure unique IDs even for duplicate names
                 ImGui::PushID(row);
                 if (ImGui::Selectable(DriverManager::WideToUtf8(driver->deviceName).c_str(), 
                     isSelected, ImGuiSelectableFlags_SpanAllColumns)) {
                     state.selectedDriver = driver;
-                    state.showDetailsWindow = true;
                 }
                 ImGui::PopID();
                 
-                // Manufacturer
                 ImGui::TableNextColumn();
                 ImGui::TextUnformatted(DriverManager::WideToUtf8(driver->manufacturer).c_str());
                 
-                // Version
                 ImGui::TableNextColumn();
                 ImGui::TextUnformatted(DriverManager::WideToUtf8(driver->driverVersion).c_str());
                 
-                // Date
                 ImGui::TableNextColumn();
                 ImGui::TextUnformatted(DriverManager::WideToUtf8(driver->driverDate).c_str());
                 
-                // Status with color
                 ImGui::TableNextColumn();
                 ImVec4 statusColor;
                 switch (driver->status) {
@@ -407,6 +445,92 @@ void RenderDriverList(AppState& state) {
     }
     
     ImGui::EndChild();
+    
+    // Right panel - Details (only shown when a driver is selected)
+    if (state.selectedDriver) {
+        ImGui::SameLine();
+        
+        ImGui::BeginChild("Details", ImVec2(detailsWidth, 0), true);
+        
+        auto* d = state.selectedDriver;
+        
+        // Header with device name
+        ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f), "Détails du pilote");
+        ImGui::Separator();
+        ImGui::Spacing();
+        
+        // Device name (wrapped)
+        ImGui::TextWrapped("%s", DriverManager::WideToUtf8(d->deviceName).c_str());
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        
+        // Details in a compact format
+        auto addDetailRow = [](const char* label, const std::string& value) {
+            if (value.empty()) return;
+            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.7f, 1.0f), "%s", label);
+            ImGui::TextWrapped("%s", value.c_str());
+            ImGui::Spacing();
+        };
+        
+        addDetailRow("Description:", DriverManager::WideToUtf8(d->deviceDescription));
+        addDetailRow("Fabricant:", DriverManager::WideToUtf8(d->manufacturer));
+        addDetailRow("Version:", DriverManager::WideToUtf8(d->driverVersion));
+        addDetailRow("Date:", DriverManager::WideToUtf8(d->driverDate));
+        addDetailRow("Fournisseur:", DriverManager::WideToUtf8(d->driverProvider));
+        addDetailRow("Classe:", DriverManager::WideToUtf8(d->deviceClass));
+        
+        ImGui::Separator();
+        ImGui::Spacing();
+        
+        // Status with color
+        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.7f, 1.0f), "Status:");
+        ImVec4 statusColor;
+        switch (d->status) {
+            case DriverManager::DriverStatus::OK:
+                statusColor = ImVec4(0.2f, 0.8f, 0.2f, 1.0f);
+                break;
+            case DriverManager::DriverStatus::Warning:
+                statusColor = ImVec4(0.9f, 0.7f, 0.0f, 1.0f);
+                break;
+            case DriverManager::DriverStatus::Error:
+                statusColor = ImVec4(0.9f, 0.2f, 0.2f, 1.0f);
+                break;
+            case DriverManager::DriverStatus::Disabled:
+                statusColor = ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+                break;
+            default:
+                statusColor = ImVec4(0.7f, 0.7f, 0.7f, 1.0f);
+        }
+        ImGui::TextColored(statusColor, "%s", DriverManager::GetStatusText(d->status));
+        ImGui::Spacing();
+        
+        // Enabled status
+        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.7f, 1.0f), "Activé:");
+        ImGui::Text("%s", d->isEnabled ? "Oui" : "Non");
+        ImGui::Spacing();
+        
+        if (d->problemCode != 0) {
+            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.7f, 1.0f), "Code problème:");
+            ImGui::TextColored(ImVec4(0.9f, 0.5f, 0.2f, 1.0f), "%u", d->problemCode);
+            ImGui::Spacing();
+        }
+        
+        ImGui::Separator();
+        ImGui::Spacing();
+        
+        // Hardware ID (collapsible since it can be long)
+        if (ImGui::CollapsingHeader("IDs matériel")) {
+            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.7f, 1.0f), "Hardware ID:");
+            ImGui::TextWrapped("%s", DriverManager::WideToUtf8(d->hardwareId).c_str());
+            ImGui::Spacing();
+            
+            ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.7f, 1.0f), "Instance ID:");
+            ImGui::TextWrapped("%s", DriverManager::WideToUtf8(d->deviceInstanceId).c_str());
+        }
+        
+        ImGui::EndChild();
+    }
 }
 
 // Render details window
@@ -460,6 +584,90 @@ void RenderAboutWindow(AppState& state) {
         ImGui::Text("Utilise Dear ImGui pour l'interface graphique");
         ImGui::Separator();
         ImGui::Text("Développé avec C++20 et DirectX 11");
+    }
+    ImGui::End();
+}
+
+// Render update help window
+void RenderUpdateHelpWindow(AppState& state) {
+    if (!state.showUpdateHelpWindow) return;
+    
+    ImGui::SetNextWindowSize(ImVec2(580, 520), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Mise à jour des pilotes", &state.showUpdateHelpWindow)) {
+        
+        ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.4f, 1.0f), "TousLesDrivers.com - Mes Drivers");
+        ImGui::Separator();
+        ImGui::Spacing();
+        
+        ImGui::TextWrapped(
+            "Pour mettre à jour vos pilotes, nous vous recommandons d'utiliser "
+            "l'outil 'Mes Drivers' de TousLesDrivers.com, un service gratuit et fiable.");
+        
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        
+        ImGui::TextColored(ImVec4(0.9f, 0.8f, 0.3f, 1.0f), "Comment fonctionne 'Mes Drivers' :");
+        ImGui::Spacing();
+        
+        ImGui::TextWrapped(
+            "1. Cliquez sur le bouton ci-dessous pour ouvrir la page Mes Drivers");
+        ImGui::Spacing();
+        
+        ImGui::TextWrapped(
+            "2. T\xe9l\xe9chargez et ex\xe9cutez l'outil de d\xe9tection (DriversCloud.exe)");
+        ImGui::Spacing();
+        
+        ImGui::TextWrapped(
+            "3. L'outil analyse automatiquement votre PC et identifie tous vos "
+            "composants mat\xe9riels ainsi que les versions de vos pilotes");
+        ImGui::Spacing();
+        
+        ImGui::TextWrapped(
+            "4. Une page web s'ouvre avec la liste compl\xe8te de vos pilotes et "
+            "les mises \xe0 jour disponibles");
+        ImGui::Spacing();
+        
+        ImGui::TextWrapped(
+            "5. T\xe9l\xe9chargez les pilotes n\xe9cessaires directement depuis leur site");
+        
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        
+        ImGui::TextColored(ImVec4(0.5f, 0.7f, 1.0f, 1.0f), "Avantages de Mes Drivers :");
+        ImGui::Spacing();
+        
+        ImGui::BulletText("D\xe9tection automatique de tous vos composants");
+        ImGui::BulletText("Identification pr\xe9cise des versions install\xe9es");
+        ImGui::BulletText("Liens directs vers les pilotes officiels");
+        ImGui::BulletText("Service gratuit et sans inscription");
+        ImGui::BulletText("Base de donn\xe9es compl\xe8te et \xe0 jour");
+        
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+        
+        // Main button - Mes Drivers
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.55f, 0.20f, 0.80f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.20f, 0.65f, 0.25f, 0.90f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.25f, 0.75f, 0.30f, 1.00f));
+        if (ImGui::Button("Ouvrir Mes Drivers", ImVec2(200, 35))) {
+            ShellExecuteW(nullptr, L"open", L"https://www.touslesdrivers.com/index.php?v_page=29", 
+                         nullptr, nullptr, SW_SHOWNORMAL);
+        }
+        ImGui::PopStyleColor(3);
+        
+        ImGui::SameLine();
+        if (ImGui::Button("TousLesDrivers.com", ImVec2(150, 35))) {
+            ShellExecuteW(nullptr, L"open", L"https://www.touslesdrivers.com", 
+                         nullptr, nullptr, SW_SHOWNORMAL);
+        }
+        
+        ImGui::SameLine();
+        if (ImGui::Button("Fermer", ImVec2(80, 35))) {
+            state.showUpdateHelpWindow = false;
+        }
     }
     ImGui::End();
 }
@@ -600,6 +808,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         
         RenderDetailsWindow(state);
         RenderAboutWindow(state);
+        RenderUpdateHelpWindow(state);
         RenderStatusBar(state);
 
         // Rendering
