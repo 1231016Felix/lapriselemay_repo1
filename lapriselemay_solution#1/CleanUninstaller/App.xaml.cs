@@ -20,6 +20,7 @@ public partial class App : Application
     public static SettingsService SettingsService { get; } = new();
     public static WindowsAppService WindowsAppService { get; } = new();
     public static AdvancedDetectionService AdvancedDetection { get; } = new();
+    public static InstallationMonitorService InstallationMonitor { get; } = new();
 
     public App()
     {

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="CleanUninstaller.Views.StartupManagerWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:CleanUninstaller.Views"
+    Title="Programmes au démarrage - Clean Uninstaller">
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid>
+        <local:StartupManagerPage />
+    </Grid>
+</Window>

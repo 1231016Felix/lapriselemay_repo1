@@ -49,6 +49,26 @@ public class UninstallResult
     /// Taille des résidus
     /// </summary>
     public long ResidualSize { get; set; }
+
+    /// <summary>
+    /// ID de la sauvegarde créée avant désinstallation
+    /// </summary>
+    public string? BackupId { get; set; }
+
+    /// <summary>
+    /// Nombre d'éléments supprimés avec succès
+    /// </summary>
+    public int DeletedCount { get; set; }
+
+    /// <summary>
+    /// Nombre d'éléments qui n'ont pas pu être supprimés
+    /// </summary>
+    public int FailedCount { get; set; }
+
+    /// <summary>
+    /// Espace libéré en octets
+    /// </summary>
+    public long SpaceFreed { get; set; }
 }
 
 /// <summary>

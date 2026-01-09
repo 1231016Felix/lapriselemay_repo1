@@ -18,4 +18,8 @@
     <Platform Solution="*|Any CPU" Project="x64" />
     <Platform Solution="*|x86" Project="x64" />
   </Project>
+  <Project Path="DriverManager/DriverManager.vcxproj" Id="f1e2d3c4-b5a6-7890-1234-567890abcdef">
+    <Platform Solution="*|Any CPU" Project="x64" />
+    <Platform Solution="*|x86" Project="x64" />
+  </Project>
 </Solution>

@@ -14,10 +14,17 @@
 
             <!-- Convertisseurs -->
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibility" />
+            <converters:BoolToInverseVisibilityConverter x:Key="BoolToInverseVisibilityConverter" />
             <converters:ConfidenceToColorConverter x:Key="ConfidenceToColor" />
             <converters:InstallerTypeToIconConverter x:Key="InstallerTypeToIcon" />
             <converters:StringToBrushConverter x:Key="StringToBrushConverter" />
             <converters:StringToVisibilityConverter x:Key="StringToVisibilityConverter" />
+            <converters:BoolToIconConverter x:Key="BoolToIconConverter" />
+            <converters:BoolToColorConverter x:Key="BoolToColorConverter" />
+            <converters:FileSizeConverter x:Key="FileSizeConverter" />
+            <converters:ZeroToVisibleConverter x:Key="ZeroToVisibleConverter" />
+            <converters:NullToBoolConverter x:Key="NullToBoolConverter" />
+            <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
 
             <!-- Couleurs personnalisées -->
             <SolidColorBrush x:Key="AccentBrush" Color="#0078D4" />

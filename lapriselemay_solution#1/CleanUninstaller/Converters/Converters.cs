@@ -300,3 +300,91 @@ public partial class StringToBrushConverter : IValueConverter
         throw new NotImplementedException();
     }
 }
+
+/// <summary>
+/// Convertit un booléen en icône (check ou vide)
+/// </summary>
+public partial class BoolToIconConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var boolValue = value is bool b && b;
+        return boolValue ? "\uE73E" : ""; // Checkmark or empty
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Convertit un booléen en couleur (vert si vrai, gris sinon)
+/// </summary>
+public partial class BoolToColorConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var boolValue = value is bool b && b;
+        var color = boolValue 
+            ? Color.FromArgb(255, 16, 124, 16)   // Vert
+            : Color.FromArgb(255, 110, 110, 110); // Gris
+        return new SolidColorBrush(color);
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+
+/// <summary>
+/// Convertit un booléen en Visibility inverse (Collapsed si vrai, Visible sinon)
+/// </summary>
+public partial class BoolToInverseVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var boolValue = value is bool b && b;
+        return boolValue ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        return value is Visibility v && v == Visibility.Collapsed;
+    }
+}
+
+/// <summary>
+/// Convertit zéro en Visible (pour afficher message quand liste vide)
+/// </summary>
+public partial class ZeroToVisibleConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        var number = value is int i ? i : (value is long l ? (int)l : 0);
+        return number == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Convertit null en booléen (false si null, true sinon)
+/// </summary>
+public partial class NullToBoolConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, string language)
+    {
+        return value != null;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, string language)
+    {
+        throw new NotImplementedException();
+    }
+}

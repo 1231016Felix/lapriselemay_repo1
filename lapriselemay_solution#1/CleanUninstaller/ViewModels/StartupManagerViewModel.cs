@@ -1,0 +1,495 @@
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Windows.Input;
+using CleanUninstaller.Models;
+using CleanUninstaller.Services;
+
+namespace CleanUninstaller.ViewModels;
+
+/// <summary>
+/// ViewModel pour le gestionnaire de programmes au démarrage
+/// </summary>
+public class StartupManagerViewModel : INotifyPropertyChanged
+{
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    private readonly StartupManagerService _startupService;
+    private ObservableCollection<StartupProgram> _allPrograms = new();
+    private ObservableCollection<StartupProgram> _filteredPrograms = new();
+    private StartupProgram? _selectedProgram;
+    private string _searchText = string.Empty;
+    private bool _showDisabled = true;
+    private bool _showRegistry = true;
+    private bool _showStartupFolder = true;
+    private bool _showScheduledTasks = true;
+    private bool _isBusy;
+    private string _statusMessage = "Prêt";
+    private int _progress;
+    
+    // Tri
+    private SortColumn _currentSortColumn = SortColumn.Impact;
+    private bool _sortAscending = false;
+
+    public StartupManagerViewModel()
+    {
+        _startupService = new StartupManagerService();
+
+        // Initialiser les commandes
+        RefreshCommand = new RelayCommand(async () => await ScanAsync());
+        EnableSelectedCommand = new RelayCommand(async () => await SetSelectedEnabledAsync(true), () => SelectedProgram != null);
+        DisableSelectedCommand = new RelayCommand(async () => await SetSelectedEnabledAsync(false), () => SelectedProgram != null);
+        RemoveSelectedCommand = new RelayCommand(async () => await RemoveSelectedAsync(), () => SelectedProgram != null);
+        EnableAllSelectedCommand = new RelayCommand(async () => await SetMultipleEnabledAsync(true));
+        DisableAllSelectedCommand = new RelayCommand(async () => await SetMultipleEnabledAsync(false));
+        SelectAllCommand = new RelayCommand(() => SetAllSelected(true));
+        DeselectAllCommand = new RelayCommand(() => SetAllSelected(false));
+        OpenFileLocationCommand = new RelayCommand(() => OpenFileLocation(), () => SelectedProgram != null);
+        
+        // Commandes de tri
+        SortByNameCommand = new RelayCommand(() => CurrentSortColumn = SortColumn.Name);
+        SortByStatusCommand = new RelayCommand(() => CurrentSortColumn = SortColumn.Status);
+        SortByTypeCommand = new RelayCommand(() => CurrentSortColumn = SortColumn.Type);
+        SortByImpactCommand = new RelayCommand(() => CurrentSortColumn = SortColumn.Impact);
+    }
+
+    #region Properties
+
+    public ObservableCollection<StartupProgram> Programs
+    {
+        get => _filteredPrograms;
+        private set
+        {
+            _filteredPrograms = value;
+            OnPropertyChanged(nameof(Programs));
+        }
+    }
+
+    public StartupProgram? SelectedProgram
+    {
+        get => _selectedProgram;
+        set
+        {
+            _selectedProgram = value;
+            OnPropertyChanged(nameof(SelectedProgram));
+            OnPropertyChanged(nameof(HasSelection));
+            (EnableSelectedCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (DisableSelectedCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (RemoveSelectedCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (OpenFileLocationCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        }
+    }
+
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            _searchText = value;
+            OnPropertyChanged(nameof(SearchText));
+            ApplyFilters();
+        }
+    }
+
+    public bool ShowDisabled
+    {
+        get => _showDisabled;
+        set { _showDisabled = value; OnPropertyChanged(nameof(ShowDisabled)); ApplyFilters(); }
+    }
+
+    public bool ShowRegistry
+    {
+        get => _showRegistry;
+        set { _showRegistry = value; OnPropertyChanged(nameof(ShowRegistry)); ApplyFilters(); }
+    }
+
+    public bool ShowStartupFolder
+    {
+        get => _showStartupFolder;
+        set { _showStartupFolder = value; OnPropertyChanged(nameof(ShowStartupFolder)); ApplyFilters(); }
+    }
+
+    public bool ShowScheduledTasks
+    {
+        get => _showScheduledTasks;
+        set { _showScheduledTasks = value; OnPropertyChanged(nameof(ShowScheduledTasks)); ApplyFilters(); }
+    }
+
+    public bool IsBusy
+    {
+        get => _isBusy;
+        set { _isBusy = value; OnPropertyChanged(nameof(IsBusy)); OnPropertyChanged(nameof(IsNotBusy)); }
+    }
+
+    public bool IsNotBusy => !_isBusy;
+
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        set { _statusMessage = value; OnPropertyChanged(nameof(StatusMessage)); }
+    }
+
+    public int Progress
+    {
+        get => _progress;
+        set { _progress = value; OnPropertyChanged(nameof(Progress)); }
+    }
+
+    public bool HasSelection => SelectedProgram != null;
+
+    public bool IsAdministrator => StartupManagerService.IsAdministrator();
+
+    public SortColumn CurrentSortColumn
+    {
+        get => _currentSortColumn;
+        set
+        {
+            if (_currentSortColumn != value)
+            {
+                _currentSortColumn = value;
+                _sortAscending = true; // Reset to ascending when changing column
+                OnPropertyChanged(nameof(CurrentSortColumn));
+                UpdateSortIndicators();
+                ApplyFilters();
+            }
+            else
+            {
+                // Toggle direction if same column
+                _sortAscending = !_sortAscending;
+                OnPropertyChanged(nameof(CurrentSortColumn));
+                UpdateSortIndicators();
+                ApplyFilters();
+            }
+        }
+    }
+
+    public bool SortAscending
+    {
+        get => _sortAscending;
+        set { _sortAscending = value; OnPropertyChanged(nameof(SortAscending)); }
+    }
+
+    // Indicateurs de tri pour l'UI
+    public string NameSortIndicator => GetSortIndicator(SortColumn.Name);
+    public string StatusSortIndicator => GetSortIndicator(SortColumn.Status);
+    public string TypeSortIndicator => GetSortIndicator(SortColumn.Type);
+    public string ImpactSortIndicator => GetSortIndicator(SortColumn.Impact);
+
+    private string GetSortIndicator(SortColumn column)
+    {
+        if (_currentSortColumn != column) return "";
+        return _sortAscending ? " ↑" : " ↓";
+    }
+
+    private void UpdateSortIndicators()
+    {
+        OnPropertyChanged(nameof(NameSortIndicator));
+        OnPropertyChanged(nameof(StatusSortIndicator));
+        OnPropertyChanged(nameof(TypeSortIndicator));
+        OnPropertyChanged(nameof(ImpactSortIndicator));
+    }
+
+    // Statistiques
+    public int TotalCount => _allPrograms.Count;
+    public int EnabledCount => _allPrograms.Count(p => p.IsEnabled);
+    public int DisabledCount => _allPrograms.Count(p => !p.IsEnabled);
+    public int HighImpactCount => _allPrograms.Count(p => p.IsEnabled && (p.Impact == StartupImpact.High || p.Impact == StartupImpact.Critical));
+
+    public string TotalBootImpact
+    {
+        get
+        {
+            var totalMs = _startupService.CalculateTotalBootImpact(_allPrograms);
+            if (totalMs < 1000)
+                return $"{totalMs} ms";
+            return $"{totalMs / 1000.0:F1} s";
+        }
+    }
+
+    public string PotentialSavings
+    {
+        get
+        {
+            var highImpactMs = _allPrograms
+                .Where(p => p.IsEnabled && (p.Impact == StartupImpact.High || p.Impact == StartupImpact.Critical))
+                .Sum(p => p.EstimatedImpactMs);
+            if (highImpactMs < 1000)
+                return $"{highImpactMs} ms";
+            return $"{highImpactMs / 1000.0:F1} s";
+        }
+    }
+
+    #endregion
+
+    #region Commands
+
+    public ICommand RefreshCommand { get; }
+    public ICommand EnableSelectedCommand { get; }
+    public ICommand DisableSelectedCommand { get; }
+    public ICommand RemoveSelectedCommand { get; }
+    public ICommand EnableAllSelectedCommand { get; }
+    public ICommand DisableAllSelectedCommand { get; }
+    public ICommand SelectAllCommand { get; }
+    public ICommand DeselectAllCommand { get; }
+    public ICommand OpenFileLocationCommand { get; }
+    
+    // Commandes de tri
+    public ICommand SortByNameCommand { get; }
+    public ICommand SortByStatusCommand { get; }
+    public ICommand SortByTypeCommand { get; }
+    public ICommand SortByImpactCommand { get; }
+
+    #endregion
+
+    #region Methods
+
+    public async Task ScanAsync()
+    {
+        if (IsBusy) return;
+
+        IsBusy = true;
+        StatusMessage = "Scan des programmes au démarrage...";
+        Progress = 0;
+
+        try
+        {
+            var progress = new Progress<ScanProgress>(p =>
+            {
+                Progress = p.Percentage;
+                StatusMessage = p.StatusMessage;
+            });
+
+            var programs = await _startupService.ScanStartupProgramsAsync(progress);
+
+            _allPrograms = new ObservableCollection<StartupProgram>(programs);
+            ApplyFilters();
+
+            StatusMessage = $"{programs.Count} programmes trouvés";
+            UpdateStatistics();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Erreur: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            Progress = 100;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        var filtered = _allPrograms.AsEnumerable();
+
+        // Filtre par texte
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            var search = SearchText.ToLowerInvariant();
+            filtered = filtered.Where(p =>
+                p.Name.ToLowerInvariant().Contains(search) ||
+                p.Publisher.ToLowerInvariant().Contains(search) ||
+                p.Command.ToLowerInvariant().Contains(search));
+        }
+
+        // Filtre par état
+        if (!ShowDisabled)
+        {
+            filtered = filtered.Where(p => p.IsEnabled);
+        }
+
+        // Filtre par type
+        filtered = filtered.Where(p =>
+            (ShowRegistry && p.Type == Models.StartupType.Registry) ||
+            (ShowStartupFolder && p.Type == Models.StartupType.StartupFolder) ||
+            (ShowScheduledTasks && p.Type == Models.StartupType.ScheduledTask));
+
+        // Appliquer le tri
+        filtered = ApplySorting(filtered);
+
+        Programs = new ObservableCollection<StartupProgram>(filtered);
+        OnPropertyChanged(nameof(Programs));
+    }
+
+    private IEnumerable<StartupProgram> ApplySorting(IEnumerable<StartupProgram> programs)
+    {
+        return _currentSortColumn switch
+        {
+            SortColumn.Name => _sortAscending 
+                ? programs.OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
+                : programs.OrderByDescending(p => p.Name, StringComparer.CurrentCultureIgnoreCase),
+            
+            SortColumn.Status => _sortAscending
+                ? programs.OrderBy(p => p.IsEnabled).ThenBy(p => p.Name)
+                : programs.OrderByDescending(p => p.IsEnabled).ThenBy(p => p.Name),
+            
+            SortColumn.Type => _sortAscending
+                ? programs.OrderBy(p => p.Type).ThenBy(p => p.Name)
+                : programs.OrderByDescending(p => p.Type).ThenBy(p => p.Name),
+            
+            SortColumn.Impact => _sortAscending
+                ? programs.OrderBy(p => p.Impact).ThenBy(p => p.Name)
+                : programs.OrderByDescending(p => p.Impact).ThenBy(p => p.Name),
+            
+            _ => programs.OrderByDescending(p => p.Impact).ThenBy(p => p.Name)
+        };
+    }
+
+    private async Task SetSelectedEnabledAsync(bool enabled)
+    {
+        if (SelectedProgram == null) return;
+
+        IsBusy = true;
+        StatusMessage = enabled ? "Activation..." : "Désactivation...";
+
+        try
+        {
+            var success = await _startupService.SetStartupEnabledAsync(SelectedProgram, enabled);
+            if (success)
+            {
+                StatusMessage = enabled ? "Programme activé" : "Programme désactivé";
+                UpdateStatistics();
+            }
+            else
+            {
+                StatusMessage = "Erreur: Droits administrateur requis ?";
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task SetMultipleEnabledAsync(bool enabled)
+    {
+        var selected = _allPrograms.Where(p => p.IsSelected).ToList();
+        if (!selected.Any())
+        {
+            StatusMessage = "Aucun programme sélectionné";
+            return;
+        }
+
+        IsBusy = true;
+        var successCount = 0;
+
+        foreach (var program in selected)
+        {
+            StatusMessage = $"{(enabled ? "Activation" : "Désactivation")} de {program.Name}...";
+            if (await _startupService.SetStartupEnabledAsync(program, enabled))
+            {
+                successCount++;
+            }
+        }
+
+        StatusMessage = $"{successCount}/{selected.Count} programmes {(enabled ? "activés" : "désactivés")}";
+        UpdateStatistics();
+        IsBusy = false;
+    }
+
+    private async Task RemoveSelectedAsync()
+    {
+        if (SelectedProgram == null) return;
+
+        IsBusy = true;
+        StatusMessage = "Suppression...";
+
+        try
+        {
+            var success = await _startupService.RemoveFromStartupAsync(SelectedProgram);
+            if (success)
+            {
+                _allPrograms.Remove(SelectedProgram);
+                ApplyFilters();
+                StatusMessage = "Programme supprimé du démarrage";
+                UpdateStatistics();
+            }
+            else
+            {
+                StatusMessage = "Erreur lors de la suppression";
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void SetAllSelected(bool selected)
+    {
+        foreach (var program in Programs)
+        {
+            program.IsSelected = selected;
+        }
+    }
+
+    private void OpenFileLocation()
+    {
+        if (SelectedProgram == null || string.IsNullOrEmpty(SelectedProgram.Command)) return;
+
+        try
+        {
+            var directory = Path.GetDirectoryName(SelectedProgram.Command);
+            if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"/select,\"{SelectedProgram.Command}\"",
+                    UseShellExecute = true
+                });
+            }
+        }
+        catch { }
+    }
+
+    private void UpdateStatistics()
+    {
+        OnPropertyChanged(nameof(TotalCount));
+        OnPropertyChanged(nameof(EnabledCount));
+        OnPropertyChanged(nameof(DisabledCount));
+        OnPropertyChanged(nameof(HighImpactCount));
+        OnPropertyChanged(nameof(TotalBootImpact));
+        OnPropertyChanged(nameof(PotentialSavings));
+    }
+
+    private void OnPropertyChanged(string propertyName)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    #endregion
+}
+
+/// <summary>
+/// Implémentation simple de ICommand
+/// </summary>
+public class RelayCommand : ICommand
+{
+    private readonly Action _execute;
+    private readonly Func<bool>? _canExecute;
+
+    public RelayCommand(Action execute, Func<bool>? canExecute = null)
+    {
+        _execute = execute;
+        _canExecute = canExecute;
+    }
+
+    public event EventHandler? CanExecuteChanged;
+
+    public bool CanExecute(object? parameter) => _canExecute?.Invoke() ?? true;
+
+    public void Execute(object? parameter) => _execute();
+
+    public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+}
+
+/// <summary>
+/// Colonnes de tri disponibles
+/// </summary>
+public enum SortColumn
+{
+    Name,
+    Status,
+    Type,
+    Impact
+}

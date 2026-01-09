@@ -534,27 +534,22 @@ public sealed partial class MainWindow : Window
         return sb.ToString();
     }
 
+    private void MonitorButton_Click(object sender, RoutedEventArgs e)
+    {
+        var monitorWindow = new MonitorWindow();
+        monitorWindow.Activate();
+    }
+
+    private void StartupButton_Click(object sender, RoutedEventArgs e)
+    {
+        var startupWindow = new StartupManagerWindow();
+        startupWindow.Activate();
+    }
+
     private async void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new SettingsDialog { XamlRoot = Content.XamlRoot };
         await dialog.ShowAsync();
-    }
-
-    private async void OrphanedPrograms_Click(object sender, RoutedEventArgs e)
-    {
-        var dialog = new OrphanedProgramsDialog { XamlRoot = Content.XamlRoot };
-        var result = await dialog.ShowAsync();
-        
-        if (dialog.CleanupPerformed)
-        {
-            ShowInfoBar(
-                "Nettoyage effectué", 
-                $"{dialog.CleanedCount} entrée(s) orpheline(s) supprimée(s) du registre.", 
-                InfoBarSeverity.Success);
-            
-            // Actualiser la liste des programmes au cas où
-            await LoadProgramsAsync();
-        }
     }
 
     #endregion

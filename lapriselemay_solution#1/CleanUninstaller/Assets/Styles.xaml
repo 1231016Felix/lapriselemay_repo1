@@ -3,7 +3,6 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <!-- Style pour les boutons subtils (toolbar) -->
     <Style x:Key="SubtleButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
@@ -11,7 +10,6 @@
         <Setter Property="CornerRadius" Value="4" />
     </Style>
 
-    <!-- Style pour les cartes de programme -->
     <Style x:Key="ProgramCardStyle" TargetType="Border">
         <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
@@ -21,14 +19,12 @@
         <Setter Property="Margin" Value="0,0,0,8" />
     </Style>
 
-    <!-- Style pour les boutons d'action principaux -->
     <Style x:Key="PrimaryActionButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
         <Setter Property="MinWidth" Value="120" />
         <Setter Property="Height" Value="36" />
         <Setter Property="CornerRadius" Value="4" />
     </Style>
 
-    <!-- Style pour les boutons danger (désinstaller) -->
     <Style x:Key="DangerButtonStyle" TargetType="Button">
         <Setter Property="Background" Value="{StaticResource DangerBrush}" />
         <Setter Property="Foreground" Value="White" />
@@ -38,60 +34,52 @@
         <Setter Property="BorderThickness" Value="0" />
     </Style>
 
-    <!-- Style pour les badges de taille -->
     <Style x:Key="SizeBadgeStyle" TargetType="Border">
         <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Padding" Value="10,4" />
     </Style>
 
-    <!-- Style pour les badges de statut -->
     <Style x:Key="StatusBadgeStyle" TargetType="Border">
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Padding" Value="6,2" />
     </Style>
 
-    <!-- Style pour les indicateurs de statut -->
     <Style x:Key="StatusIndicatorStyle" TargetType="Ellipse">
         <Setter Property="Width" Value="10" />
         <Setter Property="Height" Value="10" />
         <Setter Property="Margin" Value="0,0,8,0" />
     </Style>
 
-    <!-- Style pour les titres de section -->
     <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="20" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Margin" Value="0,0,0,12" />
     </Style>
 
-    <!-- Style pour les sous-titres -->
     <Style x:Key="SubtitleStyle" TargetType="TextBlock">
         <Setter Property="FontSize" Value="14" />
         <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
     </Style>
 
-    <!-- Style pour les InfoBars -->
     <Style x:Key="CompactInfoBarStyle" TargetType="InfoBar">
         <Setter Property="IsClosable" Value="True" />
         <Setter Property="Margin" Value="0,0,0,12" />
     </Style>
 
-    <!-- Style pour les éléments de liste -->
     <Style x:Key="ListItemContainerStyle" TargetType="ListViewItem">
+        <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
         <Setter Property="Padding" Value="4,2" />
         <Setter Property="MinHeight" Value="60" />
     </Style>
 
-    <!-- Style pour les panneaux de détails -->
     <Style x:Key="DetailsPanelStyle" TargetType="Border">
         <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
         <Setter Property="CornerRadius" Value="8" />
         <Setter Property="Padding" Value="16" />
     </Style>
 
-    <!-- Style pour les Expanders -->
     <Style x:Key="CompactExpanderStyle" TargetType="Expander">
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />

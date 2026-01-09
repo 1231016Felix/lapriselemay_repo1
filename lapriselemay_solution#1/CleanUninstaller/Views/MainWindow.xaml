@@ -103,6 +103,24 @@
                           Click="ExportButton_Click"
                           ToolTipService.ToolTip="Exporter la liste des programmes" />
 
+            <AppBarButton x:Name="MonitorButton"
+                          Label="Moniteur"
+                          Click="MonitorButton_Click"
+                          ToolTipService.ToolTip="Moniteur d'installation - Surveillez une installation pour une désinstallation parfaite">
+                <AppBarButton.Icon>
+                    <FontIcon Glyph="&#xE7B3;" />
+                </AppBarButton.Icon>
+            </AppBarButton>
+
+            <AppBarButton x:Name="StartupButton"
+                          Label="Démarrage"
+                          Click="StartupButton_Click"
+                          ToolTipService.ToolTip="Gérer les programmes au démarrage de Windows">
+                <AppBarButton.Icon>
+                    <FontIcon Glyph="&#xE945;" />
+                </AppBarButton.Icon>
+            </AppBarButton>
+
             <AppBarSeparator />
 
             <AppBarButton Icon="Sort" Label="Trier">
@@ -159,25 +177,6 @@
                         <MenuFlyoutItem Text="Réinitialiser les filtres" Click="ResetFilters_Click">
                             <MenuFlyoutItem.Icon>
                                 <FontIcon Glyph="&#xE72C;" />
-                            </MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                    </MenuFlyout>
-                </AppBarButton.Flyout>
-            </AppBarButton>
-
-            <AppBarSeparator />
-
-            <AppBarButton Label="Outils">
-                <AppBarButton.Icon>
-                    <FontIcon Glyph="&#xE90F;" />
-                </AppBarButton.Icon>
-                <AppBarButton.Flyout>
-                    <MenuFlyout>
-                        <MenuFlyoutItem Text="Programmes orphelins" 
-                                        Click="OrphanedPrograms_Click"
-                                        ToolTipService.ToolTip="Détecter et supprimer les entrées de registre orphelines">
-                            <MenuFlyoutItem.Icon>
-                                <FontIcon Glyph="&#xE7BA;" />
                             </MenuFlyoutItem.Icon>
                         </MenuFlyoutItem>
                     </MenuFlyout>
@@ -364,25 +363,19 @@
                 </Grid>
 
                 <ListView x:Name="ProgramListView"
-                          Grid.Row="3"
-                          SelectionMode="Single"
-                          SelectionChanged="ProgramListView_SelectionChanged"
-                          DoubleTapped="ProgramListView_DoubleTapped"
-                          Loaded="ProgramListView_Loaded"
-                          ContainerContentChanging="ProgramListView_ContainerContentChanging">
+          Grid.Row="3"
+          SelectionMode="Single"
+          SelectionChanged="ProgramListView_SelectionChanged"
+          DoubleTapped="ProgramListView_DoubleTapped"
+          Loaded="ProgramListView_Loaded"
+          ContainerContentChanging="ProgramListView_ContainerContentChanging"
+          ItemContainerStyle="{StaticResource ListItemContainerStyle}">
                     <ListView.ItemContainerTransitions>
                         <TransitionCollection>
                             <AddDeleteThemeTransition />
                             <ReorderThemeTransition />
                         </TransitionCollection>
                     </ListView.ItemContainerTransitions>
-                    <ListView.ItemContainerStyle>
-                        <Style TargetType="ListViewItem">
-                            <Setter Property="VerticalContentAlignment" Value="Center" />
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                            <Setter Property="Padding" Value="0" />
-                        </Style>
-                    </ListView.ItemContainerStyle>
                     <ListView.ItemTemplate>
                         <DataTemplate x:DataType="models:InstalledProgram">
                             <Grid x:Name="ItemGrid" Padding="8,6" VerticalAlignment="Center"
