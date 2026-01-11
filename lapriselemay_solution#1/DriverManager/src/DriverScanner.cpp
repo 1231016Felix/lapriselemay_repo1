@@ -66,7 +66,7 @@ namespace DriverManager {
         m_cancelRequested = false;
         ClearCategories();
 
-        int totalClasses = static_cast<int>(s_classGuids.size());
+        int totalClasses = static_cast<int>(s_classGuids.size()) + 1; // +1 for "Other" scan
         int currentClass = 0;
 
         for (const auto& [guid, type] : s_classGuids) {
@@ -81,7 +81,16 @@ namespace DriverManager {
         }
 
         // Also scan all other devices
+        if (m_progressCallback) {
+            m_progressCallback(currentClass, totalClasses, L"Scanning autres p\xc3\xa9riph\xc3\xa9riques...");
+        }
         ScanDeviceClass(GUID_NULL, DriverType::Other);
+        currentClass++;
+        
+        // Final progress update
+        if (m_progressCallback) {
+            m_progressCallback(totalClasses, totalClasses, L"Termin\xc3\xa9");
+        }
 
         m_isScanning = false;
     }
@@ -223,6 +232,9 @@ namespace DriverManager {
             info.problemCode = problem;
         }
 
+        // Calculate driver age
+        info.CalculateAge();
+
         return info;
     }
 
@@ -332,8 +344,22 @@ namespace DriverManager {
     }
 
     bool DriverScanner::EnableDriver(const DriverInfo& driver) {
-        // Create an empty device info set
-        HDEVINFO deviceInfoSet = SetupDiCreateDeviceInfoList(nullptr, nullptr);
+        // Method 1: Try CM_Enable_DevNode first (requires admin)
+        DEVINST devInst = 0;
+        CONFIGRET cr = CM_Locate_DevNodeW(&devInst, 
+            const_cast<DEVINSTID_W>(driver.deviceInstanceId.c_str()), 
+            CM_LOCATE_DEVNODE_NORMAL);
+        
+        if (cr == CR_SUCCESS) {
+            cr = CM_Enable_DevNode(devInst, 0);
+            if (cr == CR_SUCCESS) {
+                return true;
+            }
+        }
+        
+        // Method 2: Fallback to SetupDi approach
+        HDEVINFO deviceInfoSet = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, 
+            DIGCF_ALLCLASSES | DIGCF_PRESENT);
         
         if (deviceInfoSet == INVALID_HANDLE_VALUE) {
             return false;
@@ -344,20 +370,35 @@ namespace DriverManager {
         
         bool success = false;
         
-        // Open the specific device by its instance ID
-        if (SetupDiOpenDeviceInfoW(deviceInfoSet, driver.deviceInstanceId.c_str(), 
-            nullptr, 0, &deviceInfoData)) {
-            
-            SP_PROPCHANGE_PARAMS params;
-            params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
-            params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
-            params.StateChange = DICS_ENABLE;
-            params.Scope = DICS_FLAG_GLOBAL;
-            params.HwProfile = 0;
+        // Find the device by instance ID
+        for (DWORD i = 0; SetupDiEnumDeviceInfo(deviceInfoSet, i, &deviceInfoData); i++) {
+            wchar_t instanceId[MAX_DEVICE_ID_LEN] = {0};
+            if (SetupDiGetDeviceInstanceIdW(deviceInfoSet, &deviceInfoData, instanceId, 
+                MAX_DEVICE_ID_LEN, nullptr)) {
+                if (_wcsicmp(instanceId, driver.deviceInstanceId.c_str()) == 0) {
+                    // Found the device, try to enable it
+                    SP_PROPCHANGE_PARAMS params;
+                    params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+                    params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
+                    params.StateChange = DICS_ENABLE;
+                    params.Scope = DICS_FLAG_GLOBAL;
+                    params.HwProfile = 0;
 
-            if (SetupDiSetClassInstallParamsW(deviceInfoSet, &deviceInfoData, 
-                &params.ClassInstallHeader, sizeof(params))) {
-                success = SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData);
+                    if (SetupDiSetClassInstallParamsW(deviceInfoSet, &deviceInfoData, 
+                        &params.ClassInstallHeader, sizeof(params))) {
+                        success = SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData);
+                        
+                        // Try config-specific if global failed
+                        if (!success) {
+                            params.Scope = DICS_FLAG_CONFIGSPECIFIC;
+                            if (SetupDiSetClassInstallParamsW(deviceInfoSet, &deviceInfoData, 
+                                &params.ClassInstallHeader, sizeof(params))) {
+                                success = SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData);
+                            }
+                        }
+                    }
+                    break;
+                }
             }
         }
 
@@ -366,8 +407,23 @@ namespace DriverManager {
     }
 
     bool DriverScanner::DisableDriver(const DriverInfo& driver) {
-        // Create an empty device info set
-        HDEVINFO deviceInfoSet = SetupDiCreateDeviceInfoList(nullptr, nullptr);
+        // Method 1: Try CM_Disable_DevNode first (requires admin)
+        DEVINST devInst = 0;
+        CONFIGRET cr = CM_Locate_DevNodeW(&devInst, 
+            const_cast<DEVINSTID_W>(driver.deviceInstanceId.c_str()), 
+            CM_LOCATE_DEVNODE_NORMAL);
+        
+        if (cr == CR_SUCCESS) {
+            // CM_DISABLE_UI_NOT_OK prevents UI prompts
+            cr = CM_Disable_DevNode(devInst, CM_DISABLE_UI_NOT_OK);
+            if (cr == CR_SUCCESS) {
+                return true;
+            }
+        }
+        
+        // Method 2: Fallback to SetupDi approach
+        HDEVINFO deviceInfoSet = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, 
+            DIGCF_ALLCLASSES | DIGCF_PRESENT);
         
         if (deviceInfoSet == INVALID_HANDLE_VALUE) {
             return false;
@@ -378,20 +434,35 @@ namespace DriverManager {
         
         bool success = false;
         
-        // Open the specific device by its instance ID
-        if (SetupDiOpenDeviceInfoW(deviceInfoSet, driver.deviceInstanceId.c_str(), 
-            nullptr, 0, &deviceInfoData)) {
-            
-            SP_PROPCHANGE_PARAMS params;
-            params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
-            params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
-            params.StateChange = DICS_DISABLE;
-            params.Scope = DICS_FLAG_GLOBAL;
-            params.HwProfile = 0;
+        // Find the device by instance ID
+        for (DWORD i = 0; SetupDiEnumDeviceInfo(deviceInfoSet, i, &deviceInfoData); i++) {
+            wchar_t instanceId[MAX_DEVICE_ID_LEN] = {0};
+            if (SetupDiGetDeviceInstanceIdW(deviceInfoSet, &deviceInfoData, instanceId, 
+                MAX_DEVICE_ID_LEN, nullptr)) {
+                if (_wcsicmp(instanceId, driver.deviceInstanceId.c_str()) == 0) {
+                    // Found the device, try to disable it
+                    SP_PROPCHANGE_PARAMS params;
+                    params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
+                    params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
+                    params.StateChange = DICS_DISABLE;
+                    params.Scope = DICS_FLAG_GLOBAL;
+                    params.HwProfile = 0;
 
-            if (SetupDiSetClassInstallParamsW(deviceInfoSet, &deviceInfoData, 
-                &params.ClassInstallHeader, sizeof(params))) {
-                success = SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData);
+                    if (SetupDiSetClassInstallParamsW(deviceInfoSet, &deviceInfoData, 
+                        &params.ClassInstallHeader, sizeof(params))) {
+                        success = SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData);
+                        
+                        // Try config-specific if global failed
+                        if (!success) {
+                            params.Scope = DICS_FLAG_CONFIGSPECIFIC;
+                            if (SetupDiSetClassInstallParamsW(deviceInfoSet, &deviceInfoData, 
+                                &params.ClassInstallHeader, sizeof(params))) {
+                                success = SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData);
+                            }
+                        }
+                    }
+                    break;
+                }
             }
         }
 
@@ -400,26 +471,19 @@ namespace DriverManager {
     }
 
     bool DriverScanner::UninstallDriver(const DriverInfo& driver) {
-        // Create an empty device info set
-        HDEVINFO deviceInfoSet = SetupDiCreateDeviceInfoList(nullptr, nullptr);
+        // Get device instance handle
+        DEVINST devInst = 0;
+        CONFIGRET cr = CM_Locate_DevNodeW(&devInst, 
+            const_cast<DEVINSTID_W>(driver.deviceInstanceId.c_str()), 
+            CM_LOCATE_DEVNODE_NORMAL);
         
-        if (deviceInfoSet == INVALID_HANDLE_VALUE) {
+        if (cr != CR_SUCCESS) {
             return false;
         }
-
-        SP_DEVINFO_DATA deviceInfoData;
-        deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
         
-        bool success = false;
-        
-        // Open the specific device by its instance ID
-        if (SetupDiOpenDeviceInfoW(deviceInfoSet, driver.deviceInstanceId.c_str(), 
-            nullptr, 0, &deviceInfoData)) {
-            success = SetupDiCallClassInstaller(DIF_REMOVE, deviceInfoSet, &deviceInfoData);
-        }
-
-        SetupDiDestroyDeviceInfoList(deviceInfoSet);
-        return success;
+        // Uninstall the device
+        cr = CM_Uninstall_DevNode(devInst, 0);
+        return (cr == CR_SUCCESS);
     }
 
     bool DriverScanner::UpdateDriver(const DriverInfo& driver) {

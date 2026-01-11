@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <ctime>
 
 namespace DriverManager {
 
@@ -27,6 +28,22 @@ namespace DriverManager {
         HID,
         Other
     };
+    
+    enum class DriverAge {
+        Current,      // < 1 an
+        Old,          // 1-2 ans
+        VeryOld,      // > 2 ans
+        Unknown
+    };
+    
+    struct UpdateInfo {
+        std::wstring newVersion;
+        std::wstring downloadUrl;
+        std::wstring releaseDate;
+        std::wstring description;
+        uint64_t downloadSize = 0;
+        bool isImportant = false;
+    };
 
     struct DriverInfo {
         std::wstring deviceName;
@@ -47,11 +64,58 @@ namespace DriverManager {
         bool isEnabled = true;
         bool hasUpdate = false;
         bool isSystemCritical = false;
+        bool updateCheckPending = false;
         
         uint32_t problemCode = 0;
         
+        // Age tracking
+        int driverAgeDays = -1;  // -1 = unknown
+        DriverAge ageCategory = DriverAge::Unknown;
+        
+        // Update information
+        UpdateInfo availableUpdate;
+        
         // For UI selection
         bool selected = false;
+        
+        // Helper to parse driver date and calculate age
+        void CalculateAge() {
+            if (driverDate.empty()) {
+                ageCategory = DriverAge::Unknown;
+                driverAgeDays = -1;
+                return;
+            }
+            
+            // Parse date format: YYYY-MM-DD
+            int year = 0, month = 0, day = 0;
+            if (swscanf_s(driverDate.c_str(), L"%d-%d-%d", &year, &month, &day) == 3) {
+                // Get current time
+                std::time_t now = std::time(nullptr);
+                std::tm localNow;
+                localtime_s(&localNow, &now);
+                
+                // Create driver date
+                std::tm driverTm = {};
+                driverTm.tm_year = year - 1900;
+                driverTm.tm_mon = month - 1;
+                driverTm.tm_mday = day;
+                
+                std::time_t driverTime = std::mktime(&driverTm);
+                
+                if (driverTime != -1) {
+                    double diffSeconds = std::difftime(now, driverTime);
+                    driverAgeDays = static_cast<int>(diffSeconds / (60 * 60 * 24));
+                    
+                    if (driverAgeDays < 365) {
+                        ageCategory = DriverAge::Current;
+                    } else if (driverAgeDays < 730) {  // 2 years
+                        ageCategory = DriverAge::Old;
+                    } else {
+                        ageCategory = DriverAge::VeryOld;
+                    }
+                }
+            }
+        }
     };
 
     struct DriverCategory {
@@ -104,17 +168,52 @@ namespace DriverManager {
     // Get type text
     inline const char* GetTypeText(DriverType type) {
         switch (type) {
-            case DriverType::System:    return "Système";
+            case DriverType::System:    return "Syst\xc3\xa8me";
             case DriverType::Display:   return "Affichage";
             case DriverType::Audio:     return "Audio";
-            case DriverType::Network:   return "Réseau";
+            case DriverType::Network:   return "R\xc3\xa9seau";
             case DriverType::Storage:   return "Stockage";
             case DriverType::USB:       return "USB";
             case DriverType::Bluetooth: return "Bluetooth";
             case DriverType::Printer:   return "Imprimante";
-            case DriverType::HID:       return "Périphérique d'entrée";
+            case DriverType::HID:       return "P\xc3\xa9riph\xc3\xa9rique d'entr\xc3\xa9" "e";
             default:                    return "Autre";
         }
+    }
+    
+    // Get age text
+    inline const char* GetAgeText(DriverAge age) {
+        switch (age) {
+            case DriverAge::Current:  return "R\xc3\xa9" "cent";
+            case DriverAge::Old:      return "1-2 ans";
+            case DriverAge::VeryOld:  return "> 2 ans";
+            default:                  return "Inconnu";
+        }
+    }
+    
+    // Get age color (ABGR format for ImGui)
+    inline uint32_t GetAgeColor(DriverAge age) {
+        switch (age) {
+            case DriverAge::Current:  return 0xFF00CC00; // Green
+            case DriverAge::Old:      return 0xFF00CCCC; // Yellow
+            case DriverAge::VeryOld:  return 0xFF0066FF; // Orange
+            default:                  return 0xFF808080; // Gray
+        }
+    }
+    
+    // Format age in human readable form
+    inline std::string FormatAgeDays(int days) {
+        if (days < 0) return "Inconnu";
+        if (days == 0) return "Aujourd'hui";
+        if (days == 1) return "Hier";
+        if (days < 30) return std::to_string(days) + " jours";
+        if (days < 365) return std::to_string(days / 30) + " mois";
+        int years = days / 365;
+        int months = (days % 365) / 30;
+        if (months > 0) {
+            return std::to_string(years) + " an" + (years > 1 ? "s" : "") + " " + std::to_string(months) + " mois";
+        }
+        return std::to_string(years) + " an" + (years > 1 ? "s" : "");
     }
 
 } // namespace DriverManager

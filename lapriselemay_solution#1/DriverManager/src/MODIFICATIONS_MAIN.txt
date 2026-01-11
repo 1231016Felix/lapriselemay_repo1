@@ -1,0 +1,51 @@
+// ============================================================================
+// MODIFICATIONS REQUIRED FOR main.cpp
+// ============================================================================
+// 
+// STEP 1: Add include at the top (after #include "src/DriverStoreCleanup.h")
+// ----------------------------------------------------------------------------
+#include "src/DriverDownloader.h"
+
+// STEP 2: Add in AppState struct (after driverStoreCleanup declaration)
+// ----------------------------------------------------------------------------
+    DriverManager::DriverDownloader driverDownloader;       // For driver downloads
+
+// STEP 3: Add in AppState struct (after showDriverStoreCleanup)
+// ----------------------------------------------------------------------------
+    bool showDownloadWindow = false;         // Download manager window
+    bool createRestorePoint = false;         // Option for restore point
+
+// STEP 4: Add menu item in RenderMenuBar (in "Outils" menu after DriverStore cleanup)
+// ----------------------------------------------------------------------------
+            if (ImGui::MenuItem("Telechargements...", nullptr, state.showDownloadWindow)) {
+                state.showDownloadWindow = !state.showDownloadWindow;
+            }
+
+// STEP 5: Add call to RenderDownloadWindow in main loop (after RenderDriverStoreCleanupWindow)
+// ----------------------------------------------------------------------------
+        RenderDownloadWindow(state);
+
+// STEP 6: In the details panel (right panel), add download button for drivers with updates
+// Find the "Download driver button" section and add this BEFORE it:
+// ----------------------------------------------------------------------------
+        // Download update button (if update available)
+        if (d->hasUpdate && !d->availableUpdate.downloadUrl.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.7f, 0.3f, 0.7f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.8f, 0.4f, 0.85f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.4f, 0.9f, 0.5f, 1.0f));
+            if (ImGui::Button("Telecharger MAJ", ImVec2(-1, 0))) {
+                state.driverDownloader.QueueDownload(*d, d->availableUpdate.downloadUrl, false);
+                state.showDownloadWindow = true;
+                state.statusMessage = "Pilote ajoute a la file de telechargement";
+            }
+            ImGui::PopStyleColor(3);
+            
+            ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.4f, 1.0f), "MAJ: %s", 
+                DriverManager::WideToUtf8(d->availableUpdate.newVersion).c_str());
+            ImGui::Spacing();
+        }
+
+// ============================================================================
+// The RenderDownloadWindow function code is in: main_download_window.cpp.txt
+// Insert that function BEFORE "// Render status bar" comment
+// ============================================================================

@@ -44,6 +44,12 @@
     <ClCompile Include="imgui\imgui_impl_dx11.cpp">
       <Filter>ImGui\Source</Filter>
     </ClCompile>
+    <ClCompile Include="src\UpdateChecker.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\DriverStoreCleanup.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\DriverInfo.h">
@@ -75,6 +81,12 @@
     </ClInclude>
     <ClInclude Include="imgui\imgui_impl_dx11.h">
       <Filter>ImGui\Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="src\UpdateChecker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\DriverStoreCleanup.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
