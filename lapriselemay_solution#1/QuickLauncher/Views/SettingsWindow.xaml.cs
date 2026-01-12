@@ -39,6 +39,7 @@ public partial class SettingsWindow : Window
         MinimizeOnStartupCheck.IsChecked = _settings.MinimizeOnStartup;
         ShowInTaskbarCheck.IsChecked = _settings.ShowInTaskbar;
         CloseAfterLaunchCheck.IsChecked = _settings.CloseAfterLaunch;
+        SingleClickLaunchCheck.IsChecked = _settings.SingleClickLaunch;
         ShowIndexingStatusCheck.IsChecked = _settings.ShowIndexingStatus;
         ShowSettingsButtonCheck.IsChecked = _settings.ShowSettingsButton;
         MaxResultsSlider.Value = _settings.MaxResults;
@@ -151,7 +152,7 @@ public partial class SettingsWindow : Window
             }
             
             if (_indexingService != null)
-                stats.Add($"🔢 Éléments indexés: {_indexingService.GetIndexedItemsCount()}");
+                stats.Add($"🔢 Éléments indexés: {_indexingService.IndexedItemsCount}");
             
             stats.Add($"📂 Dossiers surveillés: {_settings.IndexedFolders.Count}");
             stats.Add($"📄 Extensions indexées: {_settings.FileExtensions.Count}");
@@ -351,6 +352,7 @@ public partial class SettingsWindow : Window
         _settings.MinimizeOnStartup = MinimizeOnStartupCheck.IsChecked == true;
         _settings.ShowInTaskbar = ShowInTaskbarCheck.IsChecked == true;
         _settings.CloseAfterLaunch = CloseAfterLaunchCheck.IsChecked == true;
+        _settings.SingleClickLaunch = SingleClickLaunchCheck.IsChecked == true;
         _settings.ShowIndexingStatus = ShowIndexingStatusCheck.IsChecked == true;
         _settings.ShowSettingsButton = ShowSettingsButtonCheck.IsChecked == true;
         _settings.MaxResults = (int)MaxResultsSlider.Value;
@@ -406,7 +408,7 @@ public partial class SettingsWindow : Window
         if (Application.Current is App app)
             app.SetupAutoReindex();
         
-        MessageBox.Show("✅ Paramètres sauvegardés!\n\nLe raccourci clavier nécessite un redémarrage.",
+        MessageBox.Show("✅ Paramètres sauvegardés!\n\nCertains paramètres (raccourci clavier, mode de clic) nécessitent un redémarrage.",
             "QuickLauncher", MessageBoxButton.OK, MessageBoxImage.Information);
         
         Close();

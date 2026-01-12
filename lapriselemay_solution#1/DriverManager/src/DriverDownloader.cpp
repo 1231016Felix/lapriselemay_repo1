@@ -1,4 +1,5 @@
 #include "DriverDownloader.h"
+#include "Utils.h"
 #include <ShlObj.h>
 #include <filesystem>
 #include <fstream>
@@ -388,7 +389,7 @@ namespace DriverManager {
         }
 
         // Set timeouts
-        DWORD timeout = 30000;
+        DWORD timeout = Constants::HTTP_RECEIVE_TIMEOUT_MS * 2;  // 30 seconds for downloads
         WinHttpSetOption(hSession, WINHTTP_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
         WinHttpSetOption(hSession, WINHTTP_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
 
@@ -522,7 +523,7 @@ namespace DriverManager {
         }
         
         // Wait for extraction with timeout
-        DWORD waitResult = WaitForSingleObject(pi.hProcess, 60000); // 60 second timeout
+        DWORD waitResult = WaitForSingleObject(pi.hProcess, Constants::PROCESS_TIMEOUT_MS);
         
         if (waitResult == WAIT_TIMEOUT) {
             TerminateProcess(pi.hProcess, 1);
@@ -665,7 +666,7 @@ namespace DriverManager {
         CloseHandle(hWritePipe);
         
         // Wait for installation
-        DWORD waitResult = WaitForSingleObject(pi.hProcess, 300000); // 5 minute timeout
+        DWORD waitResult = WaitForSingleObject(pi.hProcess, Constants::INSTALL_TIMEOUT_MS);
         
         // Read output
         std::string output;

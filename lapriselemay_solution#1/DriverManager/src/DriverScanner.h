@@ -68,8 +68,7 @@ namespace DriverManager {
         DriverStatus DetermineDriverStatus(HDEVINFO deviceInfoSet, SP_DEVINFO_DATA& deviceInfoData);
         DriverType ClassifyDriverType(const std::wstring& classGuid);
         
-        // Helper to get device property
-        std::wstring GetDeviceProperty(HDEVINFO deviceInfoSet, SP_DEVINFO_DATA& deviceInfoData, DWORD property);
+        // Helper to get device registry property
         std::wstring GetDeviceRegistryProperty(HDEVINFO deviceInfoSet, SP_DEVINFO_DATA& deviceInfoData, DWORD property);
         
         // Category management

@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CleanUninstaller.Models;
 using CleanUninstaller.Services;
+using CleanUninstaller.Helpers;
 using System.Collections.ObjectModel;
 
 namespace CleanUninstaller.ViewModels;
@@ -131,7 +132,7 @@ public partial class MainViewModel : ObservableObject
         get
         {
             var total = Programs.Where(p => p.IsSelected).Sum(p => p.EstimatedSize);
-            return FormatSize(total);
+            return CommonHelpers.FormatSizeOrZero(total);
         }
     }
 
@@ -143,7 +144,7 @@ public partial class MainViewModel : ObservableObject
         get
         {
             var total = Residuals.Where(r => r.IsSelected).Sum(r => r.Size);
-            return FormatSize(total);
+            return CommonHelpers.FormatSizeOrZero(total);
         }
     }
 
@@ -637,23 +638,6 @@ public partial class MainViewModel : ObservableObject
 
     #region Helpers
 
-    private static string FormatSize(long bytes)
-    {
-        if (bytes <= 0) return "0 o";
-        
-        string[] suffixes = ["o", "Ko", "Mo", "Go"];
-        var counter = 0;
-        var size = (decimal)bytes;
-        
-        while (size >= 1024 && counter < suffixes.Length - 1)
-        {
-            size /= 1024;
-            counter++;
-        }
-        
-        return $"{size:N1} {suffixes[counter]}";
-    }
-
     /// <summary>
     /// Initialise le ViewModel (charger les settings et lancer le scan)
     /// </summary>
@@ -661,6 +645,23 @@ public partial class MainViewModel : ObservableObject
     {
         await _settingsService.LoadAsync();
         await ScanProgramsAsync();
+    }
+
+    /// <summary>
+    /// Formate une taille en octets en chaîne lisible
+    /// </summary>
+    private static string FormatSize(long bytes)
+    {
+        if (bytes <= 0) return "0 o";
+        string[] suffixes = ["o", "Ko", "Mo", "Go", "To"];
+        var i = 0;
+        var size = (double)bytes;
+        while (size >= 1024 && i < suffixes.Length - 1)
+        {
+            size /= 1024;
+            i++;
+        }
+        return $"{size:N1} {suffixes[i]}";
     }
 
     #endregion

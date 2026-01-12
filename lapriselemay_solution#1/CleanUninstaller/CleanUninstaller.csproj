@@ -107,12 +107,4 @@
     </Content>
   </ItemGroup>
 
-  <!-- Exclure les fichiers backup de la compilation -->
-  <ItemGroup>
-    <Compile Remove="Views\MainWindow_backup.xaml.cs" />
-    <Page Remove="Views\MainWindow_backup.xaml" />
-    <None Include="Views\MainWindow_backup.xaml" />
-    <None Include="Views\MainWindow_backup.xaml.cs" />
-  </ItemGroup>
-
 </Project>

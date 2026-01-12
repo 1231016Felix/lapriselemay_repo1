@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
 using CleanUninstaller.Models;
+using CleanUninstaller.Helpers;
 using Windows.UI;
 
 namespace CleanUninstaller.Converters;
@@ -45,21 +46,12 @@ public partial class ConfidenceToColorConverter : IValueConverter
             _ => "#6E6E6E"                          // Gris
         };
 
-        return new SolidColorBrush(ParseColor(colorHex));
+        return new SolidColorBrush(CommonHelpers.ParseHexColor(colorHex));
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
     {
         throw new NotImplementedException();
-    }
-
-    private static Color ParseColor(string hex)
-    {
-        hex = hex.TrimStart('#');
-        return Color.FromArgb(255,
-            byte.Parse(hex[..2], System.Globalization.NumberStyles.HexNumber),
-            byte.Parse(hex.Substring(2, 2), System.Globalization.NumberStyles.HexNumber),
-            byte.Parse(hex.Substring(4, 2), System.Globalization.NumberStyles.HexNumber));
     }
 }
 
@@ -130,20 +122,7 @@ public partial class FileSizeConverter : IValueConverter
     public object Convert(object value, Type targetType, object parameter, string language)
     {
         var bytes = value is long l ? l : (value is int i ? i : 0);
-        
-        if (bytes <= 0) return "—";
-        
-        string[] suffixes = ["o", "Ko", "Mo", "Go", "To"];
-        var counter = 0;
-        var size = (decimal)bytes;
-        
-        while (size >= 1024 && counter < suffixes.Length - 1)
-        {
-            size /= 1024;
-            counter++;
-        }
-        
-        return $"{size:N1} {suffixes[counter]}";
+        return CommonHelpers.FormatSizeOrDash(bytes);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
@@ -172,21 +151,12 @@ public partial class ProgramStatusToColorConverter : IValueConverter
             _ => "#6E6E6E"
         };
 
-        return new SolidColorBrush(ParseColor(colorHex));
+        return new SolidColorBrush(CommonHelpers.ParseHexColor(colorHex));
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language)
     {
         throw new NotImplementedException();
-    }
-
-    private static Color ParseColor(string hex)
-    {
-        hex = hex.TrimStart('#');
-        return Color.FromArgb(255,
-            byte.Parse(hex[..2], System.Globalization.NumberStyles.HexNumber),
-            byte.Parse(hex.Substring(2, 2), System.Globalization.NumberStyles.HexNumber),
-            byte.Parse(hex.Substring(4, 2), System.Globalization.NumberStyles.HexNumber));
     }
 }
 
@@ -278,19 +248,7 @@ public partial class StringToBrushConverter : IValueConverter
     {
         if (value is string colorStr && colorStr.StartsWith('#'))
         {
-            try
-            {
-                var color = Color.FromArgb(
-                    255,
-                    byte.Parse(colorStr.Substring(1, 2), System.Globalization.NumberStyles.HexNumber),
-                    byte.Parse(colorStr.Substring(3, 2), System.Globalization.NumberStyles.HexNumber),
-                    byte.Parse(colorStr.Substring(5, 2), System.Globalization.NumberStyles.HexNumber));
-                return new SolidColorBrush(color);
-            }
-            catch
-            {
-                return new SolidColorBrush(Color.FromArgb(255, 110, 110, 110));
-            }
+            return new SolidColorBrush(CommonHelpers.ParseHexColor(colorStr));
         }
         return new SolidColorBrush(Color.FromArgb(255, 110, 110, 110));
     }

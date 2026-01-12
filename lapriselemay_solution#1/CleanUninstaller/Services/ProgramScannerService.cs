@@ -1,4 +1,5 @@
 using CleanUninstaller.Models;
+using CleanUninstaller.Helpers;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -666,24 +667,7 @@ public class ProgramScannerService
     }
 
     /// <summary>
-    /// Calcule la taille d'un dossier
+    /// Calcule la taille d'un dossier (utilise le helper commun)
     /// </summary>
-    public static long CalculateDirectorySize(string path)
-    {
-        if (!Directory.Exists(path)) return 0;
-
-        try
-        {
-            return Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories)
-                .Sum(file =>
-                {
-                    try { return new FileInfo(file).Length; }
-                    catch { return 0; }
-                });
-        }
-        catch
-        {
-            return 0;
-        }
-    }
+    public static long CalculateDirectorySize(string path) => CommonHelpers.CalculateDirectorySize(path);
 }

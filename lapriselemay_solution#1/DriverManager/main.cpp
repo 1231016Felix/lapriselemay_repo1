@@ -27,6 +27,7 @@
 #include "src/ManufacturerLinks.h"
 #include "src/DriverStoreCleanup.h"
 #include "src/DriverDownloader.h"
+#include "src/BSODAnalyzer.h"
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -70,6 +71,7 @@ struct AppState {
     DriverManager::UpdateChecker updateChecker;
     DriverManager::DriverStoreCleanup driverStoreCleanup;  // For DriverStore cleanup
     DriverManager::DriverDownloader driverDownloader;       // For driver downloads
+    DriverManager::BSODAnalyzer bsodAnalyzer;               // For BSOD analysis
     bool isScanning = false;
     bool isCheckingUpdates = false;
     bool cancelUpdateCheck = false;  // New: flag to cancel update check
@@ -81,10 +83,17 @@ struct AppState {
     bool showUpdateProgressWindow = false;  // New: progress window for update check
     bool showDriverStoreCleanup = false;    // DriverStore cleanup window
     bool showDownloadWindow = false;         // Download manager window
+    bool showBSODAnalyzer = false;           // BSOD analyzer window
     bool createRestorePoint = false;         // Option for restore point
     bool isCleaningDriverStore = false;     // Cleanup in progress
+    bool isScanningBSOD = false;            // BSOD scan in progress
     bool needsDriverStoreRefresh = false;   // Flag to refresh after deletion
     int lastDeletedCount = 0;               // Number of drivers deleted in last operation
+    // BSOD scan future for thread safety
+    std::future<void> bsodScanFuture;
+    int bsodScanProgress = 0;               // Progress of BSOD scan
+    int bsodScanTotal = 0;                  // Total dumps to scan
+    std::wstring bsodCurrentItem;           // Current dump being scanned
     DriverManager::DriverInfo* selectedDriver = nullptr;
     std::string statusMessage;
     std::string searchFilter;
@@ -209,6 +218,13 @@ void RenderMenuBar(AppState& state) {
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip("Supprimer les anciennes versions de pilotes pour lib\xc3\xa9rer de l'espace");
             }
+            if (ImGui::MenuItem("Analyser les BSOD...", nullptr, false, !state.isScanningBSOD)) {
+                state.showBSODAnalyzer = true;
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Analyser les minidumps pour d\xc3\xa9tecter les pilotes probl\xc3\xa9matiques");
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("Telechargements...", nullptr, state.showDownloadWindow)) {
                 state.showDownloadWindow = !state.showDownloadWindow;
             }
@@ -387,6 +403,15 @@ void RenderToolbar(AppState& state) {
     ImGui::SetNextItemWidth(200);
     char searchBuf[256];
     strncpy_s(searchBuf, state.searchFilter.c_str(), sizeof(searchBuf));
+    // Single-click focus: if hovering and clicked, set focus before drawing
+    if (ImGui::IsMouseClicked(0)) {
+        ImVec2 mousePos = ImGui::GetMousePos();
+        ImVec2 cursorPos = ImGui::GetCursorScreenPos();
+        if (mousePos.x >= cursorPos.x && mousePos.x <= cursorPos.x + 200 &&
+            mousePos.y >= cursorPos.y && mousePos.y <= cursorPos.y + ImGui::GetFrameHeight()) {
+            ImGui::SetKeyboardFocusHere();
+        }
+    }
     if (ImGui::InputTextWithHint("##search", "Rechercher...", searchBuf, sizeof(searchBuf))) {
         state.searchFilter = searchBuf;
     }
@@ -1357,6 +1382,274 @@ void RenderDriverStoreCleanupWindow(AppState& state) {
     ImGui::End();
 }
 
+// Render BSOD Analyzer window
+void RenderBSODAnalyzerWindow(AppState& state) {
+    if (!state.showBSODAnalyzer) return;
+    
+    ImGui::SetNextWindowSize(ImVec2(1000, 600), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Analyse des BSOD - Pilotes probl\xc3\xa9matiques", &state.showBSODAnalyzer)) {
+        
+        // Header info
+        ImGui::TextColored(ImVec4(0.9f, 0.4f, 0.4f, 1.0f), "D\xc3\xa9" "tection des pilotes causant des \xc3\xa9" "crans bleus (BSOD)");
+        ImGui::Separator();
+        ImGui::Spacing();
+        
+        ImGui::TextWrapped(
+            "Cet outil analyse les fichiers minidump dans C:\\Windows\\Minidump pour identifier "
+            "les pilotes responsables des plantages syst\xc3\xa8" "me.");
+        ImGui::Spacing();
+        
+        // Check if minidump folder exists
+        if (!state.bsodAnalyzer.MinidumpFolderExists()) {
+            ImGui::TextColored(ImVec4(0.4f, 0.9f, 0.4f, 1.0f), 
+                "Aucun dossier Minidump trouv\xc3\xa9 - Bonne nouvelle, aucun BSOD r\xc3\xa9" "cent!");
+            ImGui::Spacing();
+            ImGui::TextWrapped(
+                "Windows cr\xc3\xa9" "e des fichiers minidump quand un BSOD survient. "
+                "L'absence de ce dossier signifie qu'aucun \xc3\xa9" "cran bleu n'a eu lieu r\xc3\xa9" "cemment.");
+        } else {
+            // Scan button
+            if (!state.isScanningBSOD) {
+                if (ImGui::Button("Scanner les minidumps", ImVec2(200, 30))) {
+                    state.isScanningBSOD = true;
+                    state.bsodScanProgress = 0;
+                    state.bsodScanTotal = 0;
+                    
+                    state.bsodAnalyzer.SetProgressCallback([&state](int current, int total, const std::wstring& item) {
+                        state.bsodScanProgress = current;
+                        state.bsodScanTotal = total;
+                        state.bsodCurrentItem = item;
+                    });
+                    
+                    // Use std::async instead of detached thread for safer lifecycle management
+                    state.bsodScanFuture = std::async(std::launch::async, [&state]() {
+                        state.bsodAnalyzer.ScanMinidumps();
+                        state.isScanningBSOD = false;
+                    });
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Ouvrir dossier Minidump", ImVec2(200, 30))) {
+                    ShellExecuteW(nullptr, L"explore", state.bsodAnalyzer.GetMinidumpPath().c_str(), 
+                        nullptr, nullptr, SW_SHOWNORMAL);
+                }
+            } else {
+                // Progress bar during scan
+                ImGui::Text("Analyse en cours...");
+                if (state.bsodScanTotal > 0) {
+                    float progress = (float)state.bsodScanProgress / (float)state.bsodScanTotal;
+                    ImGui::ProgressBar(progress, ImVec2(-1, 0));
+                    ImGui::Text("%d / %d - %s", state.bsodScanProgress, state.bsodScanTotal,
+                        DriverManager::WideToUtf8(state.bsodCurrentItem).c_str());
+                }
+            }
+            
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            
+            // Show results
+            const auto& crashes = state.bsodAnalyzer.GetCrashes();
+            auto problematicDrivers = state.bsodAnalyzer.GetProblematicDrivers();
+            
+            if (crashes.empty() && !state.isScanningBSOD) {
+                auto error = state.bsodAnalyzer.GetLastError();
+                if (!error.empty()) {
+                    ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "%s", 
+                        DriverManager::WideToUtf8(error).c_str());
+                }
+            } else if (!crashes.empty()) {
+                // Tab bar for different views
+                if (ImGui::BeginTabBar("BSODTabs")) {
+                    
+                    // Tab 1: Problematic drivers summary
+                    if (ImGui::BeginTabItem("Pilotes probl\xc3\xa9matiques")) {
+                        ImGui::Spacing();
+                        
+                        if (problematicDrivers.empty()) {
+                            ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), 
+                                "Aucun pilote identifi\xc3\xa9 comme responsable dans les minidumps.");
+                            ImGui::TextWrapped(
+                                "Les minidumps ne contiennent pas toujours l'information sur le pilote fautif.");
+                        } else {
+                            ImGui::TextColored(ImVec4(0.9f, 0.5f, 0.5f, 1.0f), 
+                                "%d pilote(s) identifi\xc3\xa9(s) comme probl\xc3\xa9matique(s):", 
+                                (int)problematicDrivers.size());
+                            ImGui::Spacing();
+                            
+                            if (ImGui::BeginTable("ProblematicDriversTable", 5, 
+                                ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable)) {
+                                
+                                ImGui::TableSetupColumn("Pilote", ImGuiTableColumnFlags_WidthFixed, 180);
+                                ImGui::TableSetupColumn("Crashes", ImGuiTableColumnFlags_WidthFixed, 70);
+                                ImGui::TableSetupColumn("Codes d'erreur", ImGuiTableColumnFlags_WidthStretch);
+                                ImGui::TableSetupColumn("Dernier crash", ImGuiTableColumnFlags_WidthFixed, 120);
+                                ImGui::TableSetupColumn("Action", ImGuiTableColumnFlags_WidthFixed, 120);
+                                ImGui::TableHeadersRow();
+                                
+                                for (const auto& driver : problematicDrivers) {
+                                    ImGui::TableNextRow();
+                                    
+                                    // Driver name
+                                    ImGui::TableNextColumn();
+                                    if (driver.crashCount >= 3) {
+                                        ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "%s",
+                                            DriverManager::WideToUtf8(driver.driverName).c_str());
+                                    } else {
+                                        ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "%s",
+                                            DriverManager::WideToUtf8(driver.driverName).c_str());
+                                    }
+                                    if (ImGui::IsItemHovered() && !driver.driverPath.empty()) {
+                                        ImGui::SetTooltip("%s", DriverManager::WideToUtf8(driver.driverPath).c_str());
+                                    }
+                                    
+                                    // Crash count
+                                    ImGui::TableNextColumn();
+                                    if (driver.crashCount >= 3) {
+                                        ImGui::TextColored(ImVec4(0.9f, 0.3f, 0.3f, 1.0f), "%d", driver.crashCount);
+                                    } else {
+                                        ImGui::Text("%d", driver.crashCount);
+                                    }
+                                    
+                                    // Bug check codes
+                                    ImGui::TableNextColumn();
+                                    std::string codes;
+                                    std::set<uint32_t> uniqueCodes(driver.bugCheckCodes.begin(), driver.bugCheckCodes.end());
+                                    for (auto code : uniqueCodes) {
+                                        if (!codes.empty()) codes += ", ";
+                                        codes += DriverManager::WideToUtf8(
+                                            DriverManager::BSODAnalyzer::GetBugCheckName(code));
+                                    }
+                                    ImGui::TextWrapped("%s", codes.c_str());
+                                    
+                                    // Last crash date
+                                    ImGui::TableNextColumn();
+                                    char dateBuf[32];
+                                    snprintf(dateBuf, sizeof(dateBuf), "%02d/%02d/%04d",
+                                        driver.lastCrash.wDay, driver.lastCrash.wMonth, driver.lastCrash.wYear);
+                                    ImGui::TextUnformatted(dateBuf);
+                                    
+                                    // Action buttons
+                                    ImGui::TableNextColumn();
+                                    ImGui::PushID(DriverManager::WideToUtf8(driver.driverName).c_str());
+                                    if (ImGui::SmallButton("Mettre \xc3\xa0 jour")) {
+                                        // Search for update
+                                        std::wstring searchUrl = L"https://www.google.com/search?q=" + 
+                                            driver.driverName + L"+driver+download";
+                                        ShellExecuteW(nullptr, L"open", searchUrl.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                                    }
+                                    ImGui::PopID();
+                                }
+                                
+                                ImGui::EndTable();
+                            }
+                        }
+                        ImGui::EndTabItem();
+                    }
+                    
+                    // Tab 2: All crashes list
+                    char tabLabel[64];
+                    snprintf(tabLabel, sizeof(tabLabel), "Tous les crashes (%d)", (int)crashes.size());
+                    if (ImGui::BeginTabItem(tabLabel)) {
+                        ImGui::Spacing();
+                        
+                        if (ImGui::BeginTable("CrashesTable", 5,
+                            ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
+                            ImGuiTableFlags_ScrollY, ImVec2(0, 350))) {
+                            
+                            ImGui::TableSetupColumn("Date", ImGuiTableColumnFlags_WidthFixed, 100);
+                            ImGui::TableSetupColumn("Code erreur", ImGuiTableColumnFlags_WidthFixed, 200);
+                            ImGui::TableSetupColumn("Description", ImGuiTableColumnFlags_WidthStretch);
+                            ImGui::TableSetupColumn("Pilote fautif", ImGuiTableColumnFlags_WidthFixed, 150);
+                            ImGui::TableSetupColumn("Fichier", ImGuiTableColumnFlags_WidthFixed, 150);
+                            ImGui::TableHeadersRow();
+                            
+                            for (const auto& crash : crashes) {
+                                ImGui::TableNextRow();
+                                
+                                // Date
+                                ImGui::TableNextColumn();
+                                char dateBuf[32];
+                                snprintf(dateBuf, sizeof(dateBuf), "%02d/%02d/%04d",
+                                    crash.crashTime.wDay, crash.crashTime.wMonth, crash.crashTime.wYear);
+                                ImGui::TextUnformatted(dateBuf);
+                                
+                                // Bug check code
+                                ImGui::TableNextColumn();
+                                ImGui::TextColored(ImVec4(0.9f, 0.5f, 0.5f, 1.0f), "%s",
+                                    DriverManager::WideToUtf8(crash.bugCheckName).c_str());
+                                
+                                // Description
+                                ImGui::TableNextColumn();
+                                ImGui::TextWrapped("%s", 
+                                    DriverManager::WideToUtf8(crash.bugCheckDescription).c_str());
+                                
+                                // Faulting module
+                                ImGui::TableNextColumn();
+                                if (!crash.faultingModule.empty()) {
+                                    ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "%s",
+                                        DriverManager::WideToUtf8(crash.faultingModule).c_str());
+                                } else {
+                                    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Non identifi\xc3\xa9");
+                                }
+                                
+                                // Dump file
+                                ImGui::TableNextColumn();
+                                ImGui::TextUnformatted(
+                                    DriverManager::WideToUtf8(crash.dumpFileName).c_str());
+                                if (ImGui::IsItemHovered()) {
+                                    ImGui::SetTooltip("Taille: %s\nOS: %s",
+                                        FormatFileSize(crash.dumpFileSize).c_str(),
+                                        DriverManager::WideToUtf8(crash.osVersion).c_str());
+                                }
+                            }
+                            
+                            ImGui::EndTable();
+                        }
+                        ImGui::EndTabItem();
+                    }
+                    
+                    // Tab 3: Recommendations
+                    if (ImGui::BeginTabItem("Recommandations")) {
+                        ImGui::Spacing();
+                        
+                        ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.4f, 1.0f), "Actions recommand\xc3\xa9" "es :");
+                        ImGui::Spacing();
+                        
+                        ImGui::BulletText("Mettre \xc3\xa0 jour les pilotes identifi\xc3\xa9s comme probl\xc3\xa9matiques");
+                        ImGui::BulletText("V\xc3\xa9rifier les mises \xc3\xa0 jour Windows Update");
+                        ImGui::BulletText("Utiliser 'Mes Drivers' de TousLesDrivers.com");
+                        ImGui::BulletText("Si un pilote continue de causer des probl\xc3\xa8mes, essayer un rollback");
+                        
+                        ImGui::Spacing();
+                        ImGui::Separator();
+                        ImGui::Spacing();
+                        
+                        ImGui::TextColored(ImVec4(0.9f, 0.7f, 0.3f, 1.0f), "Codes d'erreur fr\xc3\xa9quents :");
+                        ImGui::Spacing();
+                        
+                        ImGui::TextWrapped(
+                            "DRIVER_IRQL_NOT_LESS_OR_EQUAL (0xD1) - Pilote acc\xc3\xa9" "dant \xc3\xa0 une mauvaise adresse m\xc3\xa9" "moire");
+                        ImGui::Spacing();
+                        ImGui::TextWrapped(
+                            "VIDEO_TDR_FAILURE (0x116) - Pilote graphique ne r\xc3\xa9" "pondant pas");
+                        ImGui::Spacing();
+                        ImGui::TextWrapped(
+                            "SYSTEM_SERVICE_EXCEPTION (0x3B) - Exception dans un service syst\xc3\xa8" "me");
+                        ImGui::Spacing();
+                        ImGui::TextWrapped(
+                            "KERNEL_SECURITY_CHECK_FAILURE (0x139) - Corruption de donn\xc3\xa9" "es d\xc3\xa9" "tect\xc3\xa9" "e");
+                        
+                        ImGui::EndTabItem();
+                    }
+                    
+                    ImGui::EndTabBar();
+                }
+            }
+        }
+    }
+    ImGui::End();
+}
+
 // Render update help window
 void RenderUpdateHelpWindow(AppState& state) {
     if (!state.showUpdateHelpWindow) return;
@@ -1734,6 +2027,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         RenderAboutWindow(state);
         RenderUpdateHelpWindow(state);
         RenderDriverStoreCleanupWindow(state);
+        RenderBSODAnalyzerWindow(state);
         RenderDownloadWindow(state);
         RenderStatusBar(state);
 

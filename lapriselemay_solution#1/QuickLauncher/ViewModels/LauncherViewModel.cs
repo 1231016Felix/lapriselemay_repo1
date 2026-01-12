@@ -1,29 +1,34 @@
+using System.Collections.Frozen;
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickLauncher.Models;
 using QuickLauncher.Services;
-using System.Collections.ObjectModel;
 
 namespace QuickLauncher.ViewModels;
 
-public partial class LauncherViewModel : ObservableObject
+/// <summary>
+/// ViewModel pour la fenêtre principale avec commandes système optimisées.
+/// </summary>
+public sealed partial class LauncherViewModel : ObservableObject
 {
     private readonly IndexingService _indexingService;
-    private readonly AppSettings _settings;
+    private AppSettings _settings;
     
-    private static readonly Dictionary<string, SystemCommand> SystemCommands = new(StringComparer.OrdinalIgnoreCase)
-    {
-        [":settings"] = new("⚙️", "Paramètres", "Ouvrir les paramètres", SystemAction.OpenSettings),
-        ["settings"] = new("⚙️", "Paramètres", "Ouvrir les paramètres", SystemAction.OpenSettings),
-        [":quit"] = new("🚪", "Quitter", "Fermer QuickLauncher", SystemAction.Quit),
-        [":exit"] = new("🚪", "Quitter", "Fermer QuickLauncher", SystemAction.Quit),
-        [":reload"] = new("🔄", "Réindexer", "Reconstruire l'index", SystemAction.Reindex),
-        [":reindex"] = new("🔄", "Réindexer", "Reconstruire l'index", SystemAction.Reindex),
-        [":history"] = new("📜", "Historique", "Afficher l'historique", SystemAction.ShowHistory),
-        [":clear"] = new("🗑️", "Effacer", "Effacer l'historique", SystemAction.ClearHistory),
-        [":help"] = new("❓", "Aide", "Commandes disponibles", SystemAction.ShowHelp),
-        ["?"] = new("❓", "Aide", "Commandes disponibles", SystemAction.ShowHelp),
-    };
+    private static readonly FrozenDictionary<string, SystemCommand> SystemCommands = 
+        new Dictionary<string, SystemCommand>(StringComparer.OrdinalIgnoreCase)
+        {
+            [":settings"] = new("⚙️", "Paramètres", "Ouvrir les paramètres", SystemAction.OpenSettings),
+            ["settings"] = new("⚙️", "Paramètres", "Ouvrir les paramètres", SystemAction.OpenSettings),
+            [":quit"] = new("🚪", "Quitter", "Fermer QuickLauncher", SystemAction.Quit),
+            [":exit"] = new("🚪", "Quitter", "Fermer QuickLauncher", SystemAction.Quit),
+            [":reload"] = new("🔄", "Réindexer", "Reconstruire l'index", SystemAction.Reindex),
+            [":reindex"] = new("🔄", "Réindexer", "Reconstruire l'index", SystemAction.Reindex),
+            [":history"] = new("📜", "Historique", "Afficher l'historique", SystemAction.ShowHistory),
+            [":clear"] = new("🗑️", "Effacer", "Effacer l'historique", SystemAction.ClearHistory),
+            [":help"] = new("❓", "Aide", "Commandes disponibles", SystemAction.ShowHelp),
+            ["?"] = new("❓", "Aide", "Commandes disponibles", SystemAction.ShowHelp),
+        }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
     
     [ObservableProperty]
     private string _searchText = string.Empty;
@@ -34,17 +39,23 @@ public partial class LauncherViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasResults;
     
+    [ObservableProperty]
+    private bool _isIndexing;
+    
     public ObservableCollection<SearchResult> Results { get; } = [];
     
     public event EventHandler? RequestHide;
     public event EventHandler? RequestOpenSettings;
     public event EventHandler? RequestQuit;
     public event EventHandler? RequestReindex;
-    
+
     public LauncherViewModel(IndexingService indexingService)
     {
-        _indexingService = indexingService;
+        _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
         _settings = AppSettings.Load();
+        
+        _indexingService.IndexingStarted += (_, _) => IsIndexing = true;
+        _indexingService.IndexingCompleted += (_, _) => IsIndexing = false;
     }
 
     partial void OnSearchTextChanged(string value) => UpdateResults();
@@ -72,7 +83,8 @@ public partial class LauncherViewModel : ObservableObject
         }
         
         // Résultats de recherche normaux
-        foreach (var result in _indexingService.Search(SearchText))
+        var searchResults = _indexingService.Search(SearchText);
+        foreach (var result in searchResults)
             Results.Add(result);
         
         FinalizeResults();
@@ -80,25 +92,31 @@ public partial class LauncherViewModel : ObservableObject
     
     private void ShowRecentHistory()
     {
-        if (_settings.EnableSearchHistory && _settings.SearchHistory.Count > 0)
+        _settings = AppSettings.Load();
+        
+        if (!_settings.EnableSearchHistory || _settings.SearchHistory.Count == 0)
         {
-            foreach (var history in _settings.SearchHistory.Take(5))
-            {
-                Results.Add(new SearchResult
-                {
-                    Name = history,
-                    Description = "Recherche récente",
-                    Type = ResultType.SearchHistory,
-                    DisplayIcon = "🕐"
-                });
-            }
+            FinalizeResults();
+            return;
         }
+        
+        foreach (var history in _settings.SearchHistory.Take(5))
+        {
+            Results.Add(new SearchResult
+            {
+                Name = history,
+                Description = "Recherche récente",
+                Type = ResultType.SearchHistory,
+                DisplayIcon = "🕐"
+            });
+        }
+        
         FinalizeResults();
     }
     
     private void AddMatchingSystemCommands(string query)
     {
-        var commands = SystemCommands
+        var matchingCommands = SystemCommands
             .Where(kv => kv.Key.StartsWith(query, StringComparison.OrdinalIgnoreCase))
             .Select(kv => new SearchResult
             {
@@ -111,16 +129,16 @@ public partial class LauncherViewModel : ObservableObject
             .DistinctBy(r => r.Name)
             .Take(3);
         
-        foreach (var cmd in commands)
+        foreach (var cmd in matchingCommands)
             Results.Add(cmd);
     }
     
     private void FinalizeResults()
     {
         HasResults = Results.Count > 0;
-        if (HasResults) SelectedIndex = 0;
+        SelectedIndex = HasResults ? 0 : -1;
     }
-    
+
     [RelayCommand]
     private void Execute()
     {
@@ -140,17 +158,26 @@ public partial class LauncherViewModel : ObservableObject
                 break;
                 
             default:
-                if (!string.IsNullOrWhiteSpace(SearchText) && _settings.EnableSearchHistory)
-                {
-                    _settings.AddToSearchHistory(SearchText);
-                    _settings.Save();
-                }
-                
-                _indexingService.RecordUsage(item);
-                LaunchService.Launch(item);
-                RequestHide?.Invoke(this, EventArgs.Empty);
+                LaunchItem(item);
                 break;
         }
+    }
+    
+    private void LaunchItem(SearchResult item)
+    {
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            _settings = AppSettings.Load();
+            if (_settings.EnableSearchHistory)
+            {
+                _settings.AddToSearchHistory(SearchText);
+                _settings.Save();
+            }
+        }
+        
+        _indexingService.RecordUsage(item);
+        LaunchService.Launch(item);
+        RequestHide?.Invoke(this, EventArgs.Empty);
     }
     
     private void ExecuteSystemCommand(string? command)
@@ -179,10 +206,7 @@ public partial class LauncherViewModel : ObservableObject
                 break;
                 
             case SystemAction.ClearHistory:
-                _settings.ClearSearchHistory();
-                _settings.Save();
-                SearchText = string.Empty;
-                RequestHide?.Invoke(this, EventArgs.Empty);
+                ClearHistory();
                 break;
                 
             case SystemAction.ShowHelp:
@@ -194,6 +218,7 @@ public partial class LauncherViewModel : ObservableObject
     private void ShowSearchHistory()
     {
         Results.Clear();
+        _settings = AppSettings.Load();
         
         if (_settings.SearchHistory.Count == 0)
         {
@@ -222,17 +247,73 @@ public partial class LauncherViewModel : ObservableObject
         FinalizeResults();
     }
     
+    private void ClearHistory()
+    {
+        _settings = AppSettings.Load();
+        _settings.ClearSearchHistory();
+        _settings.Save();
+        SearchText = string.Empty;
+        RequestHide?.Invoke(this, EventArgs.Empty);
+    }
+
     private void ShowHelpCommands()
     {
         Results.Clear();
         
-        Results.Add(new SearchResult { Name = ":settings", Description = "Ouvrir les paramètres", Type = ResultType.SystemCommand, DisplayIcon = "⚙️", Path = ":settings" });
-        Results.Add(new SearchResult { Name = ":reload", Description = "Réindexer les fichiers", Type = ResultType.SystemCommand, DisplayIcon = "🔄", Path = ":reload" });
-        Results.Add(new SearchResult { Name = ":history", Description = "Voir l'historique", Type = ResultType.SystemCommand, DisplayIcon = "📜", Path = ":history" });
-        Results.Add(new SearchResult { Name = ":clear", Description = "Effacer l'historique", Type = ResultType.SystemCommand, DisplayIcon = "🗑️", Path = ":clear" });
-        Results.Add(new SearchResult { Name = ":quit", Description = "Fermer QuickLauncher", Type = ResultType.SystemCommand, DisplayIcon = "🚪", Path = ":quit" });
-        Results.Add(new SearchResult { Name = "g [recherche]", Description = "Recherche Google", Type = ResultType.SystemCommand, DisplayIcon = "🌐" });
-        Results.Add(new SearchResult { Name = "yt [recherche]", Description = "Recherche YouTube", Type = ResultType.SystemCommand, DisplayIcon = "📺" });
+        Results.Add(new SearchResult 
+        { 
+            Name = ":settings", 
+            Description = "Ouvrir les paramètres", 
+            Type = ResultType.SystemCommand, 
+            DisplayIcon = "⚙️", 
+            Path = ":settings" 
+        });
+        Results.Add(new SearchResult 
+        { 
+            Name = ":reload", 
+            Description = "Réindexer les fichiers", 
+            Type = ResultType.SystemCommand, 
+            DisplayIcon = "🔄", 
+            Path = ":reload" 
+        });
+        Results.Add(new SearchResult 
+        { 
+            Name = ":history", 
+            Description = "Voir l'historique", 
+            Type = ResultType.SystemCommand, 
+            DisplayIcon = "📜", 
+            Path = ":history" 
+        });
+        Results.Add(new SearchResult 
+        { 
+            Name = ":clear", 
+            Description = "Effacer l'historique", 
+            Type = ResultType.SystemCommand, 
+            DisplayIcon = "🗑️", 
+            Path = ":clear" 
+        });
+        Results.Add(new SearchResult 
+        { 
+            Name = ":quit", 
+            Description = "Fermer QuickLauncher", 
+            Type = ResultType.SystemCommand, 
+            DisplayIcon = "🚪", 
+            Path = ":quit" 
+        });
+        Results.Add(new SearchResult 
+        { 
+            Name = "g [recherche]", 
+            Description = "Recherche Google", 
+            Type = ResultType.SystemCommand, 
+            DisplayIcon = "🌐" 
+        });
+        Results.Add(new SearchResult 
+        { 
+            Name = "yt [recherche]", 
+            Description = "Recherche YouTube", 
+            Type = ResultType.SystemCommand, 
+            DisplayIcon = "📺" 
+        });
         
         FinalizeResults();
     }
@@ -242,8 +323,11 @@ public partial class LauncherViewModel : ObservableObject
         if (Results.Count == 0) return;
         
         var newIndex = SelectedIndex + delta;
-        if (newIndex < 0) newIndex = Results.Count - 1;
-        if (newIndex >= Results.Count) newIndex = 0;
+        
+        if (newIndex < 0) 
+            newIndex = Results.Count - 1;
+        else if (newIndex >= Results.Count) 
+            newIndex = 0;
         
         SelectedIndex = newIndex;
     }
@@ -257,6 +341,9 @@ public partial class LauncherViewModel : ObservableObject
     }
 }
 
+/// <summary>
+/// Actions système disponibles via commandes.
+/// </summary>
 public enum SystemAction
 {
     OpenSettings,
@@ -267,4 +354,11 @@ public enum SystemAction
     ShowHelp
 }
 
-public record SystemCommand(string Icon, string Name, string Description, SystemAction Action);
+/// <summary>
+/// Définition d'une commande système.
+/// </summary>
+public readonly record struct SystemCommand(
+    string Icon, 
+    string Name, 
+    string Description, 
+    SystemAction Action);

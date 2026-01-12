@@ -8,6 +8,10 @@
 
 namespace DriverManager {
 
+    // Driver age thresholds (days)
+    constexpr int DRIVER_AGE_OLD_THRESHOLD = 365;      // 1 year
+    constexpr int DRIVER_AGE_VERY_OLD_THRESHOLD = 730; // 2 years
+
     enum class DriverStatus {
         OK,
         Warning,
@@ -106,9 +110,9 @@ namespace DriverManager {
                     double diffSeconds = std::difftime(now, driverTime);
                     driverAgeDays = static_cast<int>(diffSeconds / (60 * 60 * 24));
                     
-                    if (driverAgeDays < 365) {
+                    if (driverAgeDays < DRIVER_AGE_OLD_THRESHOLD) {
                         ageCategory = DriverAge::Current;
-                    } else if (driverAgeDays < 730) {  // 2 years
+                    } else if (driverAgeDays < DRIVER_AGE_VERY_OLD_THRESHOLD) {
                         ageCategory = DriverAge::Old;
                     } else {
                         ageCategory = DriverAge::VeryOld;

@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using TempCleaner.Helpers;
 using TempCleaner.Models;
 using TempCleaner.Services;
 
@@ -38,9 +39,9 @@ public partial class MainViewModel : ObservableObject
 
     #region Computed Properties
 
-    public string TotalSizeFormatted => FormatSize(TotalSize);
-    public string SelectedSizeFormatted => FormatSize(SelectedSize);
-    public string RecycleBinSizeFormatted => FormatSize(RecycleBinSize);
+    public string TotalSizeFormatted => FileSizeHelper.Format(TotalSize);
+    public string SelectedSizeFormatted => FileSizeHelper.Format(SelectedSize);
+    public string RecycleBinSizeFormatted => FileSizeHelper.Format(RecycleBinSize);
     public bool IsWorking => IsScanning || IsCleaning;
     public bool CanClean => !IsWorking && SelectedCount > 0;
     public bool CanScan => !IsWorking;
@@ -54,40 +55,25 @@ public partial class MainViewModel : ObservableObject
     {
         IsAdmin = AdminService.IsRunningAsAdmin();
         Profiles = new ObservableCollection<CleanerProfile>(CleanerProfile.GetDefaultProfiles());
-        
-        // Charger les préférences sauvegardées
         _settingsService.ApplyToProfiles(Profiles);
-        
         AdminProfileCount = Profiles.Count(p => p.RequiresAdmin);
         UpdateRecycleBinStats();
     }
 
-    /// <summary>
-    /// Sauvegarder les préférences (appelé à la fermeture)
-    /// </summary>
-    public void SaveSettings()
-    {
-        _settingsService.SaveProfiles(Profiles);
-    }
+    public void SaveSettings() => _settingsService.SaveProfiles(Profiles);
 
     #endregion
 
     #region Profile Warning
 
-    /// <summary>
-    /// Affiche un avertissement détaillé lors de l'activation d'un profil
-    /// Retourne true si l'utilisateur confirme, false sinon
-    /// </summary>
     public bool ShowProfileWarning(CleanerProfile profile)
     {
         var warning = profile.GetDetailedWarning();
-        
         var result = MessageBox.Show(
-            warning + "\n\nVoulez-vous activer cette catégorie ?",
+            $"{warning}\n\nVoulez-vous activer cette catégorie ?",
             $"⚠️ Avertissement - {profile.Name}",
             MessageBoxButton.YesNo,
             profile.IsSafe ? MessageBoxImage.Information : MessageBoxImage.Warning);
-        
         return result == MessageBoxResult.Yes;
     }
 
@@ -140,10 +126,7 @@ public partial class MainViewModel : ObservableObject
 
             StatusMessage = $"Analyse: {TotalCount} fichiers ({TotalSizeFormatted})";
         }
-        catch (OperationCanceledException)
-        {
-            StatusMessage = "Analyse annulée";
-        }
+        catch (OperationCanceledException) { StatusMessage = "Analyse annulée"; }
         catch (Exception ex)
         {
             StatusMessage = $"Erreur: {ex.Message}";
@@ -166,7 +149,7 @@ public partial class MainViewModel : ObservableObject
         var selectedFiles = Files.Where(f => f.IsSelected && f.IsAccessible).ToList();
 
         var confirm = MessageBox.Show(
-            $"Supprimer {selectedFiles.Count} fichiers ({FormatSize(selectedFiles.Sum(f => f.Size))}) ?\n\nCette action est irréversible.",
+            $"Supprimer {selectedFiles.Count} fichiers ({FileSizeHelper.Format(selectedFiles.Sum(f => f.Size))}) ?\n\nCette action est irréversible.",
             "Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Warning);
 
         if (confirm != MessageBoxResult.Yes) return;
@@ -184,7 +167,6 @@ public partial class MainViewModel : ObservableObject
 
             var result = await _cleanerService.CleanAsync(selectedFiles, progress, _cts.Token);
 
-            // Retirer les fichiers supprimés
             var deletedPaths = selectedFiles
                 .Where(f => !result.Errors.Any(e => e.FilePath == f.FullPath))
                 .Select(f => f.FullPath)
@@ -200,17 +182,12 @@ public partial class MainViewModel : ObservableObject
 
             if (result.FailedCount > 0)
             {
-                var totalSize = selectedFiles.Sum(f => f.Size);
                 MessageBox.Show(
-                    $"{result.FailedCount} fichier(s) non supprimés sur {result.DeletedCount + result.FailedCount} traités ({result.DeletedCount} nettoyés).\n" +
-                    $"{result.FreedBytesFormatted} libérés sur {FormatSize(totalSize)} prévus.",
+                    $"{result.FailedCount} fichier(s) non supprimés sur {result.DeletedCount + result.FailedCount}.\n{result.FreedBytesFormatted} libérés.",
                     "Avertissement", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
-        catch (OperationCanceledException)
-        {
-            StatusMessage = "Nettoyage annulé";
-        }
+        catch (OperationCanceledException) { StatusMessage = "Nettoyage annulé"; }
         catch (Exception ex)
         {
             StatusMessage = $"Erreur: {ex.Message}";
@@ -225,6 +202,7 @@ public partial class MainViewModel : ObservableObject
 
     #endregion
 
+
     #region System Cleaning Commands
 
     [RelayCommand]
@@ -232,24 +210,19 @@ public partial class MainViewModel : ObservableObject
     {
         if (RecycleBinCount == 0)
         {
-            MessageBox.Show("La corbeille est déjà vide.", "Information",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("La corbeille est déjà vide.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        var confirm = MessageBox.Show(
-            $"Vider la corbeille ?\n\n{RecycleBinCount} éléments ({RecycleBinSizeFormatted})",
+        var confirm = MessageBox.Show($"Vider la corbeille ?\n\n{RecycleBinCount} éléments ({RecycleBinSizeFormatted})",
             "Corbeille", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-
         if (confirm != MessageBoxResult.Yes) return;
 
         StatusMessage = "Vidage de la corbeille...";
         var (success, message) = await _systemCleaner.EmptyRecycleBinAsync();
         UpdateRecycleBinStats();
         StatusMessage = message;
-
-        if (!success)
-            MessageBox.Show(message, "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+        if (!success) MessageBox.Show(message, "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
     [RelayCommand]
@@ -258,8 +231,8 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = "Vidage du cache DNS...";
         var (success, message) = await _systemCleaner.FlushDnsCacheAsync();
         StatusMessage = message;
-        MessageBox.Show(message, success ? "Succès" : "Erreur",
-            MessageBoxButton.OK, success ? MessageBoxImage.Information : MessageBoxImage.Error);
+        MessageBox.Show(message, success ? "Succès" : "Erreur", MessageBoxButton.OK, 
+            success ? MessageBoxImage.Information : MessageBoxImage.Error);
     }
 
     [RelayCommand]
@@ -272,18 +245,14 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ClearRecentDocumentsAsync()
     {
-        var confirm = MessageBox.Show(
-            "Effacer la liste des documents récents ?",
+        var confirm = MessageBox.Show("Effacer la liste des documents récents ?", 
             "Documents récents", MessageBoxButton.YesNo, MessageBoxImage.Question);
-
         if (confirm != MessageBoxResult.Yes) return;
 
         StatusMessage = "Effacement des documents récents...";
         var (success, message, _) = await _systemCleaner.ClearRecentDocumentsAsync();
         StatusMessage = message;
-
-        if (!success)
-            MessageBox.Show(message, "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+        if (!success) MessageBox.Show(message, "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
     #endregion
@@ -302,12 +271,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task PurgeStandbyListAsync()
     {
-        if (!IsAdmin)
-        {
-            MessageBox.Show("Droits administrateur requis.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
+        if (!IsAdmin) { ShowAdminRequired(); return; }
         StatusMessage = "Purge du Standby List...";
         var result = await _systemCleaner.PurgeStandbyListAsync();
         StatusMessage = result.Message;
@@ -335,12 +299,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task PurgeModifiedPageListAsync()
     {
-        if (!IsAdmin)
-        {
-            MessageBox.Show("Droits administrateur requis.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
+        if (!IsAdmin) { ShowAdminRequired(); return; }
         StatusMessage = "Purge du Modified Page List...";
         var result = await _systemCleaner.PurgeModifiedPageListAsync();
         StatusMessage = result.Message;
@@ -350,19 +309,17 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task PurgeLowPriorityStandbyAsync()
     {
-        if (!IsAdmin)
-        {
-            MessageBox.Show("Droits administrateur requis.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
+        if (!IsAdmin) { ShowAdminRequired(); return; }
         StatusMessage = "Purge du Low-Priority Standby...";
         var result = await _systemCleaner.PurgeLowPriorityStandbyListAsync();
         StatusMessage = result.Message;
         ShowMemoryPurgeResult(result, "Low-Priority Standby");
     }
 
-    private void ShowMemoryPurgeResult(SystemCleanerService.MemoryPurgeResult result, string title)
+    private static void ShowAdminRequired() => 
+        MessageBox.Show("Droits administrateur requis.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+    private static void ShowMemoryPurgeResult(SystemCleanerService.MemoryPurgeResult result, string title)
     {
         if (!result.Success && result.TotalMemory == 0)
         {
@@ -375,20 +332,20 @@ public partial class MainViewModel : ObservableObject
                       STATISTIQUES MÉMOIRE
             ══════════════════════════════════
 
-            📊 Mémoire totale:     {FormatSize(result.TotalMemory)}
+            📊 Mémoire totale:     {FileSizeHelper.Format(result.TotalMemory)}
 
             ▬▬▬ AVANT LA PURGE ▬▬▬
-            💾 Utilisée:           {FormatSize(result.UsedBefore)}
-            ✅ Disponible:         {FormatSize(result.AvailableBefore)}
+            💾 Utilisée:           {FileSizeHelper.Format(result.UsedBefore)}
+            ✅ Disponible:         {FileSizeHelper.Format(result.AvailableBefore)}
             📈 Charge:             {result.MemoryLoadBefore:F0}%
 
             ▬▬▬ APRÈS LA PURGE ▬▬▬
-            💾 Utilisée:           {FormatSize(result.UsedAfter)}
-            ✅ Disponible:         {FormatSize(result.AvailableAfter)}
+            💾 Utilisée:           {FileSizeHelper.Format(result.UsedAfter)}
+            ✅ Disponible:         {FileSizeHelper.Format(result.AvailableAfter)}
             📈 Charge:             {result.MemoryLoadAfter:F0}%
 
             ══════════════════════════════════
-            🎯 MÉMOIRE LIBÉRÉE:    {FormatSize(result.Freed)}
+            🎯 MÉMOIRE LIBÉRÉE:    {FileSizeHelper.Format(result.Freed)}
             ══════════════════════════════════
             """;
 
@@ -401,71 +358,57 @@ public partial class MainViewModel : ObservableObject
 
     #endregion
 
+
     #region System Commands
 
     [RelayCommand]
     private async Task CleanupWinSxSAsync()
     {
-        if (!IsAdmin)
-        {
-            MessageBox.Show("Droits administrateur requis pour nettoyer WinSxS.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
+        if (!IsAdmin) { ShowAdminRequired(); return; }
 
         var confirm = MessageBox.Show(
-            "Nettoyer les composants Windows obsolètes (WinSxS) ?\n\n⚠️ Cette opération peut prendre plusieurs minutes et ne peut pas être annulée.\n\nCela libérera de l'espace en supprimant les anciennes versions des composants système.",
+            "Nettoyer les composants Windows obsolètes (WinSxS) ?\n\n⚠️ Cette opération peut prendre plusieurs minutes et ne peut pas être annulée.",
             "Nettoyage WinSxS", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-
         if (confirm != MessageBoxResult.Yes) return;
 
         StatusMessage = "Nettoyage WinSxS en cours (peut prendre plusieurs minutes)...";
         var (success, message) = await _systemCleaner.CleanupWinSxSAsync();
         StatusMessage = message;
-
-        MessageBox.Show(message, success ? "Succès" : "Erreur",
-            MessageBoxButton.OK, success ? MessageBoxImage.Information : MessageBoxImage.Error);
+        MessageBox.Show(message, success ? "Succès" : "Erreur", MessageBoxButton.OK, 
+            success ? MessageBoxImage.Information : MessageBoxImage.Error);
     }
 
     [RelayCommand]
     private async Task ToggleHibernationAsync()
     {
-        if (!IsAdmin)
-        {
-            MessageBox.Show("Droits administrateur requis.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
+        if (!IsAdmin) { ShowAdminRequired(); return; }
 
         bool isEnabled = _systemCleaner.IsHibernationEnabled();
 
         if (isEnabled)
         {
             var confirm = MessageBox.Show(
-                "Désactiver l'hibernation ?\n\n💾 Cela supprimera hiberfil.sys et libérera plusieurs GB d'espace (équivalent à votre RAM).\n\n⚠️ Vous ne pourrez plus utiliser l'hibernation.",
+                "Désactiver l'hibernation ?\n\n💾 Cela supprimera hiberfil.sys et libérera plusieurs GB d'espace.\n\n⚠️ Vous ne pourrez plus utiliser l'hibernation.",
                 "Désactiver l'hibernation", MessageBoxButton.YesNo, MessageBoxImage.Question);
-
             if (confirm != MessageBoxResult.Yes) return;
 
             StatusMessage = "Désactivation de l'hibernation...";
-            var (success, message, freed) = await _systemCleaner.DisableHibernationAsync();
+            var (success, message, _) = await _systemCleaner.DisableHibernationAsync();
             StatusMessage = message;
-
-            MessageBox.Show(message, success ? "Succès" : "Erreur",
-                MessageBoxButton.OK, success ? MessageBoxImage.Information : MessageBoxImage.Error);
+            MessageBox.Show(message, success ? "Succès" : "Erreur", MessageBoxButton.OK, 
+                success ? MessageBoxImage.Information : MessageBoxImage.Error);
         }
         else
         {
-            var confirm = MessageBox.Show(
-                "Réactiver l'hibernation ?",
-                "Activer l'hibernation", MessageBoxButton.YesNo, MessageBoxImage.Question);
-
+            var confirm = MessageBox.Show("Réactiver l'hibernation ?", "Activer l'hibernation", 
+                MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (confirm != MessageBoxResult.Yes) return;
 
             StatusMessage = "Activation de l'hibernation...";
             var (success, message) = await _systemCleaner.EnableHibernationAsync();
             StatusMessage = message;
-
-            MessageBox.Show(message, success ? "Succès" : "Erreur",
-                MessageBoxButton.OK, success ? MessageBoxImage.Information : MessageBoxImage.Error);
+            MessageBox.Show(message, success ? "Succès" : "Erreur", MessageBoxButton.OK, 
+                success ? MessageBoxImage.Information : MessageBoxImage.Error);
         }
     }
 
@@ -475,22 +418,16 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = "Nettoyage du cache Windows Store...";
         var (success, message) = await _systemCleaner.ClearWindowsStoreCacheAsync();
         StatusMessage = message;
-
-        MessageBox.Show(message, success ? "Succès" : "Erreur",
-            MessageBoxButton.OK, success ? MessageBoxImage.Information : MessageBoxImage.Error);
+        MessageBox.Show(message, success ? "Succès" : "Erreur", MessageBoxButton.OK, 
+            success ? MessageBoxImage.Information : MessageBoxImage.Error);
     }
 
     [RelayCommand]
     private async Task RunDiskCleanupAsync()
     {
-        if (!IsAdmin)
-        {
-            MessageBox.Show("Droits administrateur requis pour le nettoyage complet.", "Droits insuffisants", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
+        if (!IsAdmin) { ShowAdminRequired(); return; }
         StatusMessage = "Lancement du nettoyage de disque Windows...";
-        var (success, message) = await _systemCleaner.RunDiskCleanupAsync();
+        var (_, message) = await _systemCleaner.RunDiskCleanupAsync();
         StatusMessage = message;
     }
 
@@ -581,22 +518,6 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedSizeFormatted));
         OnPropertyChanged(nameof(CanClean));
         CleanCommand.NotifyCanExecuteChanged();
-    }
-
-    private static string FormatSize(long bytes)
-    {
-        if (bytes == 0) return "0 B";
-        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
-        int i = 0;
-        double size = bytes;
-
-        while (size >= 1024 && i < suffixes.Length - 1)
-        {
-            size /= 1024;
-            i++;
-        }
-
-        return $"{size:N2} {suffixes[i]}";
     }
 
     #endregion

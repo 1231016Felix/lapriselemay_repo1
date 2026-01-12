@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using TempCleaner.Helpers;
 
 namespace TempCleaner.Models;
 
@@ -28,22 +29,7 @@ public partial class TempFileInfo : ObservableObject
     [ObservableProperty]
     private string _errorMessage = string.Empty;
 
-    public string SizeFormatted => FormatSize(Size);
+    public string SizeFormatted => FileSizeHelper.Format(Size);
 
     public string RelativePath => System.IO.Path.GetDirectoryName(FullPath) ?? string.Empty;
-
-    private static string FormatSize(long bytes)
-    {
-        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
-        int suffixIndex = 0;
-        double size = bytes;
-
-        while (size >= 1024 && suffixIndex < suffixes.Length - 1)
-        {
-            size /= 1024;
-            suffixIndex++;
-        }
-
-        return $"{size:N2} {suffixes[suffixIndex]}";
-    }
 }

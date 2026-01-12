@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml.Media;
 using Windows.UI;
+using CleanUninstaller.Helpers;
 
 namespace CleanUninstaller.Models;
 
@@ -86,7 +87,7 @@ public partial class ResidualItem : ObservableObject
     /// <summary>
     /// Taille formatée pour l'affichage
     /// </summary>
-    public string FormattedSize => FormatSize(Size);
+    public string FormattedSize => Size > 0 ? CommonHelpers.FormatSize(Size) : "";
 
     /// <summary>
     /// Chemin affiché (nom de fichier ou chemin court)
@@ -154,23 +155,6 @@ public partial class ResidualItem : ObservableObject
     /// Indique si l'élément est risqué (jaune ou rouge)
     /// </summary>
     public bool IsRisky => Confidence <= ConfidenceLevel.Medium;
-
-    private static string FormatSize(long bytes)
-    {
-        if (bytes <= 0) return "";
-        
-        string[] suffixes = ["o", "Ko", "Mo", "Go"];
-        int i = 0;
-        double size = bytes;
-        
-        while (size >= 1024 && i < suffixes.Length - 1)
-        {
-            size /= 1024;
-            i++;
-        }
-        
-        return $"{size:N1} {suffixes[i]}";
-    }
 }
 
 /// <summary>

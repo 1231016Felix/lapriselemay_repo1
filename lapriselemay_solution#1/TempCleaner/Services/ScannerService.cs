@@ -20,7 +20,9 @@ public class ScannerService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var percent = (int)((double)profileIndex / profileList.Count * 100);
+            var percent = profileList.Count > 0 
+                ? (int)((double)profileIndex / profileList.Count * 100) 
+                : 0;
             progress?.Report(($"Analyse: {profile.Name}...", percent));
 
             var profileFiles = await ScanProfileAsync(profile, cancellationToken);
@@ -30,17 +32,14 @@ public class ScannerService
 
             files.AddRange(profileFiles);
 
-            if (!result.CategoryStats.ContainsKey(profile.Name))
+            if (!result.CategoryStats.TryGetValue(profile.Name, out var stats))
             {
-                result.CategoryStats[profile.Name] = new CategoryStats
-                {
-                    Name = profile.Name,
-                    Icon = profile.Icon
-                };
+                stats = new CategoryStats { Name = profile.Name, Icon = profile.Icon };
+                result.CategoryStats[profile.Name] = stats;
             }
 
-            result.CategoryStats[profile.Name].FileCount += profileFiles.Count;
-            result.CategoryStats[profile.Name].TotalSize += profileFiles.Sum(f => f.Size);
+            stats.FileCount += profileFiles.Count;
+            stats.TotalSize += profileFiles.Sum(f => f.Size);
 
             profileIndex++;
         }
@@ -56,7 +55,7 @@ public class ScannerService
         return result;
     }
 
-    private async Task<List<TempFileInfo>> ScanProfileAsync(
+    private static async Task<List<TempFileInfo>> ScanProfileAsync(
         CleanerProfile profile,
         CancellationToken cancellationToken)
     {
@@ -64,26 +63,22 @@ public class ScannerService
 
         await Task.Run(() =>
         {
+            if (!Directory.Exists(profile.FolderPath))
+                return;
+
+            var minDate = profile.MinAgeDays > 0
+                ? DateTime.Now.AddDays(-profile.MinAgeDays)
+                : DateTime.MaxValue;
+
+            var enumOptions = new EnumerationOptions
+            {
+                IgnoreInaccessible = true,
+                RecurseSubdirectories = profile.IncludeSubdirectories,
+                AttributesToSkip = FileAttributes.System
+            };
+
             try
             {
-                if (!Directory.Exists(profile.FolderPath))
-                    return;
-
-                var searchOption = profile.IncludeSubdirectories
-                    ? SearchOption.AllDirectories
-                    : SearchOption.TopDirectoryOnly;
-
-                var minDate = profile.MinAgeDays > 0
-                    ? DateTime.Now.AddDays(-profile.MinAgeDays)
-                    : DateTime.MaxValue;
-
-                var enumOptions = new EnumerationOptions
-                {
-                    IgnoreInaccessible = true,
-                    RecurseSubdirectories = profile.IncludeSubdirectories,
-                    AttributesToSkip = FileAttributes.System
-                };
-
                 foreach (var filePath in Directory.EnumerateFiles(
                     profile.FolderPath, profile.SearchPattern, enumOptions))
                 {
@@ -108,38 +103,31 @@ public class ScannerService
                     }
                     catch (UnauthorizedAccessException)
                     {
-                        files.Add(new TempFileInfo
-                        {
-                            FullPath = filePath,
-                            FileName = Path.GetFileName(filePath),
-                            Category = profile.Name,
-                            IsAccessible = false,
-                            ErrorMessage = "Accès refusé"
-                        });
+                        files.Add(CreateInaccessibleFileInfo(filePath, profile.Name, "Accès refusé"));
                     }
                     catch (IOException ex)
                     {
-                        files.Add(new TempFileInfo
-                        {
-                            FullPath = filePath,
-                            FileName = Path.GetFileName(filePath),
-                            Category = profile.Name,
-                            IsAccessible = false,
-                            ErrorMessage = ex.Message
-                        });
+                        files.Add(CreateInaccessibleFileInfo(filePath, profile.Name, ex.Message));
                     }
                 }
             }
-            catch (UnauthorizedAccessException)
-            {
-                // Ignorer les dossiers inaccessibles
-            }
-            catch (DirectoryNotFoundException)
-            {
-                // Le dossier n'existe pas
-            }
+            catch (UnauthorizedAccessException) { }
+            catch (DirectoryNotFoundException) { }
+
         }, cancellationToken);
 
         return files;
+    }
+
+    private static TempFileInfo CreateInaccessibleFileInfo(string filePath, string category, string error)
+    {
+        return new TempFileInfo
+        {
+            FullPath = filePath,
+            FileName = Path.GetFileName(filePath),
+            Category = category,
+            IsAccessible = false,
+            ErrorMessage = error
+        };
     }
 }

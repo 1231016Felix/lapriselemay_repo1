@@ -5,7 +5,7 @@ using System.Windows.Data;
 namespace TempCleaner.Converters;
 
 /// <summary>
-/// Convertit un booléen en Visibility (inverse optionnel)
+/// Convertit un booléen/entier en Visibility
 /// </summary>
 public class BoolToVisibilityConverter : IValueConverter
 {
@@ -18,22 +18,15 @@ public class BoolToVisibilityConverter : IValueConverter
             _ => false
         };
 
-        bool invert = parameter?.ToString()?.ToLower() == "invert";
-        
-        if (invert)
-            boolValue = !boolValue;
-
         return boolValue ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        throw new NotImplementedException();
-    }
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) 
+        => throw new NotSupportedException();
 }
 
 /// <summary>
-/// Inverse de BoolToVisibilityConverter - retourne Visible quand la valeur est false ou 0
+/// Inverse de BoolToVisibilityConverter - retourne Visible quand false/0
 /// </summary>
 public class InverseBoolToVisibilityConverter : IValueConverter
 {
@@ -49,8 +42,6 @@ public class InverseBoolToVisibilityConverter : IValueConverter
         return boolValue ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        throw new NotImplementedException();
-    }
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) 
+        => throw new NotSupportedException();
 }

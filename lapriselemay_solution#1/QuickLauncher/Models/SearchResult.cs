@@ -1,9 +1,12 @@
 namespace QuickLauncher.Models;
 
+/// <summary>
+/// Types de résultats de recherche.
+/// </summary>
 public enum ResultType
 {
     Application,
-    StoreApp,  // Applications du Microsoft Store (UWP/MSIX)
+    StoreApp,
     File,
     Folder,
     Script,
@@ -14,7 +17,10 @@ public enum ResultType
     SearchHistory
 }
 
-public class SearchResult
+/// <summary>
+/// Résultat de recherche avec scoring et métadonnées.
+/// </summary>
+public sealed class SearchResult
 {
     public string Name { get; set; } = string.Empty;
     public string Path { get; set; } = string.Empty;
@@ -28,11 +34,11 @@ public class SearchResult
     
     public string DisplayIcon
     {
-        get => _customIcon ?? DefaultIcon;
+        get => _customIcon ?? GetDefaultIcon();
         set => _customIcon = value;
     }
     
-    private string DefaultIcon => Type switch
+    private string GetDefaultIcon() => Type switch
     {
         ResultType.Application => "🚀",
         ResultType.StoreApp => "🪟",
@@ -46,4 +52,6 @@ public class SearchResult
         ResultType.SearchHistory => "🕐",
         _ => "📌"
     };
+    
+    public override string ToString() => $"{DisplayIcon} {Name}";
 }

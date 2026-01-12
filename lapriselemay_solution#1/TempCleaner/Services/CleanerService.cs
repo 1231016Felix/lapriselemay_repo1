@@ -1,12 +1,12 @@
 using System.IO;
 using System.Runtime.InteropServices;
+using TempCleaner.Helpers;
 using TempCleaner.Models;
 
 namespace TempCleaner.Services;
 
 public class CleanerService
 {
-    // Win32 API pour suppression forcée (du C++)
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern bool DeleteFile(string lpFileName);
 
@@ -29,7 +29,7 @@ public class CleanerService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var percent = (int)((double)processed / fileList.Count * 100);
+            var percent = fileList.Count > 0 ? (int)((double)processed / fileList.Count * 100) : 0;
             progress?.Report(($"Suppression: {file.FileName}", percent, freedBytes));
 
             var deleteResult = await DeleteFileAsync(file);
@@ -57,10 +57,7 @@ public class CleanerService
         return result;
     }
 
-    /// <summary>
-    /// Suppression améliorée avec fallback Win32 API (équivalent du C++)
-    /// </summary>
-    private async Task<(bool Success, string ErrorMessage)> DeleteFileAsync(TempFileInfo file)
+    private static async Task<(bool Success, string ErrorMessage)> DeleteFileAsync(TempFileInfo file)
     {
         return await Task.Run(() =>
         {
@@ -69,7 +66,7 @@ public class CleanerService
                 if (!File.Exists(file.FullPath))
                     return (true, string.Empty);
 
-                // Étape 1: Retirer les attributs de protection (du C++)
+                // Retirer les attributs de protection
                 try
                 {
                     SetFileAttributes(file.FullPath, FILE_ATTRIBUTE_NORMAL);
@@ -77,7 +74,7 @@ public class CleanerService
                 }
                 catch { /* Ignorer les erreurs d'attributs */ }
 
-                // Étape 2: Tentative de suppression standard
+                // Tentative de suppression standard
                 try
                 {
                     File.Delete(file.FullPath);
@@ -85,12 +82,10 @@ public class CleanerService
                 }
                 catch
                 {
-                    // Étape 3: Fallback avec Win32 API (du C++)
+                    // Fallback avec Win32 API
                     SetFileAttributes(file.FullPath, FILE_ATTRIBUTE_NORMAL);
                     if (DeleteFile(file.FullPath))
-                    {
                         return (true, string.Empty);
-                    }
                 }
 
                 return (false, "Impossible de supprimer le fichier");
@@ -118,23 +113,7 @@ public class CleanResult
     public long FreedBytes { get; set; }
     public List<CleanError> Errors { get; set; } = [];
 
-    public string FreedBytesFormatted => FormatSize(FreedBytes);
-
-    private static string FormatSize(long bytes)
-    {
-        if (bytes == 0) return "0 B";
-        string[] suffixes = ["B", "KB", "MB", "GB", "TB"];
-        int suffixIndex = 0;
-        double size = bytes;
-
-        while (size >= 1024 && suffixIndex < suffixes.Length - 1)
-        {
-            size /= 1024;
-            suffixIndex++;
-        }
-
-        return $"{size:N2} {suffixes[suffixIndex]}";
-    }
+    public string FreedBytesFormatted => FileSizeHelper.Format(FreedBytes);
 }
 
 public class CleanError

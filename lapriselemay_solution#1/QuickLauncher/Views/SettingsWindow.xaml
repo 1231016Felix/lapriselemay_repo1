@@ -109,6 +109,7 @@
                         
                         <TextBlock Text="Comportement" Style="{StaticResource SectionLabel}"/>
                         <CheckBox x:Name="CloseAfterLaunchCheck" Content="Fermer la fenêtre après le lancement d'un élément" Style="{StaticResource SettingsCheckBox}"/>
+                        <CheckBox x:Name="SingleClickLaunchCheck" Content="Lancer les éléments en un seul clic (au lieu de double-clic)" Style="{StaticResource SettingsCheckBox}"/>
                         <CheckBox x:Name="ShowIndexingStatusCheck" Content="Afficher le statut d'indexation" Style="{StaticResource SettingsCheckBox}"/>
                         <CheckBox x:Name="ShowSettingsButtonCheck" Content="Afficher le bouton ⚙️ dans la barre de recherche" Style="{StaticResource SettingsCheckBox}"/>
                         

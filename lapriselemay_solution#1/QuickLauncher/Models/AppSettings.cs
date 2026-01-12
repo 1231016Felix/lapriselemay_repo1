@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace QuickLauncher.Models;
 
@@ -9,47 +10,46 @@ public enum AutoReindexMode
     ScheduledTime
 }
 
-public class AppSettings
+/// <summary>
+/// Paramètres de l'application avec sérialisation JSON optimisée.
+/// </summary>
+public sealed class AppSettings
 {
-    // === Dossiers et fichiers ===
-    public List<string> IndexedFolders { get; set; } =
-    [
-        Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu),
-        Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
-    ];
+    private static readonly string SettingsDir = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        Constants.AppName);
     
-    public List<string> FileExtensions { get; set; } =
-    [
-        ".exe", ".lnk", ".bat", ".cmd", ".ps1", ".msi",
-        ".txt", ".pdf", ".docx", ".xlsx", ".pptx",
-        ".png", ".jpg", ".jpeg", ".gif", ".mp3", ".mp4"
-    ];
+    private static readonly string SettingsPath = Path.Combine(SettingsDir, Constants.SettingsFileName);
+    
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+    
+    // === Dossiers et fichiers ===
+    public List<string> IndexedFolders { get; set; } = GetDefaultIndexedFolders();
+    public List<string> FileExtensions { get; set; } = [..Constants.DefaultFileExtensions];
     
     // === Scripts et recherche ===
     public List<CustomScript> Scripts { get; set; } = [];
-    public List<WebSearchEngine> SearchEngines { get; set; } =
-    [
-        new() { Prefix = "g", Name = "Google", UrlTemplate = "https://www.google.com/search?q={query}" },
-        new() { Prefix = "yt", Name = "YouTube", UrlTemplate = "https://www.youtube.com/results?search_query={query}" },
-        new() { Prefix = "gh", Name = "GitHub", UrlTemplate = "https://github.com/search?q={query}" },
-        new() { Prefix = "so", Name = "Stack Overflow", UrlTemplate = "https://stackoverflow.com/search?q={query}" }
-    ];
-    
+    public List<WebSearchEngine> SearchEngines { get; set; } = GetDefaultSearchEngines();
+
     // === Paramètres généraux ===
-    public int MaxResults { get; set; } = 8;
-    public bool ShowInTaskbar { get; set; } = false;
+    public int MaxResults { get; set; } = Constants.DefaultMaxResults;
+    public bool ShowInTaskbar { get; set; }
     public bool StartWithWindows { get; set; } = true;
     public bool CloseAfterLaunch { get; set; } = true;
     public bool ShowIndexingStatus { get; set; } = true;
     public bool MinimizeOnStartup { get; set; } = true;
     public bool EnableSearchHistory { get; set; } = true;
-    public int MaxSearchHistory { get; set; } = 10;
+    public int MaxSearchHistory { get; set; } = Constants.DefaultMaxSearchHistory;
+    public bool SingleClickLaunch { get; set; }
     
     // === Apparence ===
     public double WindowOpacity { get; set; } = 1.0;
-    public string AccentColor { get; set; } = "#0078D4";
+    public string AccentColor { get; set; } = Constants.Colors.DefaultAccent;
     public bool EnableAnimations { get; set; } = true;
     public string Theme { get; set; } = "Dark";
     public bool ShowSettingsButton { get; set; } = true;
@@ -63,21 +63,33 @@ public class AppSettings
     public HotkeySettings Hotkey { get; set; } = new();
     
     // === Indexation ===
-    public int SearchDepth { get; set; } = 5;
-    public bool IndexHiddenFolders { get; set; } = false;
+    public int SearchDepth { get; set; } = Constants.DefaultSearchDepth;
+    public bool IndexHiddenFolders { get; set; }
     
     // === Réindexation automatique ===
-    public bool AutoReindexEnabled { get; set; } = false;
+    public bool AutoReindexEnabled { get; set; }
     public AutoReindexMode AutoReindexMode { get; set; } = AutoReindexMode.Interval;
     public int AutoReindexIntervalMinutes { get; set; } = 60;
     public string AutoReindexScheduledTime { get; set; } = "03:00";
     
     // === Historique de recherche ===
     public List<string> SearchHistory { get; set; } = [];
+
+    private static List<string> GetDefaultIndexedFolders() =>
+    [
+        Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
+        Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu),
+        Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
+        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
+    ];
     
-    private static readonly string SettingsPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "QuickLauncher", "settings.json");
+    private static List<WebSearchEngine> GetDefaultSearchEngines() =>
+    [
+        new() { Prefix = "g", Name = "Google", UrlTemplate = "https://www.google.com/search?q={query}" },
+        new() { Prefix = "yt", Name = "YouTube", UrlTemplate = "https://www.youtube.com/results?search_query={query}" },
+        new() { Prefix = "gh", Name = "GitHub", UrlTemplate = "https://github.com/search?q={query}" },
+        new() { Prefix = "so", Name = "Stack Overflow", UrlTemplate = "https://stackoverflow.com/search?q={query}" }
+    ];
 
     public static AppSettings Load()
     {
@@ -86,19 +98,24 @@ public class AppSettings
             if (File.Exists(SettingsPath))
             {
                 var json = File.ReadAllText(SettingsPath);
-                return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+                var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
+                return settings ?? new AppSettings();
             }
         }
-        catch { }
+        catch { /* Retourne les paramètres par défaut en cas d'erreur */ }
+        
         return new AppSettings();
     }
 
     public void Save()
     {
-        var dir = Path.GetDirectoryName(SettingsPath)!;
-        Directory.CreateDirectory(dir);
-        var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(SettingsPath, json);
+        try
+        {
+            Directory.CreateDirectory(SettingsDir);
+            var json = JsonSerializer.Serialize(this, JsonOptions);
+            File.WriteAllText(SettingsPath, json);
+        }
+        catch { /* Ignore les erreurs de sauvegarde */ }
     }
     
     public void AddToSearchHistory(string query)
@@ -108,30 +125,38 @@ public class AppSettings
         SearchHistory.Remove(query);
         SearchHistory.Insert(0, query);
         
-        while (SearchHistory.Count > MaxSearchHistory)
-            SearchHistory.RemoveAt(SearchHistory.Count - 1);
+        if (SearchHistory.Count > MaxSearchHistory)
+            SearchHistory.RemoveRange(MaxSearchHistory, SearchHistory.Count - MaxSearchHistory);
     }
     
     public void ClearSearchHistory() => SearchHistory.Clear();
     
     public static void Reset()
     {
-        if (File.Exists(SettingsPath))
-            File.Delete(SettingsPath);
+        try
+        {
+            if (File.Exists(SettingsPath))
+                File.Delete(SettingsPath);
+        }
+        catch { /* Ignore les erreurs */ }
     }
     
     public static string GetSettingsPath() => SettingsPath;
 }
 
-public class HotkeySettings
+/// <summary>
+/// Configuration du raccourci clavier global.
+/// </summary>
+public sealed class HotkeySettings
 {
     public bool UseAlt { get; set; } = true;
-    public bool UseCtrl { get; set; } = false;
-    public bool UseShift { get; set; } = false;
-    public bool UseWin { get; set; } = false;
+    public bool UseCtrl { get; set; }
+    public bool UseShift { get; set; }
+    public bool UseWin { get; set; }
     public string Key { get; set; } = "Space";
     
-    public string DisplayText => string.Join("+", GetModifiers().Concat([Key]));
+    [JsonIgnore]
+    public string DisplayText => string.Join("+", GetModifiers().Append(Key));
     
     private IEnumerable<string> GetModifiers()
     {
@@ -142,7 +167,10 @@ public class HotkeySettings
     }
 }
 
-public class CustomScript
+/// <summary>
+/// Configuration d'un script personnalisé.
+/// </summary>
+public sealed class CustomScript
 {
     public string Name { get; set; } = string.Empty;
     public string Command { get; set; } = string.Empty;
@@ -152,7 +180,10 @@ public class CustomScript
     public string Keyword { get; set; } = string.Empty;
 }
 
-public class WebSearchEngine
+/// <summary>
+/// Configuration d'un moteur de recherche web.
+/// </summary>
+public sealed class WebSearchEngine
 {
     public string Prefix { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;

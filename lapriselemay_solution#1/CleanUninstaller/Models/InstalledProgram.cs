@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.UI.Xaml.Media.Imaging;
+using CleanUninstaller.Helpers;
 
 namespace CleanUninstaller.Models;
 
@@ -159,7 +160,9 @@ public partial class InstalledProgram : ObservableObject
     /// <summary>
     /// Taille formatée pour l'affichage
     /// </summary>
-    public string FormattedSize => IsSizeApproximate ? $"~{FormatSize(EstimatedSize)}" : FormatSize(EstimatedSize);
+    public string FormattedSize => IsSizeApproximate 
+        ? $"~{CommonHelpers.FormatSize(EstimatedSize)}" 
+        : CommonHelpers.FormatSize(EstimatedSize);
 
     /// <summary>
     /// Date d'installation formatée
@@ -193,23 +196,6 @@ public partial class InstalledProgram : ObservableObject
         if (IsWindowsApp) return InstallerType.Msix;
         
         return InstallerType.Unknown;
-    }
-
-    private static string FormatSize(long bytes)
-    {
-        if (bytes <= 0) return "Inconnue";
-        
-        string[] suffixes = ["o", "Ko", "Mo", "Go", "To"];
-        int i = 0;
-        double size = bytes;
-        
-        while (size >= 1024 && i < suffixes.Length - 1)
-        {
-            size /= 1024;
-            i++;
-        }
-        
-        return $"{size:N1} {suffixes[i]}";
     }
 }
 

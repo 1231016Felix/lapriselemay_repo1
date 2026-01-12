@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
+using System.Collections.Concurrent;
 using Microsoft.Win32;
 using CleanUninstaller.Models;
+using CleanUninstaller.Helpers;
 
 namespace CleanUninstaller.Services;
 
@@ -11,6 +13,10 @@ namespace CleanUninstaller.Services;
 /// </summary>
 public partial class ResidualScannerService
 {
+    // Cache pour les vérifications de chemins protégés (optimisation performance)
+    private static readonly ConcurrentDictionary<string, bool> _protectedPathCache = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ConcurrentDictionary<string, long> _directorySizeCache = new(StringComparer.OrdinalIgnoreCase);
+    
     #region Protected Paths and Folders - CRITICAL SAFETY
 
     /// <summary>
@@ -184,12 +190,26 @@ public partial class ResidualScannerService
     #region Path Protection Methods
 
     /// <summary>
-    /// Vérifie si un chemin est protégé et ne doit JAMAIS être supprimé
+    /// Vérifie si un chemin est protégé et ne doit JAMAIS être supprimé (avec cache)
     /// </summary>
     private static bool IsProtectedPath(string path)
     {
         if (string.IsNullOrEmpty(path)) return true; // Par sécurité
 
+        // Utiliser le cache pour éviter les recalculs
+        if (_protectedPathCache.TryGetValue(path, out var cached))
+            return cached;
+
+        var isProtected = CheckPathProtection(path);
+        _protectedPathCache.TryAdd(path, isProtected);
+        return isProtected;
+    }
+
+    /// <summary>
+    /// Vérifie effectivement si un chemin est protégé
+    /// </summary>
+    private static bool CheckPathProtection(string path)
+    {
         var normalizedPath = path.Replace('/', '\\').TrimEnd('\\');
 
         // Vérifier les patterns de chemins protégés
@@ -741,18 +761,21 @@ public partial class ResidualScannerService
         return ConfidenceLevel.None;
     }
 
+    /// <summary>
+    /// Calcule la taille d'un dossier avec cache
+    /// </summary>
     private static long CalculateDirectorySize(string path)
     {
-        try
-        {
-            return new DirectoryInfo(path)
-                .EnumerateFiles("*", SearchOption.AllDirectories)
-                .Sum(f => f.Length);
-        }
-        catch
-        {
+        if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
             return 0;
-        }
+
+        // Utiliser le cache pour éviter les recalculs
+        if (_directorySizeCache.TryGetValue(path, out var cached))
+            return cached;
+
+        var size = CommonHelpers.CalculateDirectorySize(path);
+        _directorySizeCache.TryAdd(path, size);
+        return size;
     }
 
     #endregion

@@ -3,10 +3,10 @@ using System.Drawing;
 using System.IO;
 using System.Windows;
 using System.Windows.Threading;
+using H.NotifyIcon;
 using QuickLauncher.Models;
 using QuickLauncher.Services;
 using QuickLauncher.Views;
-using H.NotifyIcon;
 
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
@@ -21,55 +21,47 @@ public partial class App : Application
     private IndexingService? _indexingService;
     private DispatcherTimer? _autoReindexTimer;
     private AppSettings _settings = null!;
-    
-    private static readonly string LogPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "QuickLauncher", "app.log");
+    private readonly ILogger _logger = new FileLogger();
 
-    private static void Log(string message)
-    {
-        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
-        Debug.WriteLine(line);
-        try { File.AppendAllText(LogPath, line + Environment.NewLine); } catch { }
-    }
-
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         SetupExceptionHandling();
         
         try
         {
-            Log("=== Démarrage QuickLauncher ===");
+            _logger.Info("=== Démarrage QuickLauncher ===");
             base.OnStartup(e);
             
             _settings = AppSettings.Load();
             
-            Log("Synchronisation registre démarrage...");
+            _logger.Info("Synchronisation registre démarrage...");
             SettingsWindow.SyncStartupRegistry();
             
-            Log("Création IndexingService...");
-            _indexingService = new IndexingService();
+            _logger.Info("Création IndexingService...");
+            _indexingService = new IndexingService(_logger);
             
-            Log("Démarrage indexation async...");
+            _logger.Info("Démarrage indexation async...");
             _ = _indexingService.StartIndexingAsync();
             
-            Log("Création icône système...");
+            _logger.Info("Création icône système...");
             CreateTrayIcon();
             
-            Log("Enregistrement hotkey...");
-            _hotkeyService = new HotkeyService();
+            _logger.Info("Enregistrement hotkey...");
+            _hotkeyService = new HotkeyService(_settings.Hotkey);
             _hotkeyService.HotkeyPressed += OnHotkeyPressed;
-            _hotkeyService.Register();
             
-            Log("Configuration réindexation auto...");
+            if (!_hotkeyService.Register())
+                _logger.Warning($"Impossible d'enregistrer le raccourci {_settings.Hotkey.DisplayText}");
+            
+            _logger.Info("Configuration réindexation auto...");
             SetupAutoReindex();
             
-            Log("Démarrage terminé!");
+            _logger.Info("Démarrage terminé!");
         }
         catch (Exception ex)
         {
-            Log($"ERREUR STARTUP: {ex}");
-            MessageBox.Show($"Erreur au démarrage:\n{ex.Message}", "QuickLauncher", 
+            _logger.Error("Erreur au démarrage", ex);
+            MessageBox.Show($"Erreur au démarrage:\n{ex.Message}", Constants.AppName, 
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
@@ -78,18 +70,18 @@ public partial class App : Application
     {
         DispatcherUnhandledException += (_, ex) =>
         {
-            Log($"ERREUR UI: {ex.Exception}");
+            _logger.Error("Erreur UI non gérée", ex.Exception);
             ex.Handled = true;
         };
         
         AppDomain.CurrentDomain.UnhandledException += (_, ex) =>
         {
-            Log($"ERREUR FATALE: {ex.ExceptionObject}");
+            _logger.Error("Erreur fatale", ex.ExceptionObject as Exception);
         };
         
         TaskScheduler.UnobservedTaskException += (_, ex) =>
         {
-            Log($"ERREUR TASK: {ex.Exception}");
+            _logger.Error("Erreur Task non observée", ex.Exception);
             ex.SetObserved();
         };
     }
@@ -100,7 +92,7 @@ public partial class App : Application
         {
             _trayIcon = new TaskbarIcon
             {
-                ToolTipText = $"QuickLauncher - {_settings.Hotkey.DisplayText} pour ouvrir",
+                ToolTipText = $"{Constants.AppName} - {_settings.Hotkey.DisplayText} pour ouvrir",
                 Icon = GetAppIcon(),
                 ContextMenu = CreateContextMenu(),
                 Visibility = Visibility.Visible
@@ -109,11 +101,11 @@ public partial class App : Application
             _trayIcon.TrayMouseDoubleClick += (_, _) => ShowLauncher();
             _trayIcon.ForceCreate();
             
-            Log("Icône système créée");
+            _logger.Info("Icône système créée");
         }
         catch (Exception ex)
         {
-            Log($"ERREUR TrayIcon: {ex}");
+            _logger.Error("Erreur création TrayIcon", ex);
         }
     }
     
@@ -129,10 +121,7 @@ public partial class App : Application
                 return new Icon(stream);
             }
         }
-        catch (Exception ex)
-        {
-            Log($"Erreur chargement icône: {ex.Message}");
-        }
+        catch { /* Utilise l'icône par défaut */ }
         
         return SystemIcons.Application;
     }
@@ -162,7 +151,7 @@ public partial class App : Application
 
     private void OnHotkeyPressed(object? sender, EventArgs e)
     {
-        Log("Hotkey pressé");
+        _logger.Info("Hotkey pressé");
         Dispatcher.Invoke(ShowLauncher);
     }
 
@@ -172,17 +161,17 @@ public partial class App : Application
         {
             if (_indexingService == null)
             {
-                Log("IndexingService null!");
+                _logger.Warning("IndexingService est null");
                 return;
             }
             
-            if (_launcherWindow == null || !_launcherWindow.IsLoaded)
+            if (_launcherWindow is not { IsLoaded: true })
             {
                 _launcherWindow = new LauncherWindow(_indexingService);
                 _launcherWindow.Closed += (_, _) => _launcherWindow = null;
                 _launcherWindow.RequestOpenSettings += (_, _) => Dispatcher.Invoke(ShowSettings);
                 _launcherWindow.RequestQuit += (_, _) => Dispatcher.Invoke(ExitApplication);
-                _launcherWindow.RequestReindex += async (_, _) => await Dispatcher.Invoke(async () => await ReindexAsync());
+                _launcherWindow.RequestReindex += async (_, _) => await Dispatcher.InvokeAsync(async () => await ReindexAsync());
             }
             
             _launcherWindow.Show();
@@ -191,7 +180,7 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            Log($"ERREUR ShowLauncher: {ex}");
+            _logger.Error("Erreur ShowLauncher", ex);
         }
     }
 
@@ -206,11 +195,11 @@ public partial class App : Application
             _settings = AppSettings.Load();
             
             if (_trayIcon != null)
-                _trayIcon.ToolTipText = $"QuickLauncher - {_settings.Hotkey.DisplayText} pour ouvrir";
+                _trayIcon.ToolTipText = $"{Constants.AppName} - {_settings.Hotkey.DisplayText} pour ouvrir";
         }
         catch (Exception ex)
         {
-            Log($"ERREUR Settings: {ex}");
+            _logger.Error("Erreur Settings", ex);
         }
     }
     
@@ -221,7 +210,7 @@ public partial class App : Application
         
         if (!_settings.AutoReindexEnabled)
         {
-            Log("Réindexation auto désactivée");
+            _logger.Info("Réindexation auto désactivée");
             return;
         }
         
@@ -229,41 +218,39 @@ public partial class App : Application
         
         if (_settings.AutoReindexMode == AutoReindexMode.Interval)
         {
-            // Mode intervalle
             _autoReindexTimer.Interval = TimeSpan.FromMinutes(_settings.AutoReindexIntervalMinutes);
             _autoReindexTimer.Tick += async (_, _) =>
             {
-                Log($"Réindexation auto (intervalle {_settings.AutoReindexIntervalMinutes} min)");
+                _logger.Info($"Réindexation auto (intervalle {_settings.AutoReindexIntervalMinutes} min)");
                 await ReindexAsync();
             };
             
-            Log($"Timer réindexation: toutes les {_settings.AutoReindexIntervalMinutes} minutes");
+            _logger.Info($"Timer réindexation: toutes les {_settings.AutoReindexIntervalMinutes} minutes");
         }
         else
         {
-            // Mode heure programmée
             _autoReindexTimer.Interval = TimeSpan.FromMinutes(1);
             _autoReindexTimer.Tick += async (_, _) =>
             {
                 var now = DateTime.Now;
-                var scheduled = _settings.AutoReindexScheduledTime.Split(':');
+                var parts = _settings.AutoReindexScheduledTime.Split(':');
                 
-                if (scheduled.Length == 2 &&
-                    int.TryParse(scheduled[0], out var hour) &&
-                    int.TryParse(scheduled[1], out var minute) &&
+                if (parts.Length == 2 &&
+                    int.TryParse(parts[0], out var hour) &&
+                    int.TryParse(parts[1], out var minute) &&
                     now.Hour == hour && now.Minute == minute)
                 {
-                    Log($"Réindexation auto (programmée {_settings.AutoReindexScheduledTime})");
+                    _logger.Info($"Réindexation auto (programmée {_settings.AutoReindexScheduledTime})");
                     await ReindexAsync();
                 }
             };
             
-            Log($"Timer réindexation: programmé à {_settings.AutoReindexScheduledTime}");
+            _logger.Info($"Timer réindexation: programmé à {_settings.AutoReindexScheduledTime}");
         }
         
         _autoReindexTimer.Start();
     }
-    
+
     private async Task ReindexAsync()
     {
         try
@@ -271,22 +258,22 @@ public partial class App : Application
             if (_indexingService != null)
             {
                 await _indexingService.ReindexAsync();
-                Log("Réindexation terminée");
+                _logger.Info("Réindexation terminée");
             }
         }
         catch (Exception ex)
         {
-            Log($"ERREUR Reindex: {ex}");
+            _logger.Error("Erreur Reindex", ex);
         }
     }
     
     private void ShowHelp()
     {
         var helpText = $"""
-            🚀 QuickLauncher - Aide
+            🚀 {Constants.AppName} - Aide
 
             📌 Raccourcis clavier:
-            • {_settings.Hotkey.DisplayText} - Ouvrir/Fermer QuickLauncher
+            • {_settings.Hotkey.DisplayText} - Ouvrir/Fermer {Constants.AppName}
             • Ctrl+, - Ouvrir les paramètres
             • Ctrl+R - Réindexer
             • Ctrl+Q - Quitter
@@ -307,33 +294,30 @@ public partial class App : Application
             • so [texte] - Recherche Stack Overflow
             """;
         
-        MessageBox.Show(helpText, "QuickLauncher - Aide", 
+        MessageBox.Show(helpText, $"{Constants.AppName} - Aide", 
             MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void ExitApplication()
     {
-        Log("Fermeture application...");
-        
-        _autoReindexTimer?.Stop();
-        _hotkeyService?.Unregister();
-        _hotkeyService?.Dispose();
-        _indexingService?.Dispose();
-        _trayIcon?.Dispose();
-        
+        _logger.Info("Fermeture application...");
+        Cleanup();
         Shutdown();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
-        Log("OnExit");
-        
+        _logger.Info("OnExit");
+        Cleanup();
+        base.OnExit(e);
+    }
+    
+    private void Cleanup()
+    {
         _autoReindexTimer?.Stop();
         _hotkeyService?.Unregister();
         _hotkeyService?.Dispose();
         _indexingService?.Dispose();
         _trayIcon?.Dispose();
-        
-        base.OnExit(e);
     }
 }

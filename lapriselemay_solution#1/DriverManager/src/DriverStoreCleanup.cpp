@@ -1,4 +1,5 @@
 #include "DriverStoreCleanup.h"
+#include "Utils.h"
 #include <sstream>
 #include <algorithm>
 #include <filesystem>
@@ -438,12 +439,20 @@ namespace DriverManager {
                 driverEntry.architecture = arch;
 
                 // Find and parse the INF file
+                bool foundInfFile = false;
                 for (const auto& file : std::filesystem::directory_iterator(entry.path())) {
                     if (file.path().extension() == L".inf") {
                         ParseInfFile(file.path().wstring(), driverEntry.driverVersion, 
                                     driverEntry.driverDate, driverEntry.providerName, driverEntry.className);
+                        foundInfFile = true;
                         break;
                     }
+                }
+
+                // Skip folders without INF files - we can't determine version info
+                // These are typically support folders or binary-only packages
+                if (!foundInfFile || driverEntry.driverVersion.empty()) {
+                    continue;
                 }
 
                 // Calculate size
@@ -563,15 +572,62 @@ namespace DriverManager {
     }
 
     bool DriverStoreCleanup::DeleteFolder(const std::wstring& folderPath) {
+        // First, try simple deletion
         try {
             std::filesystem::remove_all(folderPath);
-            return true;
+            if (!std::filesystem::exists(folderPath)) {
+                return true;
+            }
         } catch (...) {
-            // Try with system command as fallback (may need admin)
-            std::wstring cmd = L"rd /s /q \"" + folderPath + L"\"";
-            int result = _wsystem(cmd.c_str());
-            return (result == 0);
+            // Continue to more aggressive methods
         }
+
+        // DriverStore folders are protected by TrustedInstaller
+        // Need to take ownership and grant permissions before deleting
+        STARTUPINFOW si = {};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        PROCESS_INFORMATION pi = {};
+
+        // Step 1: Take ownership of the folder and all contents
+        std::wstring takeownCmd = L"cmd.exe /c takeown /F \"" + folderPath + L"\" /R /D O 2>nul";
+        if (CreateProcessW(nullptr, const_cast<LPWSTR>(takeownCmd.c_str()),
+            nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            WaitForSingleObject(pi.hProcess, 30000);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        }
+
+        // Step 2: Grant full control to Administrators
+        std::wstring icaclsCmd = L"cmd.exe /c icacls \"" + folderPath + L"\" /grant Administrateurs:F /T /Q 2>nul";
+        if (CreateProcessW(nullptr, const_cast<LPWSTR>(icaclsCmd.c_str()),
+            nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            WaitForSingleObject(pi.hProcess, 30000);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        }
+        
+        // Step 2b: Try with English group name too (for non-French systems)
+        icaclsCmd = L"cmd.exe /c icacls \"" + folderPath + L"\" /grant Administrators:F /T /Q 2>nul";
+        if (CreateProcessW(nullptr, const_cast<LPWSTR>(icaclsCmd.c_str()),
+            nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            WaitForSingleObject(pi.hProcess, 30000);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        }
+
+        // Step 3: Delete the folder
+        std::wstring rdCmd = L"cmd.exe /c rd /s /q \"" + folderPath + L"\"";
+        if (CreateProcessW(nullptr, const_cast<LPWSTR>(rdCmd.c_str()),
+            nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            WaitForSingleObject(pi.hProcess, 30000);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        }
+
+        // Verify deletion actually worked
+        return !std::filesystem::exists(folderPath);
     }
 
     int DriverStoreCleanup::DeleteSelectedPackages() {
@@ -586,6 +642,8 @@ namespace DriverManager {
         }
         
         int current = 0;
+        std::vector<std::wstring> deletedPaths;  // Track successfully deleted paths
+        
         for (auto& entry : m_entries) {
             if (entry.isSelected && !entry.isCurrentVersion) {
                 current++;
@@ -595,10 +653,19 @@ namespace DriverManager {
                 
                 if (DeleteFolder(entry.folderPath)) {
                     deleted++;
-                    entry.isSelected = false;
+                    deletedPaths.push_back(entry.folderPath);
                 }
             }
         }
+        
+        // Remove deleted entries from the list
+        m_entries.erase(
+            std::remove_if(m_entries.begin(), m_entries.end(),
+                [&deletedPaths](const OrphanedDriverEntry& e) {
+                    return std::find(deletedPaths.begin(), deletedPaths.end(), e.folderPath) != deletedPaths.end();
+                }),
+            m_entries.end()
+        );
         
         return deleted;
     }

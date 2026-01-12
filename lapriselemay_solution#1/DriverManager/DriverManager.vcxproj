@@ -161,6 +161,7 @@
     <ClCompile Include="src\DriverStoreCleanup.cpp" />
     <ClCompile Include="src\UpdateChecker.cpp" />
     <ClCompile Include="src\DriverDownloader.cpp" />
+    <ClCompile Include="src\BSODAnalyzer.cpp" />
     <ClCompile Include="imgui\imgui.cpp" />
     <ClCompile Include="imgui\imgui_draw.cpp" />
     <ClCompile Include="imgui\imgui_tables.cpp" />
@@ -175,6 +176,8 @@
     <ClInclude Include="src\ManufacturerLinks.h" />
     <ClInclude Include="src\UpdateChecker.h" />
     <ClInclude Include="src\DriverDownloader.h" />
+    <ClInclude Include="src\BSODAnalyzer.h" />
+    <ClInclude Include="src\Utils.h" />
     <ClInclude Include="imgui\imgui.h" />
     <ClInclude Include="imgui\imgui_internal.h" />
     <ClInclude Include="imgui\imconfig.h" />

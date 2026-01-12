@@ -1,4 +1,5 @@
 #include "UpdateChecker.h"
+#include "Utils.h"
 #include <sstream>
 #include <algorithm>
 #include <regex>
@@ -145,7 +146,7 @@ namespace DriverManager {
                     // Check if cache is still valid (24 hours)
                     time_t cachedTime = std::stoll(timestamp);
                     time_t now = std::time(nullptr);
-                    if (now - cachedTime < 86400) { // 24 hours in seconds
+                    if (now - cachedTime < Constants::CACHE_DURATION_SECONDS) {
                         CachedResult cached;
                         cached.timestamp = cachedTime;
                         cached.checkedVersion = (pos3 != std::wstring::npos) ? 
@@ -216,9 +217,9 @@ namespace DriverManager {
         }
 
         // Set aggressive timeouts to avoid blocking
-        DWORD connectTimeout = 5000;   // 5 seconds to connect
-        DWORD sendTimeout = 10000;     // 10 seconds to send
-        DWORD receiveTimeout = 15000;  // 15 seconds to receive
+        DWORD connectTimeout = Constants::HTTP_CONNECT_TIMEOUT_MS;
+        DWORD sendTimeout = Constants::HTTP_SEND_TIMEOUT_MS;
+        DWORD receiveTimeout = Constants::HTTP_RECEIVE_TIMEOUT_MS;
         
         WinHttpSetOption(hSession, WINHTTP_OPTION_CONNECT_TIMEOUT, &connectTimeout, sizeof(connectTimeout));
         WinHttpSetOption(hSession, WINHTTP_OPTION_SEND_TIMEOUT, &sendTimeout, sizeof(sendTimeout));
@@ -315,7 +316,7 @@ namespace DriverManager {
         if (!hSession) return result;
 
         // Set timeouts
-        DWORD timeout = 10000;
+        DWORD timeout = Constants::HTTP_SEND_TIMEOUT_MS;
         WinHttpSetOption(hSession, WINHTTP_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
         WinHttpSetOption(hSession, WINHTTP_OPTION_SEND_TIMEOUT, &timeout, sizeof(timeout));
         WinHttpSetOption(hSession, WINHTTP_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
@@ -571,7 +572,7 @@ namespace DriverManager {
             }
             
             // Limit results to avoid excessive processing
-            if (results.size() >= 15) break;
+            if (results.size() >= Constants::MAX_CATALOG_RESULTS) break;
         }
         
         return results;
@@ -697,7 +698,7 @@ namespace DriverManager {
         }
         
         // Parallel configuration
-        const int maxConcurrent = 6; // 6 parallel threads for better throughput
+        const int maxConcurrent = Constants::MAX_CONCURRENT_DOWNLOADS;
         
         std::atomic<int> currentIndex{0};
         std::atomic<int> completedCount{skipped};
@@ -817,8 +818,8 @@ namespace DriverManager {
             m_progressCallback(skipped, total, L"Drivers système ignorés...");
         }
         
-        // Parallel configuration
-        const int maxConcurrent = 6;
+        // Parallel configuration - use same constant as CheckAllUpdatesAsync
+        const int maxConcurrent = Constants::MAX_CONCURRENT_DOWNLOADS;
         
         std::atomic<int> currentIndex{0};
         std::atomic<int> completedCount{skipped};

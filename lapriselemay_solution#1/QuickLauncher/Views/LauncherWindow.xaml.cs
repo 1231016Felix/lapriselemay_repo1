@@ -46,7 +46,22 @@ public partial class LauncherWindow : Window
             }
         };
         
-        ResultsList.MouseDoubleClick += (_, _) => _viewModel.ExecuteCommand.Execute(null);
+        // Lancement en simple clic ou double-clic selon le paramètre
+        if (_settings.SingleClickLaunch)
+        {
+            ResultsList.PreviewMouseLeftButtonUp += (_, e) =>
+            {
+                if (ResultsList.SelectedItem != null)
+                {
+                    _viewModel.ExecuteCommand.Execute(null);
+                    e.Handled = true;
+                }
+            };
+        }
+        else
+        {
+            ResultsList.MouseDoubleClick += (_, _) => _viewModel.ExecuteCommand.Execute(null);
+        }
     }
     
     private void ApplySettings()

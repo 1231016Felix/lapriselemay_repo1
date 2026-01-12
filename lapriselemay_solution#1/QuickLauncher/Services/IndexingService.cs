@@ -1,196 +1,225 @@
-using System.IO;
 using System.Collections.Concurrent;
 using System.Data.SQLite;
 using System.Diagnostics;
+using System.IO;
 using System.Text.RegularExpressions;
 using QuickLauncher.Models;
 
 namespace QuickLauncher.Services;
 
-public partial class IndexingService : IDisposable
+/// <summary>
+/// Service d'indexation optimisé avec support du parallélisme et annulation.
+/// </summary>
+public sealed partial class IndexingService : IDisposable
 {
     private readonly string _dbPath;
-    private readonly string _logPath;
+    private readonly string _connectionString;
     private readonly ConcurrentDictionary<string, SearchResult> _cache = new();
-    private readonly AppSettings _settings;
-    private readonly object _indexLock = new();
-    private bool _isIndexing;
+    private readonly SemaphoreSlim _indexLock = new(1, 1);
+    private readonly ILogger _logger;
+    
+    private AppSettings _settings;
+    private CancellationTokenSource? _indexingCts;
     private bool _disposed;
     
+    public event EventHandler? IndexingStarted;
     public event EventHandler? IndexingCompleted;
+    public event EventHandler<int>? IndexingProgress;
     
-    public IndexingService()
+    public bool IsIndexing { get; private set; }
+    public int IndexedItemsCount => _cache.Count;
+
+    public IndexingService(ILogger? logger = null)
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var dir = Path.Combine(appData, "QuickLauncher");
-        Directory.CreateDirectory(dir);
-        _dbPath = Path.Combine(dir, "index.db");
-        _logPath = Path.Combine(dir, "indexing.log");
+        _logger = logger ?? new FileLogger();
+        
+        var appData = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            Constants.AppName);
+        
+        Directory.CreateDirectory(appData);
+        _dbPath = Path.Combine(appData, Constants.DatabaseFileName);
+        _connectionString = $"Data Source={_dbPath};Version=3;Journal Mode=WAL;Cache Size=10000";
+        
         _settings = AppSettings.Load();
         
-        try { File.WriteAllText(_logPath, $"=== QuickLauncher Log {DateTime.Now} ==={Environment.NewLine}"); } catch { }
-        
         InitializeDatabase();
-        LoadCache();
-        Log($"Cache chargé: {_cache.Count} éléments");
-    }
-
-    private void Log(string message)
-    {
-        var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
-        Debug.WriteLine(line);
-        try { File.AppendAllText(_logPath, line + Environment.NewLine); } catch { }
+        LoadCacheFromDatabase();
+        
+        _logger.Info($"IndexingService initialisé avec {_cache.Count} éléments en cache");
     }
 
     private void InitializeDatabase()
     {
-        using var conn = new SQLiteConnection($"Data Source={_dbPath}");
+        using var conn = new SQLiteConnection(_connectionString);
         conn.Open();
+        
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             CREATE TABLE IF NOT EXISTS Items (
                 Path TEXT PRIMARY KEY,
-                Name TEXT NOT NULL,
+                Name TEXT NOT NULL COLLATE NOCASE,
                 Description TEXT,
                 Type INTEGER NOT NULL,
                 LastUsed TEXT,
                 UseCount INTEGER DEFAULT 0,
                 IndexedAt TEXT NOT NULL
             );
-            CREATE INDEX IF NOT EXISTS idx_name ON Items(Name);
+            CREATE INDEX IF NOT EXISTS idx_name ON Items(Name COLLATE NOCASE);
             CREATE INDEX IF NOT EXISTS idx_usecount ON Items(UseCount DESC);
+            CREATE INDEX IF NOT EXISTS idx_type ON Items(Type);
+            
+            PRAGMA journal_mode=WAL;
+            PRAGMA synchronous=NORMAL;
+            PRAGMA cache_size=10000;
             """;
         cmd.ExecuteNonQuery();
     }
     
-    public async Task StartIndexingAsync()
+    private void LoadCacheFromDatabase()
     {
-        if (_isIndexing) return;
+        _cache.Clear();
         
-        lock (_indexLock)
+        using var conn = new SQLiteConnection(_connectionString);
+        conn.Open();
+        
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Path, Name, Description, Type, LastUsed, UseCount FROM Items";
+        
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
         {
-            if (_isIndexing) return;
-            _isIndexing = true;
+            var item = new SearchResult
+            {
+                Path = reader.GetString(0),
+                Name = reader.GetString(1),
+                Description = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                Type = (ResultType)reader.GetInt32(3),
+                LastUsed = reader.IsDBNull(4) ? DateTime.MinValue : DateTime.Parse(reader.GetString(4)),
+                UseCount = reader.GetInt32(5)
+            };
+            _cache[item.Path] = item;
         }
+    }
+
+    public async Task StartIndexingAsync(CancellationToken cancellationToken = default)
+    {
+        if (IsIndexing) return;
         
-        Log("Démarrage de l'indexation...");
-        Log($"Extensions: {string.Join(", ", _settings.FileExtensions)}");
-        Log($"Profondeur max: {_settings.SearchDepth}");
-        Log($"Dossiers cachés: {(_settings.IndexHiddenFolders ? "Oui" : "Non")}");
-        
+        await _indexLock.WaitAsync(cancellationToken);
         try
         {
-            await Task.Run(() =>
+            if (IsIndexing) return;
+            
+            IsIndexing = true;
+            _indexingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            IndexingStarted?.Invoke(this, EventArgs.Empty);
+            
+            _settings = AppSettings.Load();
+            _logger.Info("Démarrage de l'indexation...");
+            
+            var items = new ConcurrentBag<SearchResult>();
+            var token = _indexingCts.Token;
+            
+            // Indexer les apps Store en parallèle
+            var storeTask = Task.Run(() =>
             {
-                var items = new List<SearchResult>();
-                
-                // Indexer les applications du Microsoft Store (UWP/MSIX)
-                Log("Indexation des applications Store...");
                 var storeApps = StoreAppService.GetAllApps();
-                items.AddRange(storeApps);
-                Log($"  -> {storeApps.Count} applications trouvées");
-                
-                // Indexer les dossiers configurés (raccourcis traditionnels)
-                foreach (var folder in _settings.IndexedFolders)
+                foreach (var app in storeApps)
+                    items.Add(app);
+                _logger.Info($"Apps Store: {storeApps.Count} trouvées");
+            }, token);
+            
+            // Indexer les dossiers en parallèle
+            var folderTasks = _settings.IndexedFolders
+                .Where(Directory.Exists)
+                .Select(folder => Task.Run(() => IndexFolder(folder, items, token), token))
+                .ToArray();
+            
+            await Task.WhenAll([storeTask, ..folderTasks]);
+
+            // Ajouter les scripts personnalisés
+            foreach (var script in _settings.Scripts)
+            {
+                items.Add(new SearchResult
                 {
-                    Log($"Indexation: {folder}");
-                    if (Directory.Exists(folder))
-                    {
-                        var count = IndexFolder(folder, items);
-                        Log($"  -> {count} éléments trouvés");
-                    }
-                    else
-                    {
-                        Log($"  -> DOSSIER INEXISTANT");
-                    }
-                }
-                
-                // Scripts personnalisés
-                foreach (var script in _settings.Scripts)
-                {
-                    items.Add(new SearchResult
-                    {
-                        Name = script.Name,
-                        Path = script.Command,
-                        Description = $"Script: {script.Keyword}",
-                        Type = ResultType.Script
-                    });
-                }
-                
-                // Dédupliquer par nom (préférer les apps Store aux raccourcis)
-                var deduplicated = items
-                    .GroupBy(i => i.Name.ToLowerInvariant())
-                    .Select(g => g.OrderByDescending(i => i.Type == ResultType.StoreApp ? 1 : 0).First())
-                    .ToList();
-                
-                Log($"TOTAL: {deduplicated.Count} éléments (après déduplication)");
-                SaveToDatabase(deduplicated);
-                LoadCache();
-            });
+                    Name = script.Name,
+                    Path = script.Command,
+                    Description = $"Script: {script.Keyword}",
+                    Type = ResultType.Script
+                });
+            }
+            
+            // Dédupliquer par nom (préférer les apps Store)
+            var deduplicated = items
+                .GroupBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.OrderByDescending(i => i.Type == ResultType.StoreApp ? 1 : 0).First())
+                .ToList();
+            
+            _logger.Info($"Total: {deduplicated.Count} éléments (après déduplication)");
+            
+            await SaveToDatabaseAsync(deduplicated, token);
+            LoadCacheFromDatabase();
         }
         finally
         {
-            _isIndexing = false;
+            IsIndexing = false;
+            _indexingCts?.Dispose();
+            _indexingCts = null;
+            _indexLock.Release();
             IndexingCompleted?.Invoke(this, EventArgs.Empty);
         }
     }
 
-    private int IndexFolder(string folderPath, List<SearchResult> items)
+    private void IndexFolder(string folderPath, ConcurrentBag<SearchResult> items, CancellationToken token)
     {
         var count = 0;
-        IndexFolderRecursive(folderPath, items, ref count, 0);
-        return count;
+        IndexFolderRecursive(folderPath, items, ref count, 0, token);
+        _logger.Info($"Dossier '{Path.GetFileName(folderPath)}': {count} éléments");
     }
     
-    private void IndexFolderRecursive(string folderPath, List<SearchResult> items, ref int count, int currentDepth)
+    private void IndexFolderRecursive(string folderPath, ConcurrentBag<SearchResult> items, 
+        ref int count, int depth, CancellationToken token)
     {
-        if (currentDepth > _settings.SearchDepth) return;
+        if (depth > _settings.SearchDepth || token.IsCancellationRequested) return;
         
         try
         {
-            // Vérifier si c'est un dossier caché
-            if (!_settings.IndexHiddenFolders)
-            {
-                var dirInfo = new DirectoryInfo(folderPath);
-                if ((dirInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden)
-                    return;
-            }
+            var dirInfo = new DirectoryInfo(folderPath);
+            if (!_settings.IndexHiddenFolders && (dirInfo.Attributes & FileAttributes.Hidden) != 0)
+                return;
             
             // Indexer les fichiers
-            foreach (var file in Directory.EnumerateFiles(folderPath))
+            foreach (var file in dirInfo.EnumerateFiles())
             {
-                var ext = Path.GetExtension(file).ToLowerInvariant();
+                if (token.IsCancellationRequested) return;
+                
+                var ext = file.Extension.ToLowerInvariant();
                 if (!_settings.FileExtensions.Contains(ext)) continue;
+                if (!_settings.IndexHiddenFolders && (file.Attributes & FileAttributes.Hidden) != 0) continue;
                 
-                // Vérifier fichier caché
-                if (!_settings.IndexHiddenFolders)
-                {
-                    var fileInfo = new FileInfo(file);
-                    if ((fileInfo.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden)
-                        continue;
-                }
-                
-                var result = CreateSearchResult(file);
+                var result = CreateSearchResult(file.FullName);
                 if (result != null)
                 {
                     items.Add(result);
-                    count++;
+                    Interlocked.Increment(ref count);
                 }
             }
             
             // Parcourir les sous-dossiers
-            foreach (var subDir in Directory.EnumerateDirectories(folderPath))
+            foreach (var subDir in dirInfo.EnumerateDirectories())
             {
-                IndexFolderRecursive(subDir, items, ref count, currentDepth + 1);
+                if (token.IsCancellationRequested) return;
+                IndexFolderRecursive(subDir.FullName, items, ref count, depth + 1, token);
             }
         }
         catch (UnauthorizedAccessException) { }
         catch (Exception ex)
         {
-            Log($"ERREUR {folderPath}: {ex.Message}");
+            _logger.Warning($"Erreur indexation '{folderPath}': {ex.Message}");
         }
     }
-    
+
     private SearchResult? CreateSearchResult(string filePath)
     {
         try
@@ -200,7 +229,6 @@ public partial class IndexingService : IDisposable
             var description = filePath;
             var targetPath = filePath;
             
-            // Résoudre les raccourcis .lnk
             if (ext == ".lnk")
             {
                 var info = ShortcutHelper.ResolveShortcut(filePath);
@@ -229,21 +257,18 @@ public partial class IndexingService : IDisposable
                 Type = type 
             };
         }
-        catch 
-        { 
-            return null; 
-        }
+        catch { return null; }
     }
     
-    private void SaveToDatabase(List<SearchResult> items)
+    private async Task SaveToDatabaseAsync(List<SearchResult> items, CancellationToken token)
     {
-        using var conn = new SQLiteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        using var transaction = conn.BeginTransaction();
+        await using var conn = new SQLiteConnection(_connectionString);
+        await conn.OpenAsync(token);
         
+        await using var transaction = conn.BeginTransaction();
         try
         {
-            using var cmd = conn.CreateCommand();
+            await using var cmd = conn.CreateCommand();
             cmd.CommandText = """
                 INSERT OR REPLACE INTO Items (Path, Name, Description, Type, UseCount, IndexedAt)
                 VALUES (@path, @name, @desc, @type, 
@@ -251,77 +276,72 @@ public partial class IndexingService : IDisposable
                     @indexed)
                 """;
             
+            var pathParam = cmd.Parameters.Add("@path", System.Data.DbType.String);
+            var nameParam = cmd.Parameters.Add("@name", System.Data.DbType.String);
+            var descParam = cmd.Parameters.Add("@desc", System.Data.DbType.String);
+            var typeParam = cmd.Parameters.Add("@type", System.Data.DbType.Int32);
+            var indexedParam = cmd.Parameters.Add("@indexed", System.Data.DbType.String);
+            
             var now = DateTime.UtcNow.ToString("o");
+            var progress = 0;
             
             foreach (var item in items)
             {
-                cmd.Parameters.Clear();
-                cmd.Parameters.AddWithValue("@path", item.Path);
-                cmd.Parameters.AddWithValue("@name", item.Name);
-                cmd.Parameters.AddWithValue("@desc", item.Description);
-                cmd.Parameters.AddWithValue("@type", (int)item.Type);
-                cmd.Parameters.AddWithValue("@indexed", now);
-                cmd.ExecuteNonQuery();
+                if (token.IsCancellationRequested) break;
+                
+                pathParam.Value = item.Path;
+                nameParam.Value = item.Name;
+                descParam.Value = item.Description;
+                typeParam.Value = (int)item.Type;
+                indexedParam.Value = now;
+                
+                await cmd.ExecuteNonQueryAsync(token);
+                
+                if (++progress % Constants.IndexingBatchSize == 0)
+                    IndexingProgress?.Invoke(this, progress);
             }
             
-            transaction.Commit();
+            await transaction.CommitAsync(token);
         }
         catch
         {
-            transaction.Rollback();
+            await transaction.RollbackAsync(token);
             throw;
         }
     }
 
-    private void LoadCache()
+    public async Task ReindexAsync(CancellationToken cancellationToken = default)
     {
+        CancelIndexing();
+        
+        await using var conn = new SQLiteConnection(_connectionString);
+        await conn.OpenAsync(cancellationToken);
+        
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM Items";
+        await cmd.ExecuteNonQueryAsync(cancellationToken);
+        
         _cache.Clear();
-        
-        using var conn = new SQLiteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Path, Name, Description, Type, LastUsed, UseCount FROM Items";
-        
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
-        {
-            var item = new SearchResult
-            {
-                Path = reader.GetString(0),
-                Name = reader.GetString(1),
-                Description = reader.IsDBNull(2) ? "" : reader.GetString(2),
-                Type = (ResultType)reader.GetInt32(3),
-                LastUsed = reader.IsDBNull(4) ? DateTime.MinValue : DateTime.Parse(reader.GetString(4)),
-                UseCount = reader.GetInt32(5)
-            };
-            _cache[item.Path] = item;
-        }
+        await StartIndexingAsync(cancellationToken);
     }
     
-    public async Task ReindexAsync()
-    {
-        using var conn = new SQLiteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM Items";
-        cmd.ExecuteNonQuery();
-        
-        await StartIndexingAsync();
-    }
+    public void CancelIndexing() => _indexingCts?.Cancel();
 
     public List<SearchResult> Search(string query)
     {
         if (string.IsNullOrWhiteSpace(query)) 
             return [];
         
-        query = query.ToLowerInvariant().Trim();
+        var normalizedQuery = query.Trim().ToLowerInvariant();
+        _settings = AppSettings.Load();
         
         // Recherche web avec préfixe
         foreach (var engine in _settings.SearchEngines)
         {
-            if (query.StartsWith($"{engine.Prefix} "))
+            var prefix = $"{engine.Prefix} ";
+            if (normalizedQuery.StartsWith(prefix))
             {
-                var searchQuery = query[(engine.Prefix.Length + 1)..];
+                var searchQuery = normalizedQuery[prefix.Length..];
                 return
                 [
                     new SearchResult
@@ -336,7 +356,7 @@ public partial class IndexingService : IDisposable
         }
         
         // Calculatrice
-        if (TryCalculate(query, out var calcResult))
+        if (TryCalculate(normalizedQuery, out var calcResult))
         {
             return
             [
@@ -351,9 +371,10 @@ public partial class IndexingService : IDisposable
             ];
         }
 
-        // Recherche normale avec scoring
+        // Recherche avec scoring parallèle
         return _cache.Values
-            .Select(item => (Item: item, Score: CalculateScore(query, item)))
+            .AsParallel()
+            .Select(item => (Item: item, Score: CalculateScore(normalizedQuery, item)))
             .Where(x => x.Score > 0)
             .OrderByDescending(x => x.Score)
             .ThenByDescending(x => x.Item.UseCount)
@@ -369,33 +390,32 @@ public partial class IndexingService : IDisposable
     private static int CalculateScore(string query, SearchResult item)
     {
         var name = item.Name.ToLowerInvariant();
-        var score = 0;
+        int score;
         
         if (name.Equals(query)) 
-            score = 150;
+            score = Constants.SearchScores.ExactMatch;
         else if (name.StartsWith(query)) 
-            score = 100;
+            score = Constants.SearchScores.StartsWith;
         else if (name.Contains(query)) 
-            score = 50;
+            score = Constants.SearchScores.Contains;
         else if (MatchesInitials(query, name)) 
-            score = 30;
+            score = Constants.SearchScores.InitialsMatch;
         else if (FuzzyMatch(query, name)) 
-            score = 20;
+            score = Constants.SearchScores.FuzzyMatch;
         else 
             return 0;
         
         // Bonus par type
         score += item.Type switch
         {
-            ResultType.Application => 20,
-            ResultType.StoreApp => 20,
-            ResultType.Script => 15,
-            ResultType.Folder => 10,
+            ResultType.Application or ResultType.StoreApp => Constants.SearchScores.ApplicationBonus,
+            ResultType.Script => Constants.SearchScores.ScriptBonus,
+            ResultType.Folder => Constants.SearchScores.FolderBonus,
             _ => 0
         };
         
         // Bonus usage (max 50)
-        score += Math.Min(item.UseCount * 5, 50);
+        score += Math.Min(item.UseCount * Constants.SearchScores.UsageMultiplier, Constants.MaxScoreBonus);
         
         return score;
     }
@@ -403,7 +423,7 @@ public partial class IndexingService : IDisposable
     private static bool MatchesInitials(string query, string name)
     {
         var words = name.Split([' ', '-', '_', '.'], StringSplitOptions.RemoveEmptyEntries);
-        var initials = string.Concat(words.Select(w => w.FirstOrDefault()));
+        var initials = string.Concat(words.Where(w => w.Length > 0).Select(w => w[0]));
         return initials.Contains(query, StringComparison.OrdinalIgnoreCase);
     }
     
@@ -412,7 +432,7 @@ public partial class IndexingService : IDisposable
         var qi = 0;
         foreach (var c in name)
         {
-            if (qi < query.Length && char.ToLower(c) == query[qi])
+            if (qi < query.Length && char.ToLowerInvariant(c) == query[qi])
                 qi++;
         }
         return qi == query.Length;
@@ -425,62 +445,108 @@ public partial class IndexingService : IDisposable
     {
         result = string.Empty;
         
-        // Vérifier que c'est une expression mathématique valide
         if (!MathExpressionRegex().IsMatch(expression))
             return false;
         
-        // Doit contenir au moins un opérateur
         if (!expression.Any(c => "+-*/^".Contains(c)))
             return false;
         
         try
         {
-            // Remplacer , par . pour les décimales
             var normalized = expression.Replace(',', '.');
-            
-            // Évaluation simple avec DataTable
             var table = new System.Data.DataTable();
             var value = table.Compute(normalized, null);
             
-            if (value is double d)
+            result = value switch
             {
-                result = d.ToString("G10");
-                return true;
-            }
+                double d => d.ToString("G10"),
+                _ => value?.ToString() ?? string.Empty
+            };
             
-            result = value?.ToString() ?? string.Empty;
             return !string.IsNullOrEmpty(result);
         }
-        catch
-        {
-            return false;
-        }
+        catch { return false; }
     }
     
     public void RecordUsage(SearchResult item)
     {
-        using var conn = new SQLiteConnection($"Data Source={_dbPath}");
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE Items SET UseCount = UseCount + 1, LastUsed = @now WHERE Path = @path";
-        cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
-        cmd.Parameters.AddWithValue("@path", item.Path);
-        cmd.ExecuteNonQuery();
-        
-        if (_cache.TryGetValue(item.Path, out var cached))
+        try
         {
-            cached.UseCount++;
-            cached.LastUsed = DateTime.UtcNow;
+            using var conn = new SQLiteConnection(_connectionString);
+            conn.Open();
+            
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE Items SET UseCount = UseCount + 1, LastUsed = @now WHERE Path = @path";
+            cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
+            cmd.Parameters.AddWithValue("@path", item.Path);
+            cmd.ExecuteNonQuery();
+            
+            if (_cache.TryGetValue(item.Path, out var cached))
+            {
+                cached.UseCount++;
+                cached.LastUsed = DateTime.UtcNow;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Erreur RecordUsage: {ex.Message}");
         }
     }
-    
-    public int GetIndexedItemsCount() => _cache.Count;
     
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        
+        CancelIndexing();
+        _indexLock.Dispose();
         _cache.Clear();
+        
         GC.SuppressFinalize(this);
     }
+}
+
+/// <summary>
+/// Interface de logging simple.
+/// </summary>
+public interface ILogger
+{
+    void Info(string message);
+    void Warning(string message);
+    void Error(string message, Exception? ex = null);
+}
+
+/// <summary>
+/// Logger vers fichier.
+/// </summary>
+public sealed class FileLogger : ILogger
+{
+    private readonly string _logPath;
+    private readonly object _lock = new();
+    
+    public FileLogger()
+    {
+        var appData = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            Constants.AppName);
+        Directory.CreateDirectory(appData);
+        _logPath = Path.Combine(appData, Constants.LogFileName);
+    }
+    
+    private void Log(string level, string message)
+    {
+        var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{level}] {message}";
+        Debug.WriteLine(line);
+        
+        lock (_lock)
+        {
+            try { File.AppendAllText(_logPath, line + Environment.NewLine); }
+            catch { /* Ignore logging errors */ }
+        }
+    }
+    
+    public void Info(string message) => Log("INFO", message);
+    public void Warning(string message) => Log("WARN", message);
+    public void Error(string message, Exception? ex = null) => 
+        Log("ERROR", ex != null ? $"{message}: {ex}" : message);
 }
