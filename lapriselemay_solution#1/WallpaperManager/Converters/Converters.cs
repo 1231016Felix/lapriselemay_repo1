@@ -32,18 +32,16 @@ public class PathToThumbnailConverter : IValueConverter
         if (value is not string path || string.IsNullOrEmpty(path))
             return null;
         
-        // Utiliser le service de thumbnails avec cache
-        var thumbnail = ThumbnailService.Instance.GetThumbnailSync(path);
+        // Vérifier que le fichier existe avant de générer le thumbnail
+        if (!File.Exists(path))
+            return null;
         
-        // Si pas encore en cache, retourner un placeholder ou null
-        // Le service déclenchera ThumbnailGenerated quand prêt
-        return thumbnail;
+        // Utiliser le service de thumbnails avec cache
+        return ThumbnailService.Instance.GetThumbnailSync(path);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        throw new NotImplementedException();
-    }
+        => throw new NotSupportedException();
 }
 
 public class UnsplashUrlToImageConverter : IValueConverter
@@ -53,12 +51,16 @@ public class UnsplashUrlToImageConverter : IValueConverter
         if (value is not string url || string.IsNullOrEmpty(url))
             return null;
         
+        // Vérifier que l'URL est valide
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            return null;
+        
         try
         {
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
-            bitmap.UriSource = new Uri(url);
+            bitmap.UriSource = uri;
             bitmap.DecodePixelWidth = 250; // Limite la taille pour économiser la RAM
             bitmap.EndInit();
             // Pas de Freeze() ici car le chargement HTTP est asynchrone
@@ -71,9 +73,7 @@ public class UnsplashUrlToImageConverter : IValueConverter
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        throw new NotImplementedException();
-    }
+        => throw new NotSupportedException();
 }
 
 public class WallpaperTypeToIconConverter : IValueConverter
@@ -90,17 +90,15 @@ public class WallpaperTypeToIconConverter : IValueConverter
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        throw new NotImplementedException();
-    }
+        => throw new NotSupportedException();
 }
 
 public class NullToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        bool isNull = value == null;
-        bool invert = parameter?.ToString() == "Invert";
+        var isNull = value is null or string { Length: 0 };
+        var invert = string.Equals(parameter?.ToString(), "Invert", StringComparison.OrdinalIgnoreCase);
         
         if (invert) isNull = !isNull;
         
@@ -108,32 +106,26 @@ public class NullToVisibilityConverter : IValueConverter
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        throw new NotImplementedException();
-    }
+        => throw new NotSupportedException();
 }
 
 public class InverseBoolConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        return value is bool b && !b;
-    }
+        => value is bool b && !b;
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        return value is bool b && !b;
-    }
+        => value is bool b && !b;
 }
 
 public class CountToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        int count = value switch
+        var count = value switch
         {
             int i => i,
-            ICollection<object> c => c.Count,
+            System.Collections.ICollection c => c.Count,
             _ => 0
         };
         
@@ -141,7 +133,5 @@ public class CountToVisibilityConverter : IValueConverter
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
-    {
-        throw new NotImplementedException();
-    }
+        => throw new NotSupportedException();
 }

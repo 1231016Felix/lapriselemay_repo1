@@ -138,14 +138,17 @@ void CpuMonitor::queryProcessorInfo()
     m_info.coreUsages.resize(m_info.logicalProcessors, 0.0);
 }
 
+namespace {
+    inline ULONGLONG fileTimeToUInt64(const FILETIME& ft) noexcept {
+        return (static_cast<ULONGLONG>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
+    }
+}
+
 void CpuMonitor::update()
 {
 #ifdef _WIN32
     FILETIME idleTime, kernelTime, userTime;
     if (GetSystemTimes(&idleTime, &kernelTime, &userTime)) {
-        auto fileTimeToUInt64 = [](const FILETIME& ft) -> ULONGLONG {
-            return (static_cast<ULONGLONG>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
-        };
         
         ULONGLONG idle = fileTimeToUInt64(idleTime) - fileTimeToUInt64(m_prevIdleTime);
         ULONGLONG kernel = fileTimeToUInt64(kernelTime) - fileTimeToUInt64(m_prevKernelTime);

@@ -12,7 +12,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly UnsplashService _unsplashService;
     private CancellationTokenSource? _cts;
-    private bool _disposed;
+    private readonly Lock _ctsLock = new();
+    private volatile bool _disposed;
     
     [ObservableProperty]
     private ObservableCollection<Wallpaper> _wallpapers = [];
@@ -96,6 +97,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         System.Diagnostics.Debug.WriteLine($"LoadData: IsRotationEnabled={IsRotationEnabled}");
     }
     
+    private CancellationToken ResetCancellationToken()
+    {
+        lock (_ctsLock)
+        {
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = new CancellationTokenSource();
+            return _cts.Token;
+        }
+    }
+    
     [RelayCommand]
     private async Task AddWallpapersAsync()
     {
@@ -112,22 +124,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IsLoading = true;
         StatusMessage = "Ajout des fonds d'ecran...";
         
-        _cts?.Cancel();
-        _cts = new CancellationTokenSource();
+        var cancellationToken = ResetCancellationToken();
         
         try
         {
             var addedCount = 0;
             foreach (var file in dialog.FileNames)
             {
-                if (_cts.Token.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested)
                     break;
                     
-                var wallpaper = await CreateWallpaperFromFileAsync(file);
+                var wallpaper = await CreateWallpaperFromFileAsync(file).ConfigureAwait(true);
                 if (wallpaper != null)
                 {
                     SettingsService.AddWallpaper(wallpaper);
-                    App.Current.Dispatcher.Invoke(() => Wallpapers.Add(wallpaper));
+                    Wallpapers.Add(wallpaper);
                     addedCount++;
                 }
             }
@@ -362,8 +373,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IsDuplicateScanRunning = true;
         DuplicateGroups.Clear();
         
-        _cts?.Cancel();
-        _cts = new CancellationTokenSource();
+        var cancellationToken = ResetCancellationToken();
         
         var progress = new Progress<(int current, int total, string status)>(p =>
         {
@@ -375,7 +385,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var groups = await DuplicateDetectionService.FindDuplicatesAsync(
                 Wallpapers, 
                 progress, 
-                _cts.Token);
+                cancellationToken).ConfigureAwait(true);
             
             DuplicateGroups = new ObservableCollection<DuplicateGroup>(groups);
             
@@ -459,8 +469,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         _disposed = true;
         
-        _cts?.Cancel();
-        _cts?.Dispose();
+        lock (_ctsLock)
+        {
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = null;
+        }
+        
         _unsplashService.Dispose();
     }
 }

@@ -20,8 +20,7 @@ public partial class MainViewModel
         IsLoading = true;
         StatusMessage = "Recherche sur Unsplash...";
         
-        _cts?.Cancel();
-        _cts = new CancellationTokenSource();
+        var cancellationToken = ResetCancellationToken();
         
         try
         {
@@ -29,7 +28,7 @@ public partial class MainViewModel
                 ? SettingsService.Current.UnsplashDefaultQuery 
                 : UnsplashSearchQuery;
             
-            var photos = await _unsplashService.SearchPhotosAsync(query, cancellationToken: _cts.Token);
+            var photos = await _unsplashService.SearchPhotosAsync(query, cancellationToken: cancellationToken).ConfigureAwait(true);
             
             UnsplashPhotos.Clear();
             foreach (var photo in photos)
@@ -61,15 +60,14 @@ public partial class MainViewModel
         IsLoading = true;
         StatusMessage = "Chargement de photos aléatoires...";
         
-        _cts?.Cancel();
-        _cts = new CancellationTokenSource();
+        var cancellationToken = ResetCancellationToken();
         
         try
         {
             var photos = await _unsplashService.GetRandomPhotosAsync(
                 10, 
                 string.IsNullOrWhiteSpace(UnsplashSearchQuery) ? null : UnsplashSearchQuery,
-                _cts.Token);
+                cancellationToken).ConfigureAwait(true);
             
             UnsplashPhotos.Clear();
             foreach (var photo in photos)
@@ -97,19 +95,18 @@ public partial class MainViewModel
         IsLoading = true;
         StatusMessage = "Téléchargement en cours...";
         
-        _cts?.Cancel();
-        _cts = new CancellationTokenSource();
+        var cancellationToken = ResetCancellationToken();
         
         try
         {
             var progress = new Progress<int>(p => StatusMessage = $"Téléchargement: {p}%");
-            var localPath = await _unsplashService.DownloadPhotoAsync(photo, progress, _cts.Token);
+            var localPath = await _unsplashService.DownloadPhotoAsync(photo, progress, cancellationToken).ConfigureAwait(true);
             
             if (localPath != null)
             {
                 // Générer le thumbnail AVANT d'ajouter à la collection
                 StatusMessage = "Génération de la miniature...";
-                await ThumbnailService.Instance.GetThumbnailAsync(localPath);
+                await ThumbnailService.Instance.GetThumbnailAsync(localPath).ConfigureAwait(true);
                 
                 var wallpaper = UnsplashService.CreateWallpaperFromPhoto(photo, localPath);
                 SettingsService.AddWallpaper(wallpaper);

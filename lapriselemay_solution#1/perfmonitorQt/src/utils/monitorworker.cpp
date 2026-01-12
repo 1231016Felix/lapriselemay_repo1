@@ -3,12 +3,11 @@
 #include <QDateTime>
 #include <QDebug>
 
-// Register metatype for queued connections
-static bool registerMetaTypes() {
+// Register metatype for queued connections (C++17 inline variable)
+Q_GLOBAL_STATIC_WITH_ARGS(bool, s_metaTypesRegistered, ([] {
     qRegisterMetaType<MonitorData>("MonitorData");
     return true;
-}
-static bool s_metaTypesRegistered = registerMetaTypes();
+}()))
 
 MonitorWorker::MonitorWorker(QObject* parent)
     : QObject(parent)

@@ -1,4 +1,5 @@
 #include "tempcleaner.h"
+#include "systeminfo.h"
 
 #include <QDir>
 #include <QFile>
@@ -993,38 +994,10 @@ bool TempCleaner::cleanArpCache()
 
 QString TempCleaner::formatBytes(qint64 bytes)
 {
-    const char* units[] = {"B", "KB", "MB", "GB", "TB"};
-    int unit = 0;
-    double size = static_cast<double>(bytes);
-    
-    while (size >= 1024.0 && unit < 4) {
-        size /= 1024.0;
-        unit++;
-    }
-    
-    if (unit == 0) {
-        return QString("%1 B").arg(bytes);
-    }
-    
-    return QString("%1 %2").arg(size, 0, 'f', 2).arg(units[unit]);
+    return SystemInfo::formatBytes(bytes);
 }
 
 bool TempCleaner::isAdmin()
 {
-#ifdef _WIN32
-    BOOL isAdmin = FALSE;
-    PSID adminGroup = nullptr;
-    
-    SID_IDENTIFIER_AUTHORITY ntAuthority = SECURITY_NT_AUTHORITY;
-    if (AllocateAndInitializeSid(&ntAuthority, 2,
-            SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS,
-            0, 0, 0, 0, 0, 0, &adminGroup)) {
-        CheckTokenMembership(nullptr, adminGroup, &isAdmin);
-        FreeSid(adminGroup);
-    }
-    
-    return isAdmin == TRUE;
-#else
-    return getuid() == 0;
-#endif
+    return SystemInfo::isAdministrator();
 }

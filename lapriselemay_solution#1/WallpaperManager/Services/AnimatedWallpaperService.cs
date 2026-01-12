@@ -11,10 +11,10 @@ public sealed class AnimatedWallpaperService : IDisposable
     private LibVLC? _libVLC;
     private MediaPlayer? _mediaPlayer;
     private Window? _videoWindow;
-    private volatile bool _isPlaying;
-    private bool _disposed;
-    private bool _libVLCInitialized;
-    private readonly object _lock = new();
+    private bool _isPlaying;
+    private volatile bool _disposed;
+    private volatile bool _libVLCInitialized;
+    private readonly Lock _lock = new();
     
     public event EventHandler<bool>? PlaybackStateChanged;
     public bool IsPlaying => _isPlaying;
@@ -26,11 +26,12 @@ public sealed class AnimatedWallpaperService : IDisposable
     
     private void EnsureLibVLCInitialized()
     {
+        // Double-check locking pattern avec volatile
         if (_libVLCInitialized || _disposed) return;
         
         lock (_lock)
         {
-            if (_libVLCInitialized) return;
+            if (_libVLCInitialized || _disposed) return;
             
             try
             {
@@ -52,7 +53,7 @@ public sealed class AnimatedWallpaperService : IDisposable
         if (_disposed)
             return;
         
-        if (wallpaper.Type != WallpaperType.Video && wallpaper.Type != WallpaperType.Animated)
+        if (wallpaper.Type is not WallpaperType.Video and not WallpaperType.Animated)
             return;
         
         // Initialisation à la demande
@@ -67,6 +68,8 @@ public sealed class AnimatedWallpaperService : IDisposable
         {
             lock (_lock)
             {
+                if (_disposed) return;
+                
                 try
                 {
                     CreateVideoWindow();
@@ -125,7 +128,10 @@ public sealed class AnimatedWallpaperService : IDisposable
     
     public void Stop()
     {
-        _isPlaying = false;
+        lock (_lock)
+        {
+            _isPlaying = false;
+        }
         
         System.Windows.Application.Current?.Dispatcher.Invoke(() =>
         {
@@ -166,27 +172,27 @@ public sealed class AnimatedWallpaperService : IDisposable
     /// </summary>
     public void ReleaseLibVLC()
     {
-        if (_isPlaying) return;
-        
         lock (_lock)
         {
+            if (_isPlaying) return;
+            
             if (_libVLC != null)
             {
                 _libVLC.Dispose();
                 _libVLC = null;
                 _libVLCInitialized = false;
-                
-                // Forcer le GC pour libérer la mémoire native
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
             }
         }
+        
+        // Forcer le GC pour libérer la mémoire native (hors du lock)
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: false);
     }
     
     public void Pause()
     {
         lock (_lock)
         {
+            if (!_isPlaying || _disposed) return;
             _mediaPlayer?.Pause();
             _isPlaying = false;
         }
@@ -197,7 +203,8 @@ public sealed class AnimatedWallpaperService : IDisposable
     {
         lock (_lock)
         {
-            _mediaPlayer?.Play();
+            if (_isPlaying || _disposed || _mediaPlayer == null) return;
+            _mediaPlayer.Play();
             _isPlaying = true;
         }
         PlaybackStateChanged?.Invoke(this, true);
@@ -221,14 +228,18 @@ public sealed class AnimatedWallpaperService : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
-        
-        Stop();
         
         lock (_lock)
         {
+            if (_disposed) return;
+            _disposed = true;
+            
+            _isPlaying = false;
+            CleanupResources();
+            
             _libVLC?.Dispose();
             _libVLC = null;
+            _libVLCInitialized = false;
         }
     }
 }

@@ -111,10 +111,10 @@ void SparklineGraph::paintEvent(QPaintEvent*)
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
     
+    constexpr int rightMargin = 5;
+    constexpr int topMargin = 5;
+    constexpr int bottomMargin = 5;
     const int margin = m_showLabels ? 35 : 5;
-    const int rightMargin = 5;
-    const int topMargin = 5;
-    const int bottomMargin = 5;
     
     QRect graphRect(margin, topMargin, 
                     width() - margin - rightMargin, 

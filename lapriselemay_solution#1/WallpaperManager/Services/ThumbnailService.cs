@@ -18,9 +18,9 @@ public sealed class ThumbnailService : IDisposable
     public static ThumbnailService Instance => _instance.Value;
     
     private readonly string _cacheFolder;
-    private readonly ConcurrentDictionary<string, BitmapSource> _memoryCache = new();
+    private readonly ConcurrentDictionary<string, BitmapSource> _memoryCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _semaphore = new(4); // Max 4 thumbnails en parallèle
-    private bool _disposed;
+    private volatile bool _disposed;
     
     public const int ThumbnailWidth = 280;
     public const int ThumbnailHeight = 180;
@@ -156,16 +156,19 @@ public sealed class ThumbnailService : IDisposable
         {
             try
             {
-                var extension = Path.GetExtension(filePath).ToLowerInvariant();
+                var extension = Path.GetExtension(filePath);
                 
                 // Pour les vidéos, utiliser une image placeholder ou extraire une frame
-                if (extension is ".mp4" or ".webm" or ".avi" or ".mkv")
+                if (extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase) ||
+                    extension.Equals(".webm", StringComparison.OrdinalIgnoreCase) ||
+                    extension.Equals(".avi", StringComparison.OrdinalIgnoreCase) ||
+                    extension.Equals(".mkv", StringComparison.OrdinalIgnoreCase))
                 {
                     return CreateVideoPlaceholder();
                 }
                 
                 // Pour les images
-                using var stream = File.OpenRead(filePath);
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 
                 var bitmap = new BitmapImage();
                 bitmap.BeginInit();
@@ -182,7 +185,7 @@ public sealed class ThumbnailService : IDisposable
                 System.Diagnostics.Debug.WriteLine($"Erreur génération thumbnail: {ex.Message}");
                 return null;
             }
-        });
+        }).ConfigureAwait(false);
     }
     
     private BitmapSource CreateVideoPlaceholder()
@@ -236,7 +239,7 @@ public sealed class ThumbnailService : IDisposable
         return renderBitmap;
     }
     
-    private async Task<BitmapSource?> LoadFromCacheAsync(string cachePath)
+    private static async Task<BitmapSource?> LoadFromCacheAsync(string cachePath)
     {
         return await Task.Run(() =>
         {
@@ -256,10 +259,10 @@ public sealed class ThumbnailService : IDisposable
                 try { File.Delete(cachePath); } catch { }
                 return null;
             }
-        });
+        }).ConfigureAwait(false);
     }
     
-    private async Task SaveToCacheAsync(BitmapSource thumbnail, string cachePath)
+    private static async Task SaveToCacheAsync(BitmapSource thumbnail, string cachePath)
     {
         await Task.Run(() =>
         {
@@ -268,14 +271,14 @@ public sealed class ThumbnailService : IDisposable
                 var encoder = new JpegBitmapEncoder { QualityLevel = 85 };
                 encoder.Frames.Add(BitmapFrame.Create(thumbnail));
                 
-                using var stream = File.Create(cachePath);
+                using var stream = new FileStream(cachePath, FileMode.Create, FileAccess.Write, FileShare.None);
                 encoder.Save(stream);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Erreur sauvegarde cache: {ex.Message}");
             }
-        });
+        }).ConfigureAwait(false);
     }
     
     private static string GetCacheKey(string filePath)
@@ -313,16 +316,27 @@ public sealed class ThumbnailService : IDisposable
     {
         try
         {
-            var cutoff = DateTime.Now.AddDays(-30);
-            var files = Directory.GetFiles(_cacheFolder, "*.jpg");
+            if (!Directory.Exists(_cacheFolder))
+                return;
             
-            foreach (var file in files)
+            var cutoff = DateTime.Now.AddDays(-30);
+            var deletedCount = 0;
+            
+            foreach (var file in Directory.EnumerateFiles(_cacheFolder, "*.jpg"))
             {
-                if (File.GetLastAccessTime(file) < cutoff)
+                try
                 {
-                    try { File.Delete(file); } catch { }
+                    if (File.GetLastAccessTime(file) < cutoff)
+                    {
+                        File.Delete(file);
+                        deletedCount++;
+                    }
                 }
+                catch { /* Ignorer les erreurs individuelles */ }
             }
+            
+            if (deletedCount > 0)
+                System.Diagnostics.Debug.WriteLine($"Cache nettoyé: {deletedCount} fichier(s) supprimé(s)");
         }
         catch (Exception ex)
         {
@@ -354,10 +368,10 @@ public sealed class ThumbnailService : IDisposable
     /// <summary>
     /// Précharge les miniatures pour une liste de fichiers.
     /// </summary>
-    public async Task PreloadThumbnailsAsync(IEnumerable<string> filePaths)
+    public async Task PreloadThumbnailsAsync(IEnumerable<string> filePaths, CancellationToken cancellationToken = default)
     {
-        var tasks = filePaths.Select(GetThumbnailAsync);
-        await Task.WhenAll(tasks);
+        var tasks = filePaths.Select(path => GetThumbnailAsync(path));
+        await Task.WhenAll(tasks).ConfigureAwait(false);
     }
     
     public void Dispose()

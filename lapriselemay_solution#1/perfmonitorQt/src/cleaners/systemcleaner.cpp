@@ -1,5 +1,7 @@
 #include "systemcleaner.h"
+#include "../utils/systeminfo.h"
 
+#include <numeric>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -74,33 +76,12 @@ QString SystemCleaner::expandPath(const QString& path)
 
 QString SystemCleaner::formatSize(qint64 bytes)
 {
-    if (bytes < 1024) {
-        return QString("%1 B").arg(bytes);
-    } else if (bytes < 1024 * 1024) {
-        return QString("%1 KB").arg(bytes / 1024.0, 0, 'f', 1);
-    } else if (bytes < 1024 * 1024 * 1024) {
-        return QString("%1 MB").arg(bytes / (1024.0 * 1024.0), 0, 'f', 2);
-    } else {
-        return QString("%1 GB").arg(bytes / (1024.0 * 1024.0 * 1024.0), 0, 'f', 2);
-    }
+    return SystemInfo::formatBytes(bytes);
 }
 
 bool SystemCleaner::isAdmin()
 {
-#ifdef _WIN32
-    BOOL isAdmin = FALSE;
-    PSID adminGroup = NULL;
-    SID_IDENTIFIER_AUTHORITY ntAuthority = SECURITY_NT_AUTHORITY;
-    
-    if (AllocateAndInitializeSid(&ntAuthority, 2, SECURITY_BUILTIN_DOMAIN_RID,
-                                  DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &adminGroup)) {
-        CheckTokenMembership(NULL, adminGroup, &isAdmin);
-        FreeSid(adminGroup);
-    }
-    return isAdmin;
-#else
-    return false;
-#endif
+    return SystemInfo::isAdministrator();
 }
 
 
@@ -569,24 +550,18 @@ void SystemCleaner::setPrivacyItemsEnabled(bool enabled)
 
 qint64 SystemCleaner::totalCleanableSize() const
 {
-    qint64 total = 0;
-    for (const auto& item : m_items) {
-        if (item.isEnabled) {
-            total += item.sizeBytes;
-        }
-    }
-    return total;
+    return std::accumulate(m_items.cbegin(), m_items.cend(), qint64{0},
+        [](qint64 sum, const CleanerItem& item) {
+            return sum + (item.isEnabled ? item.sizeBytes : 0);
+        });
 }
 
 int SystemCleaner::totalCleanableFiles() const
 {
-    int total = 0;
-    for (const auto& item : m_items) {
-        if (item.isEnabled) {
-            total += item.fileCount;
-        }
-    }
-    return total;
+    return std::accumulate(m_items.cbegin(), m_items.cend(), 0,
+        [](int sum, const CleanerItem& item) {
+            return sum + (item.isEnabled ? item.fileCount : 0);
+        });
 }
 
 void SystemCleaner::startScan()

@@ -14,8 +14,8 @@ public static class SettingsService
     private static readonly string SettingsPath = Path.Combine(AppDataPath, "settings.json");
     private static readonly string DataPath = Path.Combine(AppDataPath, "wallpapers.json");
     
-    private static readonly object _lock = new();
-    private static readonly JsonSerializerOptions _jsonOptions = new()
+    private static readonly Lock _lock = new();
+    private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -25,7 +25,7 @@ public static class SettingsService
     private static AppSettings _current = new();
     private static List<Wallpaper> _wallpapers = [];
     private static List<WallpaperCollection> _collections = [];
-    private static bool _isDirty;
+    private static volatile bool _isDirty;
     
     public static AppSettings Current
     {
@@ -55,14 +55,14 @@ public static class SettingsService
                 if (File.Exists(SettingsPath))
                 {
                     var json = File.ReadAllText(SettingsPath);
-                    _current = JsonSerializer.Deserialize<AppSettings>(json, _jsonOptions) ?? new();
+                    _current = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new();
                 }
                 
                 // Charger les données
                 if (File.Exists(DataPath))
                 {
                     var json = File.ReadAllText(DataPath);
-                    var data = JsonSerializer.Deserialize<WallpaperData>(json, _jsonOptions);
+                    var data = JsonSerializer.Deserialize<WallpaperData>(json, JsonOptions);
                     if (data != null)
                     {
                         _wallpapers = data.Wallpapers ?? [];
@@ -70,11 +70,23 @@ public static class SettingsService
                     }
                 }
                 
-                // Valider les chemins des wallpapers
-                _wallpapers.RemoveAll(w => !File.Exists(w.FilePath));
-                
-                _isDirty = false;
+                // Valider les chemins des wallpapers (retirer les fichiers supprimés)
+                var removedCount = _wallpapers.RemoveAll(w => string.IsNullOrEmpty(w.FilePath) || !File.Exists(w.FilePath));
+                if (removedCount > 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Retiré {removedCount} wallpaper(s) avec fichiers manquants");
+                    _isDirty = true;
+                }
+                else
+                {
+                    _isDirty = false;
+                }
             }
+        }
+        catch (JsonException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Erreur JSON chargement settings: {ex.Message}");
+            _current = new AppSettings();
         }
         catch (Exception ex)
         {
@@ -89,17 +101,22 @@ public static class SettingsService
         {
             EnsureDirectoriesExist();
             
+            string settingsJson, dataJson;
             lock (_lock)
             {
-                var settingsJson = JsonSerializer.Serialize(_current, _jsonOptions);
-                File.WriteAllText(SettingsPath, settingsJson);
-                
+                settingsJson = JsonSerializer.Serialize(_current, JsonOptions);
                 var data = new WallpaperData { Wallpapers = _wallpapers, Collections = _collections };
-                var dataJson = JsonSerializer.Serialize(data, _jsonOptions);
-                File.WriteAllText(DataPath, dataJson);
-                
+                dataJson = JsonSerializer.Serialize(data, JsonOptions);
                 _isDirty = false;
             }
+            
+            // Écrire hors du lock pour éviter de bloquer les autres threads
+            File.WriteAllText(SettingsPath, settingsJson);
+            File.WriteAllText(DataPath, dataJson);
+        }
+        catch (IOException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Erreur I/O sauvegarde settings: {ex.Message}");
         }
         catch (Exception ex)
         {
@@ -107,7 +124,7 @@ public static class SettingsService
         }
     }
     
-    public static async Task SaveAsync()
+    public static async Task SaveAsync(CancellationToken cancellationToken = default)
     {
         try
         {
@@ -116,14 +133,18 @@ public static class SettingsService
             string settingsJson, dataJson;
             lock (_lock)
             {
-                settingsJson = JsonSerializer.Serialize(_current, _jsonOptions);
+                settingsJson = JsonSerializer.Serialize(_current, JsonOptions);
                 var data = new WallpaperData { Wallpapers = _wallpapers, Collections = _collections };
-                dataJson = JsonSerializer.Serialize(data, _jsonOptions);
+                dataJson = JsonSerializer.Serialize(data, JsonOptions);
                 _isDirty = false;
             }
             
-            await File.WriteAllTextAsync(SettingsPath, settingsJson);
-            await File.WriteAllTextAsync(DataPath, dataJson);
+            await File.WriteAllTextAsync(SettingsPath, settingsJson, cancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(DataPath, dataJson, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignorer
         }
         catch (Exception ex)
         {

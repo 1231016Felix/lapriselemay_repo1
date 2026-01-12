@@ -140,11 +140,14 @@ void NetworkMonitor::queryAdapters()
         adapter.isConnected = (pCurr->OperStatus == IfOperStatusUp);
         
         if (pCurr->PhysicalAddressLength > 0) {
-            QStringList macParts;
+            // Format MAC address
+            QString macStr;
+            macStr.reserve(18); // "XX:XX:XX:XX:XX:XX"
             for (UINT i = 0; i < pCurr->PhysicalAddressLength; ++i) {
-                macParts << QString("%1").arg(pCurr->PhysicalAddress[i], 2, 16, QChar('0')).toUpper();
+                if (i > 0) macStr += ':';
+                macStr += QString::asprintf("%02X", pCurr->PhysicalAddress[i]);
             }
-            adapter.macAddress = macParts.join(":");
+            adapter.macAddress = macStr;
         }
         
         for (auto pUnicast = pCurr->FirstUnicastAddress; pUnicast; pUnicast = pUnicast->Next) {

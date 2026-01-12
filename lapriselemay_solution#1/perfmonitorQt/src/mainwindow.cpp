@@ -4,8 +4,6 @@
 #include <Windows.h>
 #include <shellapi.h>
 #endif
-
-#include "mainwindow.h"
 #include "widgets/energymodedialog.h"
 #include "widgets/startupdialog.h"
 #include "widgets/settingsdialog.h"
@@ -20,6 +18,7 @@
 #include "widgets/processimpactdialog.h"
 #include "monitors/processimpactmonitor.h"
 #include "database/metricshistory.h"
+#include "utils/systeminfo.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -43,7 +42,6 @@
 #include <QStandardItemModel>
 #include <QDateTime>
 #include <QStyleFactory>
-#include <QMenu>
 #include <QDesktopServices>
 #include <QUrl>
 
@@ -1518,19 +1516,9 @@ void MainWindow::saveSettings()
     settings.setValue("windowState", saveState());
 }
 
-// Helper function (static)
 QString MainWindow::formatBytes(qint64 bytes)
 {
-    const char* units[] = {"B", "KB", "MB", "GB", "TB"};
-    int unitIndex = 0;
-    double size = bytes;
-    
-    while (size >= 1024.0 && unitIndex < 4) {
-        size /= 1024.0;
-        unitIndex++;
-    }
-    
-    return QString("%1 %2").arg(size, 0, 'f', unitIndex > 0 ? 1 : 0).arg(units[unitIndex]);
+    return SystemInfo::formatBytes(bytes);
 }
 
 void MainWindow::purgeMemory()

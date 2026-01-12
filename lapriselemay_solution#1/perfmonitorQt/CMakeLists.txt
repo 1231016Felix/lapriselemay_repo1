@@ -148,6 +148,7 @@ set(HEADERS
     src/database/servicehistory.h
     # Utils
     src/utils/systeminfo.h
+    src/utils/common.h
     src/utils/energymode.h
     src/utils/monitorworker.h
     src/utils/tempcleaner.h

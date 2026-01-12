@@ -1,8 +1,8 @@
+using System.Buffers;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using WallpaperManager.Models;
 
 namespace WallpaperManager.Services;
@@ -10,10 +10,15 @@ namespace WallpaperManager.Services;
 public sealed class UnsplashService : IDisposable
 {
     private readonly HttpClient _httpClient;
-    private readonly JsonSerializerOptions _jsonOptions;
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        PropertyNameCaseInsensitive = true
+    };
     private const string BaseUrl = "https://api.unsplash.com";
     private const int BufferSize = 81920; // 80KB buffer
-    private bool _disposed;
+    private volatile bool _disposed;
+    private string? _cachedApiKey;
     
     public UnsplashService()
     {
@@ -21,24 +26,19 @@ public sealed class UnsplashService : IDisposable
         {
             Timeout = TimeSpan.FromSeconds(30)
         };
-        
-        _jsonOptions = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-            PropertyNameCaseInsensitive = true
-        };
     }
     
-    private void SetAuthHeader()
+    private void EnsureAuthHeader()
     {
         var apiKey = SettingsService.Current.UnsplashApiKey;
         if (string.IsNullOrEmpty(apiKey)) return;
         
-        const string authHeader = "Authorization";
-        if (_httpClient.DefaultRequestHeaders.Contains(authHeader))
-            _httpClient.DefaultRequestHeaders.Remove(authHeader);
+        // Ne mettre à jour que si la clé a changé
+        if (_cachedApiKey == apiKey) return;
         
-        _httpClient.DefaultRequestHeaders.Add(authHeader, $"Client-ID {apiKey}");
+        _cachedApiKey = apiKey;
+        _httpClient.DefaultRequestHeaders.Remove("Authorization");
+        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Client-ID {apiKey}");
     }
     
     public async Task<List<UnsplashPhoto>> SearchPhotosAsync(
@@ -47,24 +47,31 @@ public sealed class UnsplashService : IDisposable
         int perPage = 20,
         CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
         if (string.IsNullOrEmpty(SettingsService.Current.UnsplashApiKey))
             return [];
         
-        SetAuthHeader();
+        EnsureAuthHeader();
         
         try
         {
             var url = $"{BaseUrl}/search/photos?query={Uri.EscapeDataString(query)}&page={page}&per_page={perPage}&orientation=landscape";
             
-            using var response = await _httpClient.GetAsync(url, cancellationToken);
+            using var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             
-            var result = await response.Content.ReadFromJsonAsync<UnsplashSearchResult>(_jsonOptions, cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<UnsplashSearchResult>(JsonOptions, cancellationToken).ConfigureAwait(false);
             return result?.Results ?? [];
         }
         catch (OperationCanceledException)
         {
             throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Erreur Unsplash search HTTP: {ex.Message}");
+            return [];
         }
         catch (Exception ex)
         {
@@ -78,25 +85,32 @@ public sealed class UnsplashService : IDisposable
         string? query = null,
         CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
         if (string.IsNullOrEmpty(SettingsService.Current.UnsplashApiKey))
             return [];
         
-        SetAuthHeader();
+        EnsureAuthHeader();
         
         try
         {
             var url = $"{BaseUrl}/photos/random?count={Math.Min(count, 30)}&orientation=landscape";
             if (!string.IsNullOrEmpty(query))
-                url += $"&query={Uri.EscapeDataString(query)}";
+                url = string.Concat(url, "&query=", Uri.EscapeDataString(query));
             
-            using var response = await _httpClient.GetAsync(url, cancellationToken);
+            using var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             
-            return await response.Content.ReadFromJsonAsync<List<UnsplashPhoto>>(_jsonOptions, cancellationToken) ?? [];
+            return await response.Content.ReadFromJsonAsync<List<UnsplashPhoto>>(JsonOptions, cancellationToken).ConfigureAwait(false) ?? [];
         }
         catch (OperationCanceledException)
         {
             throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Erreur Unsplash random HTTP: {ex.Message}");
+            return [];
         }
         catch (Exception ex)
         {
@@ -111,7 +125,9 @@ public sealed class UnsplashService : IDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(photo);
-        SetAuthHeader();
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
+        EnsureAuthHeader();
         
         try
         {
@@ -120,7 +136,7 @@ public sealed class UnsplashService : IDisposable
             {
                 try 
                 { 
-                    await _httpClient.GetAsync(photo.Links.DownloadLocation, cancellationToken); 
+                    using var _ = await _httpClient.GetAsync(photo.Links.DownloadLocation, cancellationToken).ConfigureAwait(false); 
                 }
                 catch { /* Ignorer les erreurs de tracking */ }
             }
@@ -137,33 +153,42 @@ public sealed class UnsplashService : IDisposable
                 return filePath;
             }
             
-            using var response = await _httpClient.GetAsync(imageUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var response = await _httpClient.GetAsync(imageUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             
             var totalBytes = response.Content.Headers.ContentLength ?? -1L;
-            var buffer = new byte[BufferSize];
-            var bytesRead = 0L;
             
-            await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            await using var fileStream = new FileStream(
-                filePath, 
-                FileMode.Create, 
-                FileAccess.Write, 
-                FileShare.None, 
-                BufferSize, 
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-            
-            int read;
-            while ((read = await contentStream.ReadAsync(buffer, cancellationToken)) > 0)
+            // Utiliser ArrayPool pour éviter les allocations
+            var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+            try
             {
-                await fileStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                bytesRead += read;
+                var bytesRead = 0L;
                 
-                if (totalBytes > 0)
+                await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                await using var fileStream = new FileStream(
+                    filePath, 
+                    FileMode.Create, 
+                    FileAccess.Write, 
+                    FileShare.None, 
+                    BufferSize, 
+                    FileOptions.Asynchronous | FileOptions.SequentialScan);
+                
+                int read;
+                while ((read = await contentStream.ReadAsync(buffer.AsMemory(0, BufferSize), cancellationToken).ConfigureAwait(false)) > 0)
                 {
-                    var percentage = (int)((bytesRead * 100) / totalBytes);
-                    progress?.Report(percentage);
+                    await fileStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                    bytesRead += read;
+                    
+                    if (totalBytes > 0)
+                    {
+                        var percentage = (int)((bytesRead * 100) / totalBytes);
+                        progress?.Report(percentage);
+                    }
                 }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
             }
             
             return filePath;
@@ -171,6 +196,11 @@ public sealed class UnsplashService : IDisposable
         catch (OperationCanceledException)
         {
             throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Erreur téléchargement Unsplash HTTP: {ex.Message}");
+            return null;
         }
         catch (Exception ex)
         {

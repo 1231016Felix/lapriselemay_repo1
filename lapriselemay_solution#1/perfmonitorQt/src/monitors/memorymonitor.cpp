@@ -1,4 +1,5 @@
 #include "memorymonitor.h"
+#include "../utils/systeminfo.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -97,21 +98,7 @@ void MemoryMonitor::update()
 
 bool MemoryMonitor::isAdministrator()
 {
-#ifdef _WIN32
-    BOOL isAdmin = FALSE;
-    PSID adminGroup = nullptr;
-    
-    SID_IDENTIFIER_AUTHORITY ntAuthority = SECURITY_NT_AUTHORITY;
-    if (AllocateAndInitializeSid(&ntAuthority, 2,
-        SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS,
-        0, 0, 0, 0, 0, 0, &adminGroup)) {
-        CheckTokenMembership(nullptr, adminGroup, &isAdmin);
-        FreeSid(adminGroup);
-    }
-    return isAdmin != FALSE;
-#else
-    return false;
-#endif
+    return SystemInfo::isAdministrator();
 }
 
 // Helper function to enable a privilege

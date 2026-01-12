@@ -36,8 +36,20 @@ public sealed class SystemMonitorService : IDisposable
     #endregion
     
     private readonly Timer _pollTimer;
-    private readonly object _lock = new();
-    private bool _disposed;
+    private readonly Lock _lock = new();
+    private volatile bool _disposed;
+    
+    // Liste statique des processus système à ignorer (évite les allocations)
+    private static readonly HashSet<string> SystemProcesses = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "explorer",
+        "shellexperiencehost",
+        "searchapp",
+        "startmenuexperiencehost",
+        "applicationframehost",
+        "lockapp",
+        "wallpapermanager"
+    };
     
     private bool _isFullscreenAppRunning;
     private bool _isOnBattery;
@@ -167,30 +179,23 @@ public sealed class SystemMonitorService : IDisposable
             
             try
             {
-                var process = System.Diagnostics.Process.GetProcessById((int)processId);
-                var processName = process.ProcessName.ToLowerInvariant();
+                using var process = System.Diagnostics.Process.GetProcessById((int)processId);
+                var processName = process.ProcessName;
                 
-                // Liste des processus système à ignorer
-                var systemProcesses = new[]
-                {
-                    "explorer",      // Bureau Windows
-                    "shellexperiencehost",
-                    "searchapp",
-                    "startmenuexperiencehost",
-                    "applicationframehost",
-                    "lockapp",
-                    "wallpapermanager" // Notre propre app
-                };
-                
-                if (systemProcesses.Contains(processName))
+                if (SystemProcesses.Contains(processName))
                     return false;
                 
                 System.Diagnostics.Debug.WriteLine($"App plein écran détectée: {processName}");
                 return true;
             }
-            catch
+            catch (ArgumentException)
             {
-                // Si on ne peut pas obtenir le processus, considérer comme plein écran
+                // Processus terminé entre-temps
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                // Accès refusé, considérer comme plein écran par sécurité
                 return true;
             }
         }
@@ -254,8 +259,16 @@ public sealed class SystemMonitorService : IDisposable
         _disposed = true;
         
         _pollTimer.Stop();
+        _pollTimer.Elapsed -= OnPollTimerElapsed;
         _pollTimer.Dispose();
         
-        SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        try
+        {
+            SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+        }
+        catch (InvalidOperationException)
+        {
+            // Peut arriver si appelé depuis un thread non-UI
+        }
     }
 }

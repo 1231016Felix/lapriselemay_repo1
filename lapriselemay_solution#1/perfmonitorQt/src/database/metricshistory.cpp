@@ -626,6 +626,13 @@ void MetricsHistory::compactDatabase()
 void MetricsHistory::performMaintenance()
 {
     purgeOldData(m_retentionDays);
+    
+    // Compact periodically to reclaim space
+    static int maintenanceCount = 0;
+    if (++maintenanceCount % 24 == 0) { // Every 24 hours
+        compactDatabase();
+    }
+    
     qDebug() << "Maintenance completed. DB size:" << databaseSize() / 1024 << "KB";
 }
 

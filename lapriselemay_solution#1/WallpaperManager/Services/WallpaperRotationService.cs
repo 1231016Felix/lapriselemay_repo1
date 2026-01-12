@@ -7,13 +7,13 @@ namespace WallpaperManager.Services;
 public sealed class WallpaperRotationService : IDisposable
 {
     private readonly System.Timers.Timer _timer;
-    private readonly Random _random = new();
-    private readonly object _lock = new();
+    private readonly Random _random = Random.Shared;
+    private readonly Lock _lock = new();
     
     private List<Wallpaper> _playlist = [];
     private int _currentIndex = -1;
     private volatile bool _isPaused;
-    private bool _disposed;
+    private volatile bool _disposed;
     
     // Pour préserver le temps restant lors de pause/resume
     private DateTime _lastTickTime;
@@ -30,9 +30,10 @@ public sealed class WallpaperRotationService : IDisposable
         {
             lock (_lock)
             {
-                return _currentIndex >= 0 && _currentIndex < _playlist.Count 
-                    ? _playlist[_currentIndex] 
-                    : null;
+                if (_currentIndex < 0 || _currentIndex >= _playlist.Count)
+                    return null;
+                
+                return _playlist[_currentIndex];
             }
         }
     }
@@ -52,11 +53,14 @@ public sealed class WallpaperRotationService : IDisposable
         
         LoadPlaylist();
         
+        int playlistCount;
         lock (_lock)
         {
-            if (_playlist.Count == 0)
-                return;
+            playlistCount = _playlist.Count;
         }
+        
+        if (playlistCount == 0)
+            return;
         
         var intervalMs = Math.Max(SettingsService.Current.RotationIntervalMinutes, 1) * 60 * 1000;
         _timer.Interval = intervalMs;
@@ -64,8 +68,6 @@ public sealed class WallpaperRotationService : IDisposable
         _lastTickTime = DateTime.UtcNow;
         _timer.Start();
         _isPaused = false;
-        
-        // Ne pas appliquer immédiatement - attendre le premier intervalle
         
         RotationStateChanged?.Invoke(this, true);
     }
@@ -94,12 +96,15 @@ public sealed class WallpaperRotationService : IDisposable
     
     public void Resume()
     {
-        if (!_isPaused) return;
+        if (!_isPaused || _disposed) return;
         
+        int playlistCount;
         lock (_lock)
         {
-            if (_playlist.Count == 0) return;
+            playlistCount = _playlist.Count;
         }
+        
+        if (playlistCount == 0) return;
         
         _isPaused = false;
         
@@ -118,22 +123,25 @@ public sealed class WallpaperRotationService : IDisposable
     
     public void Next()
     {
+        if (_disposed) return;
+        
         lock (_lock)
         {
-            if (_playlist.Count == 0)
+            var count = _playlist.Count;
+            if (count == 0)
                 return;
             
             if (SettingsService.Current.RandomOrder)
             {
-                var newIndex = _random.Next(_playlist.Count);
+                var newIndex = _random.Next(count);
                 // Éviter de répéter le même si possible
-                if (_playlist.Count > 1 && newIndex == _currentIndex)
-                    newIndex = (newIndex + 1) % _playlist.Count;
+                if (count > 1 && newIndex == _currentIndex)
+                    newIndex = (newIndex + 1) % count;
                 _currentIndex = newIndex;
             }
             else
             {
-                _currentIndex = (_currentIndex + 1) % _playlist.Count;
+                _currentIndex = (_currentIndex + 1) % count;
             }
         }
         
@@ -142,12 +150,15 @@ public sealed class WallpaperRotationService : IDisposable
     
     public void Previous()
     {
+        if (_disposed) return;
+        
         lock (_lock)
         {
-            if (_playlist.Count == 0)
+            var count = _playlist.Count;
+            if (count == 0)
                 return;
             
-            _currentIndex = _currentIndex <= 0 ? _playlist.Count - 1 : _currentIndex - 1;
+            _currentIndex = _currentIndex <= 0 ? count - 1 : _currentIndex - 1;
         }
         
         ApplyCurrentWallpaper();
@@ -264,6 +275,7 @@ public sealed class WallpaperRotationService : IDisposable
         _disposed = true;
         
         _timer.Stop();
+        _timer.Elapsed -= OnTimerElapsed;
         _timer.Dispose();
     }
 }
