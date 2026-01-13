@@ -1,6 +1,6 @@
 /*
     Application Console Batterie - Surface Laptop Go 2
-    Version: Finale (Stable & Epuree)
+    Version: 2.0 (Refactorisée avec RAII)
     Standard: C++20
 */
 
@@ -14,19 +14,27 @@
 #include <string>
 #include <format> 
 #include <cmath>
+#include <memory>
+#include <optional>
 
-// On garde uniquement setupapi pour la communication materielle
 #pragma comment(lib, "setupapi.lib")
 
-// --- Couleurs ---
-const std::string RESET = "\033[0m";
-const std::string RED = "\033[31m";
-const std::string GREEN = "\033[32m";
-const std::string YELLOW = "\033[33m";
-const std::string CYAN = "\033[36m";
-const std::string MAGENTA = "\033[35m";
-const std::string BOLD = "\033[1m";
+namespace SurfaceMonitor {
 
+// --- Couleurs ANSI ---
+namespace Color {
+    constexpr const char* Reset = "\033[0m";
+    constexpr const char* Red = "\033[31m";
+    constexpr const char* Green = "\033[32m";
+    constexpr const char* Yellow = "\033[33m";
+    constexpr const char* Cyan = "\033[36m";
+    constexpr const char* Magenta = "\033[35m";
+    constexpr const char* Bold = "\033[1m";
+}
+
+/// <summary>
+/// Statistiques de la batterie
+/// </summary>
 struct BatteryStats {
     bool isConnected = false;
     bool isCharging = false;
@@ -40,171 +48,336 @@ struct BatteryStats {
 
     long calculatedTimeSeconds = -1;
     std::string timeStatus = "Inconnu";
+    
+    /// <summary>
+    /// Calcule le pourcentage de santé de la batterie
+    /// </summary>
+    [[nodiscard]] double GetHealthPercentage() const noexcept {
+        if (designCapacity == 0) return 0.0;
+        return static_cast<double>(fullChargeCapacity) / designCapacity * 100.0;
+    }
+    
+    /// <summary>
+    /// Calcule la puissance en watts
+    /// </summary>
+    [[nodiscard]] double GetPowerWatts() const noexcept {
+        return std::abs(rateInMilliwatts) / 1000.0;
+    }
 };
 
-// --- Partie Materielle (Connexion au pilote batterie) ---
-HANDLE GetBatteryHandle() {
-    HDEVINFO hDevInfo = SetupDiGetClassDevs(&GUID_DEVCLASS_BATTERY, 0, 0, DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
-    if (hDevInfo == INVALID_HANDLE_VALUE) return INVALID_HANDLE_VALUE;
-
-    SP_DEVICE_INTERFACE_DATA deviceInterfaceData = { 0 };
-    deviceInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
-
-    if (SetupDiEnumDeviceInterfaces(hDevInfo, 0, &GUID_DEVCLASS_BATTERY, 0, &deviceInterfaceData)) {
-        DWORD cbRequired = 0;
-        SetupDiGetDeviceInterfaceDetail(hDevInfo, &deviceInterfaceData, 0, 0, &cbRequired, 0);
-        std::vector<char> buffer(cbRequired);
-        PSP_DEVICE_INTERFACE_DETAIL_DATA deviceDetail = (PSP_DEVICE_INTERFACE_DETAIL_DATA)buffer.data();
-        deviceDetail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
-
-        if (SetupDiGetDeviceInterfaceDetail(hDevInfo, &deviceInterfaceData, deviceDetail, cbRequired, &cbRequired, 0)) {
-            HANDLE hBattery = CreateFile(deviceDetail->DevicePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-            SetupDiDestroyDeviceInfoList(hDevInfo);
-            return hBattery;
+/// <summary>
+/// RAII wrapper pour les handles Windows
+/// </summary>
+class UniqueHandle {
+public:
+    UniqueHandle() noexcept : handle_(INVALID_HANDLE_VALUE) {}
+    
+    explicit UniqueHandle(HANDLE h) noexcept : handle_(h) {}
+    
+    ~UniqueHandle() { Close(); }
+    
+    // Move only
+    UniqueHandle(UniqueHandle&& other) noexcept : handle_(other.handle_) {
+        other.handle_ = INVALID_HANDLE_VALUE;
+    }
+    
+    UniqueHandle& operator=(UniqueHandle&& other) noexcept {
+        if (this != &other) {
+            Close();
+            handle_ = other.handle_;
+            other.handle_ = INVALID_HANDLE_VALUE;
+        }
+        return *this;
+    }
+    
+    // No copy
+    UniqueHandle(const UniqueHandle&) = delete;
+    UniqueHandle& operator=(const UniqueHandle&) = delete;
+    
+    [[nodiscard]] HANDLE Get() const noexcept { return handle_; }
+    [[nodiscard]] bool IsValid() const noexcept { 
+        return handle_ != INVALID_HANDLE_VALUE && handle_ != nullptr; 
+    }
+    [[nodiscard]] explicit operator bool() const noexcept { return IsValid(); }
+    
+    void Close() noexcept {
+        if (IsValid()) {
+            CloseHandle(handle_);
+            handle_ = INVALID_HANDLE_VALUE;
         }
     }
-    SetupDiDestroyDeviceInfoList(hDevInfo);
-    return INVALID_HANDLE_VALUE;
-}
-
-// --- Analyse et Calculs ---
-BatteryStats AnalyzeBattery() {
-    BatteryStats stats;
-
-    // 1. Infos basiques (Pour savoir si on est sur secteur)
-    SYSTEM_POWER_STATUS sps;
-    if (GetSystemPowerStatus(&sps)) {
-        stats.isCharging = (sps.ACLineStatus == 1);
-        stats.chargePercentage = sps.BatteryLifePercent;
+    
+    HANDLE Release() noexcept {
+        HANDLE temp = handle_;
+        handle_ = INVALID_HANDLE_VALUE;
+        return temp;
     }
+    
+private:
+    HANDLE handle_;
+};
 
-    // 2. Infos precises via le pilote
-    HANDLE hBattery = GetBatteryHandle();
-    if (hBattery != INVALID_HANDLE_VALUE) {
+/// <summary>
+/// RAII wrapper pour HDEVINFO
+/// </summary>
+class DeviceInfoSet {
+public:
+    DeviceInfoSet() noexcept : hDevInfo_(INVALID_HANDLE_VALUE) {}
+    
+    explicit DeviceInfoSet(HDEVINFO h) noexcept : hDevInfo_(h) {}
+    
+    ~DeviceInfoSet() { Destroy(); }
+    
+    // Move only
+    DeviceInfoSet(DeviceInfoSet&& other) noexcept : hDevInfo_(other.hDevInfo_) {
+        other.hDevInfo_ = INVALID_HANDLE_VALUE;
+    }
+    
+    DeviceInfoSet& operator=(DeviceInfoSet&& other) noexcept {
+        if (this != &other) {
+            Destroy();
+            hDevInfo_ = other.hDevInfo_;
+            other.hDevInfo_ = INVALID_HANDLE_VALUE;
+        }
+        return *this;
+    }
+    
+    DeviceInfoSet(const DeviceInfoSet&) = delete;
+    DeviceInfoSet& operator=(const DeviceInfoSet&) = delete;
+    
+    [[nodiscard]] HDEVINFO Get() const noexcept { return hDevInfo_; }
+    [[nodiscard]] bool IsValid() const noexcept { return hDevInfo_ != INVALID_HANDLE_VALUE; }
+    [[nodiscard]] explicit operator bool() const noexcept { return IsValid(); }
+    
+    void Destroy() noexcept {
+        if (IsValid()) {
+            SetupDiDestroyDeviceInfoList(hDevInfo_);
+            hDevInfo_ = INVALID_HANDLE_VALUE;
+        }
+    }
+    
+private:
+    HDEVINFO hDevInfo_;
+};
+
+/// <summary>
+/// Moniteur de batterie avec gestion RAII des ressources
+/// </summary>
+class BatteryMonitor {
+public:
+    BatteryMonitor() = default;
+    
+    /// <summary>
+    /// Analyse l'état actuel de la batterie
+    /// </summary>
+    [[nodiscard]] BatteryStats Analyze() const {
+        BatteryStats stats;
+        
+        // 1. Infos système (secteur/batterie)
+        QuerySystemPowerStatus(stats);
+        
+        // 2. Infos détaillées via le pilote
+        QueryBatteryDriver(stats);
+        
+        // 3. Calcul de l'autonomie
+        CalculateTimeRemaining(stats);
+        
+        return stats;
+    }
+    
+private:
+    static void QuerySystemPowerStatus(BatteryStats& stats) {
+        SYSTEM_POWER_STATUS sps{};
+        if (GetSystemPowerStatus(&sps)) {
+            stats.isCharging = (sps.ACLineStatus == 1);
+            stats.chargePercentage = sps.BatteryLifePercent;
+        }
+    }
+    
+    static void QueryBatteryDriver(BatteryStats& stats) {
+        auto handle = GetBatteryHandle();
+        if (!handle) return;
+        
         stats.isConnected = true;
-        BATTERY_QUERY_INFORMATION bqi = { 0 };
-        DWORD dwWait = 0, dwOut;
-
-        // Recuperation du TAG (Identifiant de session batterie)
-        if (DeviceIoControl(hBattery, IOCTL_BATTERY_QUERY_TAG, &dwWait, sizeof(dwWait), &bqi.BatteryTag, sizeof(bqi.BatteryTag), &dwOut, NULL)) {
-
-            // Infos Statiques (Capacite usine, Cycles)
-            BATTERY_INFORMATION bi = { 0 };
-            bqi.InformationLevel = BatteryInformation;
-            if (DeviceIoControl(hBattery, IOCTL_BATTERY_QUERY_INFORMATION, &bqi, sizeof(bqi), &bi, sizeof(bi), &dwOut, NULL)) {
-                stats.designCapacity = bi.DesignedCapacity;
-                stats.fullChargeCapacity = bi.FullChargedCapacity;
-                stats.cycleCount = bi.CycleCount;
-            }
-
-            // Infos Dynamiques (Consommation, Capacite actuelle)
-            BATTERY_STATUS bs = { 0 };
-            BATTERY_WAIT_STATUS bws = { 0 };
-            bws.BatteryTag = bqi.BatteryTag;
-            if (DeviceIoControl(hBattery, IOCTL_BATTERY_QUERY_STATUS, &bws, sizeof(bws), &bs, sizeof(bs), &dwOut, NULL)) {
-                stats.currentCapacity = bs.Capacity;
-                stats.rateInMilliwatts = bs.Rate;
-            }
+        
+        BATTERY_QUERY_INFORMATION bqi{};
+        DWORD dwWait = 0, dwOut = 0;
+        
+        // Récupération du TAG
+        if (!DeviceIoControl(handle.Get(), IOCTL_BATTERY_QUERY_TAG, 
+            &dwWait, sizeof(dwWait), &bqi.BatteryTag, sizeof(bqi.BatteryTag), &dwOut, nullptr)) {
+            return;
         }
-        CloseHandle(hBattery);
+        
+        // Infos statiques
+        BATTERY_INFORMATION bi{};
+        bqi.InformationLevel = BatteryInformation;
+        if (DeviceIoControl(handle.Get(), IOCTL_BATTERY_QUERY_INFORMATION, 
+            &bqi, sizeof(bqi), &bi, sizeof(bi), &dwOut, nullptr)) {
+            stats.designCapacity = bi.DesignedCapacity;
+            stats.fullChargeCapacity = bi.FullChargedCapacity;
+            stats.cycleCount = bi.CycleCount;
+        }
+        
+        // Infos dynamiques
+        BATTERY_STATUS bs{};
+        BATTERY_WAIT_STATUS bws{};
+        bws.BatteryTag = bqi.BatteryTag;
+        if (DeviceIoControl(handle.Get(), IOCTL_BATTERY_QUERY_STATUS, 
+            &bws, sizeof(bws), &bs, sizeof(bs), &dwOut, nullptr)) {
+            stats.currentCapacity = bs.Capacity;
+            stats.rateInMilliwatts = bs.Rate;
+        }
     }
-
-    // 3. Calcul Mathematique de l'autonomie
-    double rate = std::abs(stats.rateInMilliwatts);
-    if (rate > 0) {
+    
+    [[nodiscard]] static UniqueHandle GetBatteryHandle() {
+        DeviceInfoSet devInfo{SetupDiGetClassDevs(
+            &GUID_DEVCLASS_BATTERY, nullptr, nullptr, 
+            DIGCF_PRESENT | DIGCF_DEVICEINTERFACE)};
+        
+        if (!devInfo) return UniqueHandle{};
+        
+        SP_DEVICE_INTERFACE_DATA deviceInterfaceData{};
+        deviceInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+        
+        if (!SetupDiEnumDeviceInterfaces(devInfo.Get(), nullptr, 
+            &GUID_DEVCLASS_BATTERY, 0, &deviceInterfaceData)) {
+            return UniqueHandle{};
+        }
+        
+        DWORD cbRequired = 0;
+        SetupDiGetDeviceInterfaceDetail(devInfo.Get(), &deviceInterfaceData, 
+            nullptr, 0, &cbRequired, nullptr);
+        
+        std::vector<char> buffer(cbRequired);
+        auto* deviceDetail = reinterpret_cast<PSP_DEVICE_INTERFACE_DETAIL_DATA>(buffer.data());
+        deviceDetail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
+        
+        if (!SetupDiGetDeviceInterfaceDetail(devInfo.Get(), &deviceInterfaceData, 
+            deviceDetail, cbRequired, &cbRequired, nullptr)) {
+            return UniqueHandle{};
+        }
+        
+        return UniqueHandle{CreateFile(
+            deviceDetail->DevicePath,
+            GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
+    }
+    
+    static void CalculateTimeRemaining(BatteryStats& stats) {
+        const double rate = std::abs(stats.rateInMilliwatts);
+        
+        if (rate <= 0) {
+            stats.calculatedTimeSeconds = -1;
+            stats.timeStatus = "Calcul en cours...";
+            return;
+        }
+        
         if (!stats.isCharging) {
-            // Decharge : Temps = Capacité Restante / Vitesse de consommation
-            double hoursLeft = (double)stats.currentCapacity / rate;
+            // Décharge
+            const double hoursLeft = static_cast<double>(stats.currentCapacity) / rate;
             stats.calculatedTimeSeconds = static_cast<long>(hoursLeft * 3600);
             stats.timeStatus = "Restant";
-        }
-        else {
-            // Charge : Temps = (Capacité Max - Actuelle) / Vitesse de charge
+        } else {
+            // Charge
             if (stats.fullChargeCapacity > stats.currentCapacity) {
-                double capacityNeeded = (double)(stats.fullChargeCapacity - stats.currentCapacity);
-                double hoursLeft = capacityNeeded / rate;
+                const double capacityNeeded = static_cast<double>(
+                    stats.fullChargeCapacity - stats.currentCapacity);
+                const double hoursLeft = capacityNeeded / rate;
                 stats.calculatedTimeSeconds = static_cast<long>(hoursLeft * 3600);
                 stats.timeStatus = "Avant 100%";
-            }
-            else {
+            } else {
                 stats.calculatedTimeSeconds = 0;
                 stats.timeStatus = "Charge terminee";
             }
         }
     }
-    else {
-        stats.calculatedTimeSeconds = -1;
-        stats.timeStatus = "Calcul en cours...";
-    }
+};
 
-    return stats;
-}
-
-std::string FormatTime(long seconds) {
+/// <summary>
+/// Formatte une durée en heures:minutes
+/// </summary>
+[[nodiscard]] std::string FormatTime(long seconds) {
     if (seconds < 0) return "-- h -- min";
     if (seconds == 0) return "Termine";
     return std::format("{}h {:02}min", seconds / 3600, (seconds % 3600) / 60);
 }
 
+/// <summary>
+/// Affiche le dashboard dans la console
+/// </summary>
 void DisplayDashboard(const BatteryStats& stats) {
-    // Effacement propre de l'ecran
+    // Effacement propre de l'écran
     std::cout << "\033[H\033[J";
 
     std::cout << "=================================================\n";
-    std::cout << "   SURFACE MONITOR (Stable)\n";
+    std::cout << "   SURFACE MONITOR v2.0 (RAII)\n";
     std::cout << "=================================================\n\n";
 
-    if (!stats.isConnected) { std::cout << " [!] Erreur d'acces au pilote batterie.\n"; return; }
-
-    std::string colorPct = (stats.chargePercentage < 20) ? RED : GREEN;
-    double watts = std::abs(stats.rateInMilliwatts) / 1000.0;
-
-    std::cout << BOLD << " 1. TEMPS REEL" << RESET << "\n";
-    std::cout << " -------------\n";
-    std::cout << " Source            : " << (stats.isCharging ? "Secteur (En charge)" : "Batterie") << "\n";
-    std::cout << " Niveau Charge     : " << colorPct << stats.chargePercentage << " %" << RESET << " (" << stats.currentCapacity << " mWh)\n"; // Ajout petit détail ici aussi
-
-    std::cout << " Puissance         : ";
-    if (stats.isCharging) std::cout << GREEN << "+" << std::fixed << std::setprecision(2) << watts << " W" << RESET << "\n";
-    else std::cout << RED << "-" << std::fixed << std::setprecision(2) << watts << " W" << RESET << "\n";
-
-    std::cout << "\n";
-    std::cout << " Autonomie (Calc)  : " << MAGENTA << FormatTime(stats.calculatedTimeSeconds) << RESET << "\n";
-    std::cout << " (" << stats.timeStatus << ")\n\n";
-
-    std::cout << BOLD << " 2. SANTE (HEALTH)" << RESET << "\n";
-    std::cout << " -----------------\n";
-
-    // Calcul pourcentage santé
-    double health = 0.0;
-    if (stats.designCapacity > 0) {
-        health = (double)stats.fullChargeCapacity / stats.designCapacity * 100.0;
+    if (!stats.isConnected) { 
+        std::cout << " [!] Erreur d'acces au pilote batterie.\n"; 
+        return; 
     }
 
-    std::cout << " Sante Batterie    : " << (health > 80 ? GREEN : YELLOW) << std::fixed << std::setprecision(1) << health << " %" << RESET << "\n";
-    std::cout << " Cycles de Charge  : " << stats.cycleCount << "\n";
+    const char* colorPct = (stats.chargePercentage < 20) ? Color::Red : Color::Green;
+    const double watts = stats.GetPowerWatts();
 
-    // --- MODIFICATION ICI ---
-    // Affiche Capacité Actuelle Max vs Capacité Usine
-    std::cout << " Usure Capacite    : " << stats.fullChargeCapacity << " mWh (Actuelle) / " << stats.designCapacity << " mWh (Neuve)\n";
+    std::cout << Color::Bold << " 1. TEMPS REEL" << Color::Reset << "\n";
+    std::cout << " -------------\n";
+    std::cout << " Source            : " << (stats.isCharging ? "Secteur (En charge)" : "Batterie") << "\n";
+    std::cout << " Niveau Charge     : " << colorPct << stats.chargePercentage << " %" << Color::Reset 
+              << " (" << stats.currentCapacity << " mWh)\n";
+
+    std::cout << " Puissance         : ";
+    if (stats.isCharging) {
+        std::cout << Color::Green << "+" << std::fixed << std::setprecision(2) << watts << " W" << Color::Reset << "\n";
+    } else {
+        std::cout << Color::Red << "-" << std::fixed << std::setprecision(2) << watts << " W" << Color::Reset << "\n";
+    }
+
+    std::cout << "\n";
+    std::cout << " Autonomie (Calc)  : " << Color::Magenta << FormatTime(stats.calculatedTimeSeconds) 
+              << Color::Reset << "\n";
+    std::cout << " (" << stats.timeStatus << ")\n\n";
+
+    std::cout << Color::Bold << " 2. SANTE (HEALTH)" << Color::Reset << "\n";
+    std::cout << " -----------------\n";
+
+    const double health = stats.GetHealthPercentage();
+    std::cout << " Sante Batterie    : " << (health > 80 ? Color::Green : Color::Yellow) 
+              << std::fixed << std::setprecision(1) << health << " %" << Color::Reset << "\n";
+    std::cout << " Cycles de Charge  : " << stats.cycleCount << "\n";
+    std::cout << " Usure Capacite    : " << stats.fullChargeCapacity << " mWh (Actuelle) / " 
+              << stats.designCapacity << " mWh (Neuve)\n";
 
     std::cout << "\n=================================================\n";
     std::cout << "Ctrl+C pour quitter.";
 }
 
-int main() {
-    // Activation des couleurs ANSI
+/// <summary>
+/// Configure la console pour les couleurs ANSI
+/// </summary>
+void InitializeConsole() {
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD dwMode = 0;
     GetConsoleMode(hOut, &dwMode);
     dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
     SetConsoleMode(hOut, dwMode);
     SetConsoleOutputCP(CP_UTF8);
+}
+
+} // namespace SurfaceMonitor
+
+int main() {
+    SurfaceMonitor::InitializeConsole();
+    SurfaceMonitor::BatteryMonitor monitor;
 
     while (true) {
-        BatteryStats currentStats = AnalyzeBattery();
-        DisplayDashboard(currentStats);
-        Sleep(1000); // Rafraichissement chaque seconde
+        const auto stats = monitor.Analyze();
+        SurfaceMonitor::DisplayDashboard(stats);
+        Sleep(1000);
     }
+    
     return 0;
 }

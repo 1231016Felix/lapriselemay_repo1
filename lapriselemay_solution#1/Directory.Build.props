@@ -1,0 +1,41 @@
+<Project>
+  <!-- Configurations communes pour tous les projets .NET de la solution -->
+  
+  <PropertyGroup>
+    <!-- Langage et nullabilité -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    
+    <!-- Qualité du code -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningLevel>7</WarningLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    
+    <!-- Métadonnées communes -->
+    <Authors>Felix-Antoine</Authors>
+    <Company>Laprise-Lemay</Company>
+    <Copyright>© 2025 Felix-Antoine</Copyright>
+    
+    <!-- Optimisations -->
+    <TieredCompilation>true</TieredCompilation>
+    <TieredCompilationQuickJit>true</TieredCompilationQuickJit>
+  </PropertyGroup>
+  
+  <!-- Configuration Debug commune -->
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>portable</DebugType>
+    <Optimize>false</Optimize>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+  
+  <!-- Configuration Release commune -->
+  <PropertyGroup Condition="'$(Configuration)'=='Release'">
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+    <DefineConstants>TRACE</DefineConstants>
+  </PropertyGroup>
+
+</Project>

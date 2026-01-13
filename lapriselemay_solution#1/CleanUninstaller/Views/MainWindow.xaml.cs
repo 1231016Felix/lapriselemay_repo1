@@ -3,11 +3,13 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using CleanUninstaller.ViewModels;
 using CleanUninstaller.Models;
+using CleanUninstaller.Services;
 using WinRT.Interop;
 using Microsoft.UI.Windowing;
 using System.Diagnostics;
 using Windows.Storage.Pickers;
 using System.Text;
+using Shared.Core.Helpers;
 
 namespace CleanUninstaller.Views;
 
@@ -23,7 +25,11 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         
-        ViewModel = new MainViewModel();
+        // Configurer le XamlRootProvider AVANT d'obtenir le ViewModel
+        ServiceContainer.SetXamlRootProvider(() => Content.XamlRoot);
+        
+        // Obtenir le ViewModel via l'injection de dépendances
+        ViewModel = ServiceContainer.GetService<MainViewModel>();
         
         ConfigureWindow();
         ConfigureTitleBar();
@@ -66,12 +72,8 @@ public sealed partial class MainWindow : Window
         {
             _initialized = true;
             
-            // Initialiser le XamlRoot pour le ViewModel (pour les dialogues)
-            ViewModel.XamlRoot = Content.XamlRoot;
-            
             await LoadProgramsAsync();
             
-            // Afficher le TeachingTip pour les nouveaux utilisateurs
             ShowWelcomeTeachingTipIfNeeded();
         }
     }
@@ -83,10 +85,9 @@ public sealed partial class MainWindow : Window
             var localSettings = Windows.Storage.ApplicationData.Current.LocalSettings;
             if (localSettings.Values.TryGetValue(TeachingTipShownKey, out var shown) && (bool)shown)
             {
-                return; // Déjà affiché
+                return;
             }
             
-            // Afficher le TeachingTip après un court délai pour laisser le temps au UI de se charger
             DispatcherQueue.TryEnqueue(async () =>
             {
                 await Task.Delay(1500);
@@ -133,7 +134,6 @@ public sealed partial class MainWindow : Window
             ProgramListView.ItemsSource = ViewModel.Programs;
             UpdateProgramCount();
             
-            // Calculer les tailles manquantes pendant le chargement
             var (approximateCount, stillUnknownCount) = await CalculateMissingSizesAsync();
             
             UpdateTotalSize();
@@ -141,7 +141,6 @@ public sealed partial class MainWindow : Window
             
             ShowInfoBar("Scan terminé", $"{ViewModel.TotalProgramCount} programmes détectés sur votre système.", InfoBarSeverity.Success);
             
-            // Afficher un dialogue si des tailles sont approximatives ou inconnues (seulement au premier chargement)
             if ((approximateCount > 0 || stillUnknownCount > 0) && !_hasShownApproximateSizesDialog)
             {
                 _hasShownApproximateSizesDialog = true;
@@ -176,8 +175,6 @@ public sealed partial class MainWindow : Window
             });
 
             var approximateCount = await registryService.CalculateMissingSizesAsync(programsList, progress, CancellationToken.None);
-            
-            // Compter les programmes dont la taille est toujours inconnue
             var stillUnknownCount = programsList.Count(p => p.EstimatedSize == 0);
             
             return (approximateCount, stillUnknownCount);
@@ -273,28 +270,14 @@ public sealed partial class MainWindow : Window
         
         if (unknownCount > 0)
         {
-            TotalSizeText.Text = $"Total: {prefix}{FormatSize(totalSize)} ({unknownCount} inconnu{(unknownCount > 1 ? "s" : "")})";
+            TotalSizeText.Text = $"Total: {prefix}{SizeFormatter.Format(totalSize)} ({unknownCount} inconnu{(unknownCount > 1 ? "s" : "")})";
             ToolTipService.SetToolTip(TotalSizeText, $"{unknownCount} programme(s) sans taille connue\n{(hasApproximate ? "~ indique une taille approximative" : "")}".Trim());
         }
         else
         {
-            TotalSizeText.Text = $"Total: {prefix}{FormatSize(totalSize)}";
+            TotalSizeText.Text = $"Total: {prefix}{SizeFormatter.Format(totalSize)}";
             ToolTipService.SetToolTip(TotalSizeText, hasApproximate ? "~ indique une taille approximative" : null);
         }
-    }
-
-    private static string FormatSize(long bytes)
-    {
-        if (bytes <= 0) return "0 o";
-        string[] suffixes = ["o", "Ko", "Mo", "Go", "To"];
-        var i = 0;
-        var size = (double)bytes;
-        while (size >= 1024 && i < suffixes.Length - 1)
-        {
-            size /= 1024;
-            i++;
-        }
-        return $"{size:N1} {suffixes[i]}";
     }
 
     private void UpdateDetailsPanel()
@@ -325,7 +308,6 @@ public sealed partial class MainWindow : Window
                 ? Visibility.Visible 
                 : Visibility.Collapsed;
 
-            // Icône
             if (program.Icon != null)
             {
                 DetailIcon.Source = program.Icon;
@@ -616,25 +598,10 @@ public sealed partial class MainWindow : Window
 
     #region Event Handlers - Sort
 
-    private void SortByName_Click(object sender, RoutedEventArgs e)
-    {
-        SetSortBy(SortOption.Name);
-    }
-
-    private void SortByPublisher_Click(object sender, RoutedEventArgs e)
-    {
-        SetSortBy(SortOption.Publisher);
-    }
-
-    private void SortBySize_Click(object sender, RoutedEventArgs e)
-    {
-        SetSortBy(SortOption.Size);
-    }
-
-    private void SortByDate_Click(object sender, RoutedEventArgs e)
-    {
-        SetSortBy(SortOption.InstallDate);
-    }
+    private void SortByName_Click(object sender, RoutedEventArgs e) => SetSortBy(SortOption.Name);
+    private void SortByPublisher_Click(object sender, RoutedEventArgs e) => SetSortBy(SortOption.Publisher);
+    private void SortBySize_Click(object sender, RoutedEventArgs e) => SetSortBy(SortOption.Size);
+    private void SortByDate_Click(object sender, RoutedEventArgs e) => SetSortBy(SortOption.InstallDate);
 
     private void SortOrder_Click(object sender, RoutedEventArgs e)
     {
@@ -643,88 +610,45 @@ public sealed partial class MainWindow : Window
         UpdateSortIcons();
     }
 
-    /// <summary>
-    /// Clic sur l'en-tête de colonne "Nom"
-    /// </summary>
     private void SortByNameHeader_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.SortBy == SortOption.Name)
-        {
-            // Inverser l'ordre si déjà trié par nom
-            ViewModel.SortDescending = !ViewModel.SortDescending;
-            SortDescendingItem.IsChecked = ViewModel.SortDescending;
-        }
-        else
-        {
-            SetSortBy(SortOption.Name);
-        }
-        ProgramListView.ItemsSource = ViewModel.Programs;
-        UpdateSortIcons();
+        ToggleSortOrSetNew(SortOption.Name);
     }
 
-    /// <summary>
-    /// Clic sur l'en-tête de colonne "Éditeur"
-    /// </summary>
     private void SortByPublisherHeader_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.SortBy == SortOption.Publisher)
-        {
-            ViewModel.SortDescending = !ViewModel.SortDescending;
-            SortDescendingItem.IsChecked = ViewModel.SortDescending;
-        }
-        else
-        {
-            SetSortBy(SortOption.Publisher);
-        }
-        ProgramListView.ItemsSource = ViewModel.Programs;
-        UpdateSortIcons();
+        ToggleSortOrSetNew(SortOption.Publisher);
     }
 
-    /// <summary>
-    /// Clic sur l'en-tête de colonne "Date"
-    /// </summary>
     private void SortByDateHeader_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.SortBy == SortOption.InstallDate)
-        {
-            ViewModel.SortDescending = !ViewModel.SortDescending;
-            SortDescendingItem.IsChecked = ViewModel.SortDescending;
-        }
-        else
-        {
-            SetSortBy(SortOption.InstallDate);
-        }
-        ProgramListView.ItemsSource = ViewModel.Programs;
-        UpdateSortIcons();
+        ToggleSortOrSetNew(SortOption.InstallDate);
     }
 
-    /// <summary>
-    /// Clic sur l'en-tête de colonne "Taille"
-    /// </summary>
     private void SortBySizeHeader_Click(object sender, RoutedEventArgs e)
     {
-        if (ViewModel.SortBy == SortOption.Size)
+        ToggleSortOrSetNew(SortOption.Size);
+    }
+
+    private void ToggleSortOrSetNew(SortOption option)
+    {
+        if (ViewModel.SortBy == option)
         {
-            // Inverser l'ordre si déjà trié par taille
             ViewModel.SortDescending = !ViewModel.SortDescending;
             SortDescendingItem.IsChecked = ViewModel.SortDescending;
         }
         else
         {
-            SetSortBy(SortOption.Size);
+            SetSortBy(option);
         }
         ProgramListView.ItemsSource = ViewModel.Programs;
         UpdateSortIcons();
     }
 
-    /// <summary>
-    /// Définit l'option de tri et met à jour les menus
-    /// </summary>
     private void SetSortBy(SortOption option)
     {
         ViewModel.SortBy = option;
         
-        // Mettre à jour les RadioMenuFlyoutItems
         SortByNameItem.IsChecked = option == SortOption.Name;
         SortByPublisherItem.IsChecked = option == SortOption.Publisher;
         SortBySizeItem.IsChecked = option == SortOption.Size;
@@ -734,34 +658,21 @@ public sealed partial class MainWindow : Window
         UpdateSortIcons();
     }
 
-    /// <summary>
-    /// Met à jour les icônes de tri dans les en-têtes de colonnes
-    /// </summary>
     private void UpdateSortIcons()
     {
-        // Icône pour la colonne Nom
-        SortNameIcon.Visibility = ViewModel.SortBy == SortOption.Name 
-            ? Visibility.Visible 
-            : Visibility.Collapsed;
-        SortNameIcon.Glyph = ViewModel.SortDescending ? "\uE70E" : "\uE70D"; // Flèche bas/haut
+        var glyph = ViewModel.SortDescending ? "\uE70E" : "\uE70D";
         
-        // Icône pour la colonne Éditeur
-        SortPublisherIcon.Visibility = ViewModel.SortBy == SortOption.Publisher 
-            ? Visibility.Visible 
-            : Visibility.Collapsed;
-        SortPublisherIcon.Glyph = ViewModel.SortDescending ? "\uE70E" : "\uE70D";
+        SortNameIcon.Visibility = ViewModel.SortBy == SortOption.Name ? Visibility.Visible : Visibility.Collapsed;
+        SortNameIcon.Glyph = glyph;
         
-        // Icône pour la colonne Date
-        SortDateIcon.Visibility = ViewModel.SortBy == SortOption.InstallDate 
-            ? Visibility.Visible 
-            : Visibility.Collapsed;
-        SortDateIcon.Glyph = ViewModel.SortDescending ? "\uE70E" : "\uE70D";
+        SortPublisherIcon.Visibility = ViewModel.SortBy == SortOption.Publisher ? Visibility.Visible : Visibility.Collapsed;
+        SortPublisherIcon.Glyph = glyph;
         
-        // Icône pour la colonne Taille
-        SortSizeIcon.Visibility = ViewModel.SortBy == SortOption.Size 
-            ? Visibility.Visible 
-            : Visibility.Collapsed;
-        SortSizeIcon.Glyph = ViewModel.SortDescending ? "\uE70E" : "\uE70D";
+        SortDateIcon.Visibility = ViewModel.SortBy == SortOption.InstallDate ? Visibility.Visible : Visibility.Collapsed;
+        SortDateIcon.Glyph = glyph;
+        
+        SortSizeIcon.Visibility = ViewModel.SortBy == SortOption.Size ? Visibility.Visible : Visibility.Collapsed;
+        SortSizeIcon.Glyph = glyph;
     }
 
     #endregion
@@ -826,7 +737,6 @@ public sealed partial class MainWindow : Window
     {
         if (ViewModel.SelectedProgram == null) return;
 
-        // Ouvrir le dialogue de scan des résidus (meilleure UX qu'un petit panneau)
         var residualDialog = new ResidualScanDialog(ViewModel.SelectedProgram)
         {
             XamlRoot = Content.XamlRoot
@@ -834,7 +744,6 @@ public sealed partial class MainWindow : Window
         
         await residualDialog.ShowAsync();
 
-        // Mettre à jour le statut après le dialogue
         if (residualDialog.DeletionPerformed)
         {
             StatusText.Text = "Nettoyage des résidus terminé";
@@ -842,7 +751,6 @@ public sealed partial class MainWindow : Window
         }
         else if (residualDialog.Residuals.Count > 0)
         {
-            // Des résidus restent - ne pas afficher le panneau, juste mettre à jour le statut
             ShowResiduals(false);
             StatusText.Text = $"{residualDialog.Residuals.Count} résidu(s) non supprimé(s)";
         }
@@ -899,15 +807,8 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            var progress = new Progress<ScanProgress>(p =>
-            {
-                UninstallProgressBar.Value = p.Percentage;
-                UninstallDetailText.Text = p.StatusMessage;
-            });
-
             await ViewModel.CleanupResidualsAsync();
             
-            // Mettre à jour la liste
             ResidualsListView.ItemsSource = null;
             ResidualsListView.ItemsSource = ViewModel.Residuals;
             
@@ -967,7 +868,6 @@ public sealed partial class MainWindow : Window
                 UninstallDetailText.Text = p.StatusMessage;
             });
 
-            // Créer un backup si configuré
             UninstallDetailText.Text = "Création de la sauvegarde...";
             await App.SettingsService.CreateRegistryBackupAsync(program.DisplayName);
 
@@ -978,7 +878,6 @@ public sealed partial class MainWindow : Window
             }
             else
             {
-                // Désinstaller sans scanner automatiquement les résidus
                 result = await App.UninstallService.UninstallProgramAsync(
                     program, silent, scanResiduals: false, 
                     progress, _currentOperationCts.Token);
@@ -995,7 +894,6 @@ public sealed partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            // Si l'utilisateur a cliqué sur "Continuer manuellement", on considère que c'est un succès
             if (_continueManually)
             {
                 uninstallSuccess = true;
@@ -1016,16 +914,13 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // Étape suivante: nettoyage et scan des résidus
         if (uninstallSuccess)
         {
             program.Status = ProgramStatus.Uninstalled;
             
-            // Actualiser la liste des programmes
             UninstallDetailText.Text = "Actualisation de la liste...";
             await LoadProgramsAsync();
 
-            // Afficher le dialogue d'analyse des résidus si l'option est activée
             if (App.SettingsService.Settings.ThoroughAnalysisEnabled)
             {
                 ShowUninstallOverlay(false);
@@ -1037,7 +932,6 @@ public sealed partial class MainWindow : Window
                 
                 await residualDialog.ShowAsync();
 
-                // Mettre à jour le statut après le dialogue
                 if (residualDialog.DeletionPerformed)
                 {
                     StatusText.Text = "Désinstallation et nettoyage terminés";
@@ -1045,7 +939,6 @@ public sealed partial class MainWindow : Window
                 }
                 else if (residualDialog.Residuals.Count > 0)
                 {
-                    // Des résidus restent - ne pas afficher le panneau, juste mettre à jour le statut
                     ShowResiduals(false);
                     StatusText.Text = $"Désinstallé - {residualDialog.Residuals.Count} résidu(s) restant(s)";
                     ShowInfoBar("Résidus restants", 
@@ -1080,7 +973,6 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            // Créer un point de restauration
             if (App.SettingsService.Settings.CreateRestorePoint)
             {
                 UninstallDetailText.Text = "Création du point de restauration...";
@@ -1088,14 +980,7 @@ public sealed partial class MainWindow : Window
                     $"Avant désinstallation de {ViewModel.SelectedCount} programmes - Clean Uninstaller");
             }
 
-            var progress = new Progress<ScanProgress>(p =>
-            {
-                UninstallProgressBar.Value = p.Percentage;
-                UninstallStatusText.Text = p.StatusMessage;
-            });
-
             await ViewModel.UninstallBatchAsync();
-
             await LoadProgramsAsync();
             
             if (ViewModel.HasResiduals)
@@ -1129,14 +1014,12 @@ public sealed partial class MainWindow : Window
         UninstallDetailText.Text = "";
         ContinueUninstallButton.Visibility = Visibility.Collapsed;
         
-        // Annuler le timer du bouton "Continuer" précédent
         _continueButtonCts?.Cancel();
         _continueButtonCts?.Dispose();
         _continueButtonCts = null;
         
         if (show)
         {
-            // Afficher le bouton "Continuer" après 30 secondes
             _continueButtonCts = new CancellationTokenSource();
             _ = ShowContinueButtonAfterDelayAsync(_continueButtonCts.Token);
         }
@@ -1148,9 +1031,8 @@ public sealed partial class MainWindow : Window
     {
         try
         {
-            await Task.Delay(30000, cancellationToken); // 30 secondes
+            await Task.Delay(30000, cancellationToken);
             
-            // Vérifier si l'overlay est toujours visible et si on n'a pas été annulé
             if (!cancellationToken.IsCancellationRequested && UninstallOverlay.Visibility == Visibility.Visible)
             {
                 ContinueUninstallButton.Visibility = Visibility.Visible;
@@ -1158,19 +1040,15 @@ public sealed partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            // Le timer a été annulé car la désinstallation s'est terminée
+            // Normal
         }
     }
 
     private void ContinueUninstall_Click(object sender, RoutedEventArgs e)
     {
-        // IMPORTANT: Définir le flag AVANT d'annuler pour éviter la condition de course
-        // Le flag doit être true quand l'exception OperationCanceledException est attrapée
         _continueManually = true;
         ContinueUninstallButton.Visibility = Visibility.Collapsed;
         UninstallDetailText.Text = "Passage à l'étape suivante...";
-        
-        // Annuler l'attente en cours - cela va déclencher le passage à l'étape suivante
         _currentOperationCts?.Cancel();
     }
 
@@ -1188,35 +1066,23 @@ public sealed partial class MainWindow : Window
 
     private void ProgramListView_Loaded(object sender, RoutedEventArgs e)
     {
-        // S'abonner aux changements de taille de la grille d'en-tête
         HeaderGrid.SizeChanged += HeaderGrid_SizeChanged;
         HeaderGrid.LayoutUpdated += HeaderGrid_LayoutUpdated;
         
-        // Créer le timer pour la synchronisation pendant le drag
         _columnSyncTimer = new Microsoft.UI.Xaml.DispatcherTimer();
-        _columnSyncTimer.Interval = TimeSpan.FromMilliseconds(16); // ~60fps
+        _columnSyncTimer.Interval = TimeSpan.FromMilliseconds(16);
         _columnSyncTimer.Tick += (s, e) => ForceUpdateListViewColumnWidths();
         
-        // Synchronisation initiale avec délai pour laisser le temps au layout
         DispatcherQueue.TryEnqueue(() => UpdateListViewColumnWidths());
     }
 
-    private void HeaderGrid_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        UpdateListViewColumnWidths();
-    }
-
-    private void HeaderGrid_LayoutUpdated(object? sender, object e)
-    {
-        UpdateListViewColumnWidths();
-    }
+    private void HeaderGrid_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateListViewColumnWidths();
+    private void HeaderGrid_LayoutUpdated(object? sender, object e) => UpdateListViewColumnWidths();
 
     private void ProgramListView_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
-        // Mettre à jour les colonnes quand un élément est préparé (virtualization)
         if (!args.InRecycleQueue && args.ItemContainer is ListViewItem container)
         {
-            // Utiliser le dispatcher pour s'assurer que le layout est terminé
             DispatcherQueue.TryEnqueue(() =>
             {
                 var nameWidth = NameColumn.ActualWidth;
@@ -1232,22 +1098,15 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void GridSplitter_PointerPressed(object sender, PointerRoutedEventArgs e)
-    {
-        // Démarrer le timer pour synchroniser les colonnes pendant le drag
-        _columnSyncTimer?.Start();
-    }
-
+    private void GridSplitter_PointerPressed(object sender, PointerRoutedEventArgs e) => _columnSyncTimer?.Start();
     private void GridSplitter_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        // Arrêter le timer et faire une dernière mise à jour
         _columnSyncTimer?.Stop();
         ForceUpdateListViewColumnWidths();
     }
 
     private void ForceUpdateListViewColumnWidths()
     {
-        // Réinitialiser le cache pour forcer la mise à jour
         _lastNameWidth = 0;
         _lastPublisherWidth = 0;
         _lastDateWidth = 0;
@@ -1257,21 +1116,19 @@ public sealed partial class MainWindow : Window
 
     private void UpdateListViewColumnWidths()
     {
-        // Récupérer les largeurs actuelles des colonnes de l'en-tête
         var nameWidth = NameColumn.ActualWidth;
         var publisherWidth = PublisherColumn.ActualWidth;
         var dateWidth = DateColumn.ActualWidth;
         var sizeWidth = SizeColumn.ActualWidth;
 
-        if (nameWidth <= 0) return; // Layout pas encore prêt
+        if (nameWidth <= 0) return;
 
-        // Vérifier si les largeurs ont changé
         if (Math.Abs(nameWidth - _lastNameWidth) < 1 &&
             Math.Abs(publisherWidth - _lastPublisherWidth) < 1 &&
             Math.Abs(dateWidth - _lastDateWidth) < 1 &&
             Math.Abs(sizeWidth - _lastSizeWidth) < 1)
         {
-            return; // Pas de changement significatif
+            return;
         }
 
         _lastNameWidth = nameWidth;
@@ -1279,7 +1136,6 @@ public sealed partial class MainWindow : Window
         _lastDateWidth = dateWidth;
         _lastSizeWidth = sizeWidth;
 
-        // Parcourir tous les éléments visibles du ListView
         if (ProgramListView.ItemsSource is not System.Collections.IEnumerable items) return;
         
         foreach (var item in items)
@@ -1296,7 +1152,6 @@ public sealed partial class MainWindow : Window
         var itemGrid = FindChildGrid(container);
         if (itemGrid != null && itemGrid.ColumnDefinitions.Count >= 9)
         {
-            // Synchroniser les largeurs (colonnes 2, 4, 6, 8 correspondent aux données)
             itemGrid.ColumnDefinitions[2].Width = new GridLength(nameWidth);
             itemGrid.ColumnDefinitions[4].Width = new GridLength(publisherWidth);
             itemGrid.ColumnDefinitions[6].Width = new GridLength(dateWidth);

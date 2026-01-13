@@ -1,8 +1,9 @@
 using System.Collections.Concurrent;
-using System.Data.SQLite;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Threading.Channels;
+using Microsoft.Data.Sqlite;
 using QuickLauncher.Models;
 
 namespace QuickLauncher.Services;
@@ -39,7 +40,8 @@ public sealed partial class IndexingService : IDisposable
         
         Directory.CreateDirectory(appData);
         _dbPath = Path.Combine(appData, Constants.DatabaseFileName);
-        _connectionString = $"Data Source={_dbPath};Version=3;Journal Mode=WAL;Cache Size=10000";
+        // Microsoft.Data.Sqlite utilise une syntaxe de connexion différente
+        _connectionString = $"Data Source={_dbPath};Mode=ReadWriteCreate;Cache=Shared";
         
         _settings = AppSettings.Load();
         
@@ -51,8 +53,15 @@ public sealed partial class IndexingService : IDisposable
 
     private void InitializeDatabase()
     {
-        using var conn = new SQLiteConnection(_connectionString);
+        using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+        
+        // Activer le mode WAL pour de meilleures performances
+        using (var pragmaCmd = conn.CreateCommand())
+        {
+            pragmaCmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
+            pragmaCmd.ExecuteNonQuery();
+        }
         
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -68,10 +77,6 @@ public sealed partial class IndexingService : IDisposable
             CREATE INDEX IF NOT EXISTS idx_name ON Items(Name COLLATE NOCASE);
             CREATE INDEX IF NOT EXISTS idx_usecount ON Items(UseCount DESC);
             CREATE INDEX IF NOT EXISTS idx_type ON Items(Type);
-            
-            PRAGMA journal_mode=WAL;
-            PRAGMA synchronous=NORMAL;
-            PRAGMA cache_size=10000;
             """;
         cmd.ExecuteNonQuery();
     }
@@ -80,7 +85,7 @@ public sealed partial class IndexingService : IDisposable
     {
         _cache.Clear();
         
-        using var conn = new SQLiteConnection(_connectionString);
+        using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         
         using var cmd = conn.CreateCommand();
@@ -262,7 +267,7 @@ public sealed partial class IndexingService : IDisposable
     
     private async Task SaveToDatabaseAsync(List<SearchResult> items, CancellationToken token)
     {
-        await using var conn = new SQLiteConnection(_connectionString);
+        await using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync(token);
         
         await using var transaction = conn.BeginTransaction();
@@ -276,11 +281,11 @@ public sealed partial class IndexingService : IDisposable
                     @indexed)
                 """;
             
-            var pathParam = cmd.Parameters.Add("@path", System.Data.DbType.String);
-            var nameParam = cmd.Parameters.Add("@name", System.Data.DbType.String);
-            var descParam = cmd.Parameters.Add("@desc", System.Data.DbType.String);
-            var typeParam = cmd.Parameters.Add("@type", System.Data.DbType.Int32);
-            var indexedParam = cmd.Parameters.Add("@indexed", System.Data.DbType.String);
+            var pathParam = cmd.Parameters.Add("@path", SqliteType.Text);
+            var nameParam = cmd.Parameters.Add("@name", SqliteType.Text);
+            var descParam = cmd.Parameters.Add("@desc", SqliteType.Text);
+            var typeParam = cmd.Parameters.Add("@type", SqliteType.Integer);
+            var indexedParam = cmd.Parameters.Add("@indexed", SqliteType.Text);
             
             var now = DateTime.UtcNow.ToString("o");
             var progress = 0;
@@ -314,7 +319,7 @@ public sealed partial class IndexingService : IDisposable
     {
         CancelIndexing();
         
-        await using var conn = new SQLiteConnection(_connectionString);
+        await using var conn = new SqliteConnection(_connectionString);
         await conn.OpenAsync(cancellationToken);
         
         await using var cmd = conn.CreateCommand();
@@ -427,7 +432,7 @@ public sealed partial class IndexingService : IDisposable
     {
         try
         {
-            using var conn = new SQLiteConnection(_connectionString);
+            using var conn = new SqliteConnection(_connectionString);
             conn.Open();
             
             using var cmd = conn.CreateCommand();
@@ -472,12 +477,16 @@ public interface ILogger
 }
 
 /// <summary>
-/// Logger vers fichier.
+/// Logger asynchrone vers fichier utilisant Channel&lt;T&gt; pour des performances optimales.
+/// Les logs sont mis en queue et écrits de manière asynchrone pour ne pas bloquer le thread appelant.
 /// </summary>
-public sealed class FileLogger : ILogger
+public sealed class FileLogger : ILogger, IAsyncDisposable, IDisposable
 {
     private readonly string _logPath;
-    private readonly object _lock = new();
+    private readonly Channel<string> _logChannel;
+    private readonly Task _writerTask;
+    private readonly CancellationTokenSource _cts = new();
+    private bool _disposed;
     
     public FileLogger()
     {
@@ -486,6 +495,34 @@ public sealed class FileLogger : ILogger
             Constants.AppName);
         Directory.CreateDirectory(appData);
         _logPath = Path.Combine(appData, Constants.LogFileName);
+        
+        // Channel borné pour éviter une consommation mémoire excessive
+        _logChannel = Channel.CreateBounded<string>(new BoundedChannelOptions(1000)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false
+        });
+        
+        // Démarrer le writer en background
+        _writerTask = Task.Run(ProcessLogsAsync);
+    }
+    
+    private async Task ProcessLogsAsync()
+    {
+        try
+        {
+            await foreach (var line in _logChannel.Reader.ReadAllAsync(_cts.Token))
+            {
+                try
+                {
+                    await File.AppendAllTextAsync(_logPath, line + Environment.NewLine, _cts.Token);
+                }
+                catch (OperationCanceledException) { break; }
+                catch { /* Ignorer les erreurs d'écriture */ }
+            }
+        }
+        catch (OperationCanceledException) { /* Normal lors de la fermeture */ }
     }
     
     private void Log(string level, string message)
@@ -493,15 +530,45 @@ public sealed class FileLogger : ILogger
         var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{level}] {message}";
         Debug.WriteLine(line);
         
-        lock (_lock)
-        {
-            try { File.AppendAllText(_logPath, line + Environment.NewLine); }
-            catch { /* Ignore logging errors */ }
-        }
+        // Envoyer au channel (non-bloquant)
+        _logChannel.Writer.TryWrite(line);
     }
     
     public void Info(string message) => Log("INFO", message);
     public void Warning(string message) => Log("WARN", message);
     public void Error(string message, Exception? ex = null) => 
         Log("ERROR", ex != null ? $"{message}: {ex}" : message);
+    
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        
+        _logChannel.Writer.Complete();
+        
+        try
+        {
+            await _writerTask.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        catch (TimeoutException)
+        {
+            await _cts.CancelAsync();
+        }
+        
+        _cts.Dispose();
+    }
+    
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        
+        _logChannel.Writer.Complete();
+        _cts.Cancel();
+        
+        try { _writerTask.Wait(TimeSpan.FromSeconds(1)); }
+        catch { }
+        
+        _cts.Dispose();
+    }
 }

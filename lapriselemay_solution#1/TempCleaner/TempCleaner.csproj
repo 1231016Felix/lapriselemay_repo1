@@ -3,38 +3,22 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon Condition="Exists('Resources\app.ico')">Resources\app.ico</ApplicationIcon>
     <AssemblyName>TempCleaner</AssemblyName>
     <RootNamespace>TempCleaner</RootNamespace>
     <Version>1.0.0</Version>
-    <Authors>Felix-Antoine</Authors>
     <Description>Nettoyeur de fichiers temporaires intelligent avec prévisualisation pour Windows 11</Description>
     <StartupObject>TempCleaner.App</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>portable</DebugType>
-  </PropertyGroup>
-
-  <!-- Configuration Debug -->
-  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>portable</DebugType>
-    <Optimize>false</Optimize>
-  </PropertyGroup>
-
-  <!-- Configuration Release optimisée -->
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <Optimize>true</Optimize>
-    <DebugSymbols>false</DebugSymbols>
-    <DebugType>none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <!-- MVVM Toolkit (version centralisée) -->
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    
+    <!-- JSON - Utiliser System.Text.Json au lieu de Newtonsoft.Json -->
+    <PackageReference Include="System.Text.Json" />
   </ItemGroup>
 
   <ItemGroup>

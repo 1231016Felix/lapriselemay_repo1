@@ -65,7 +65,7 @@ void ServiceTableModel::updateService(const ServiceInfo& service)
     for (size_t i = 0; i < m_filteredServices.size(); ++i) {
         if (m_filteredServices[i].serviceName == service.serviceName) {
             m_filteredServices[i] = service;
-            emit dataChanged(index(i, 0), index(i, ColCount - 1));
+            emit dataChanged(index(static_cast<int>(i), 0), index(static_cast<int>(i), ColCount - 1));
             break;
         }
     }
@@ -516,7 +516,7 @@ void ServiceMonitor::updateResourceUsageForService(ServiceInfo& service)
     if (GetProcessMemoryInfo(hProcess, reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&pmc), sizeof(pmc))) {
         service.resources.memoryUsageBytes = pmc.PrivateUsage;
         service.resources.workingSetBytes = pmc.WorkingSetSize;
-        if (pmc.WorkingSetSize > service.resources.peakMemoryUsage) {
+        if (static_cast<qint64>(pmc.WorkingSetSize) > service.resources.peakMemoryUsage) {
             service.resources.peakMemoryUsage = pmc.WorkingSetSize;
         }
     }

@@ -279,7 +279,6 @@ void HistoryDialog::setDefaultTimeRange(TimeRange range)
 
 void HistoryDialog::onTimeRangeChanged()
 {
-    int index = m_timeRangeCombo->currentIndex();
     m_currentTimeRange = static_cast<TimeRange>(m_timeRangeCombo->currentData().toInt());
     
     bool isCustom = (m_currentTimeRange == TimeRange::Custom);
@@ -366,14 +365,14 @@ void HistoryDialog::updateChart()
     }
     
     for (MetricType type : m_selectedMetrics) {
-        auto data = m_history->getMetricData(type, start, end, QString(), 2000);
+        auto metricData = m_history->getMetricData(type, start, end, QString(), 2000);
         
-        if (data.empty()) continue;
+        if (metricData.empty()) continue;
         
         std::vector<QPointF> points;
-        points.reserve(data.size());
+        points.reserve(metricData.size());
         
-        for (const auto& pt : data) {
+        for (const auto& pt : metricData) {
             points.emplace_back(pt.timestamp.toMSecsSinceEpoch(), pt.value);
         }
         
@@ -407,9 +406,9 @@ void HistoryDialog::updateStatistics()
     
     // Get stats for first selected metric
     MetricType type = m_selectedMetrics[0];
-    auto data = m_history->getMetricData(type, start, end);
+    auto metricData = m_history->getMetricData(type, start, end);
     
-    if (data.empty()) {
+    if (metricData.empty()) {
         m_statsMinLabel->setText("-");
         m_statsMaxLabel->setText("-");
         m_statsAvgLabel->setText("-");
@@ -417,23 +416,23 @@ void HistoryDialog::updateStatistics()
         return;
     }
     
-    double minVal = data[0].value;
-    double maxVal = data[0].value;
+    double minVal = metricData[0].value;
+    double maxVal = metricData[0].value;
     double sum = 0;
     
-    for (const auto& pt : data) {
+    for (const auto& pt : metricData) {
         minVal = qMin(minVal, pt.value);
         maxVal = qMax(maxVal, pt.value);
         sum += pt.value;
     }
     
-    double avg = sum / data.size();
+    double avg = sum / metricData.size();
     QString unit = getMetricUnit(type);
     
     m_statsMinLabel->setText(QString("%1%2").arg(minVal, 0, 'f', 1).arg(unit));
     m_statsMaxLabel->setText(QString("%1%2").arg(maxVal, 0, 'f', 1).arg(unit));
     m_statsAvgLabel->setText(QString("%1%2").arg(avg, 0, 'f', 1).arg(unit));
-    m_statsSamplesLabel->setText(QString::number(data.size()));
+    m_statsSamplesLabel->setText(QString::number(metricData.size()));
 }
 
 void HistoryDialog::updateComparisonTable()

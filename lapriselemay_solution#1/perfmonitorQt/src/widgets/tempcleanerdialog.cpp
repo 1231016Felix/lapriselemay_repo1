@@ -142,7 +142,7 @@ QWidget* TempCleanerDialog::createMainPage()
     m_categoryTree->setRootIsDecorated(true);
     m_categoryTree->setAnimated(true);
     
-    connect(m_categoryTree, &QTreeWidget::itemChanged, [this](QTreeWidgetItem* item, int column) {
+    connect(m_categoryTree, &QTreeWidget::itemChanged, [this]([[maybe_unused]] QTreeWidgetItem* item, int column) {
         if (column == 0) {
             updateTotalSize();
             updateButtonStates();
@@ -357,7 +357,7 @@ QString TempCleanerDialog::getRiskText(CleanRiskLevel level)
     }
 }
 
-QIcon TempCleanerDialog::getCategoryIcon(const QString& iconStr)
+QIcon TempCleanerDialog::getCategoryIcon([[maybe_unused]] const QString& iconStr)
 {
     // Could map emoji to actual icons here
     return QIcon();
@@ -374,7 +374,7 @@ void TempCleanerDialog::onAnalyze()
     updateButtonStates();
     
     m_progressBar->setVisible(true);
-    m_progressBar->setRange(0, m_cleaner->categories().size());
+    m_progressBar->setRange(0, static_cast<int>(m_cleaner->categories().size()));
     m_progressBar->setValue(0);
     
     m_statusLabel->setText(tr("Analyzing..."));

@@ -1,20 +1,21 @@
 using System.Threading;
 using System.Windows;
-using System.Drawing;
 using Microsoft.Win32;
 using WallpaperManager.Services;
 using WallpaperManager.Views;
-using H.NotifyIcon;
 using Application = System.Windows.Application;
 
 namespace WallpaperManager;
 
+/// <summary>
+/// Application principale avec gestion du cycle de vie et des services.
+/// </summary>
 public partial class App : Application
 {
     private static Mutex? _mutex;
     private const string MutexName = "Global\\WallpaperManager_SingleInstance";
     
-    private TaskbarIcon? _trayIcon;
+    private TrayIconService? _trayIconService;
     private static WallpaperRotationService? _rotationService;
     private static AnimatedWallpaperService? _animatedService;
     private static SystemMonitorService? _systemMonitorService;
@@ -53,44 +54,11 @@ public partial class App : Application
         
         try
         {
-            // Charger les paramètres
-            SettingsService.Load();
-            
-            // Initialiser les services
-            _rotationService = new WallpaperRotationService();
-            _animatedService = new AnimatedWallpaperService();
-            _systemMonitorService = new SystemMonitorService();
-            _isInitialized = true;
-            
-            // Configurer le monitoring système (plein écran, batterie)
-            _systemMonitorService.FullscreenStateChanged += OnFullscreenStateChanged;
-            _systemMonitorService.BatteryStateChanged += OnBatteryStateChanged;
-            _systemMonitorService.Start();
-            
-            // Créer l'icône dans le system tray
-            CreateTrayIcon();
-            
-            // Créer et afficher la fenêtre principale seulement si nécessaire
-            bool shouldStartMinimized = SettingsService.Current.StartMinimized || 
-                                        SettingsService.Current.WasInTrayOnLastExit;
-            
-            if (!shouldStartMinimized)
-            {
-                var mainWindow = new MainWindow();
-                MainWindow = mainWindow;
-                mainWindow.Show();
-                _mainWindowVisible = true;
-            }
-            else
-            {
-                _mainWindowVisible = false;
-            }
-            
-            // Démarrer la rotation si activée
-            if (SettingsService.Current.RotationEnabled)
-            {
-                _rotationService.Start();
-            }
+            InitializeServices();
+            ConfigureSystemMonitoring();
+            InitializeTrayIcon();
+            ShowMainWindowIfNeeded();
+            StartRotationIfEnabled();
             
             // S'abonner aux événements de veille/réveil du système
             SystemEvents.PowerModeChanged += OnPowerModeChanged;
@@ -106,79 +74,65 @@ public partial class App : Application
         }
     }
 
-    private void CreateTrayIcon()
+    private static void InitializeServices()
     {
-        try
+        SettingsService.Load();
+        
+        _rotationService = new WallpaperRotationService();
+        _animatedService = new AnimatedWallpaperService();
+        _systemMonitorService = new SystemMonitorService();
+        _isInitialized = true;
+    }
+
+    private static void ConfigureSystemMonitoring()
+    {
+        if (_systemMonitorService == null) return;
+        
+        _systemMonitorService.FullscreenStateChanged += OnFullscreenStateChanged;
+        _systemMonitorService.BatteryStateChanged += OnBatteryStateChanged;
+        _systemMonitorService.Start();
+    }
+
+    private void InitializeTrayIcon()
+    {
+        _trayIconService = new TrayIconService();
+        _trayIconService.OpenRequested += (_, _) => ShowMainWindow();
+        _trayIconService.NextWallpaperRequested += (_, _) => _rotationService?.Next();
+        _trayIconService.PreviousWallpaperRequested += (_, _) => _rotationService?.Previous();
+        _trayIconService.ExitRequested += (_, _) => ExitApplication();
+        _trayIconService.Initialize();
+    }
+
+    private void ShowMainWindowIfNeeded()
+    {
+        bool shouldStartMinimized = SettingsService.Current.StartMinimized || 
+                                    SettingsService.Current.WasInTrayOnLastExit;
+        
+        if (!shouldStartMinimized)
         {
-            // Créer le menu contextuel
-            var contextMenu = new System.Windows.Controls.ContextMenu();
-            
-            var openItem = new System.Windows.Controls.MenuItem { Header = "📂 Ouvrir Wallpaper Manager" };
-            openItem.Click += (_, _) => ShowMainWindow();
-            contextMenu.Items.Add(openItem);
-            
-            contextMenu.Items.Add(new System.Windows.Controls.Separator());
-            
-            var nextItem = new System.Windows.Controls.MenuItem { Header = "▶ Fond suivant" };
-            nextItem.Click += (_, _) => _rotationService?.Next();
-            contextMenu.Items.Add(nextItem);
-            
-            var prevItem = new System.Windows.Controls.MenuItem { Header = "◀ Fond précédent" };
-            prevItem.Click += (_, _) => _rotationService?.Previous();
-            contextMenu.Items.Add(prevItem);
-            
-            contextMenu.Items.Add(new System.Windows.Controls.Separator());
-            
-            var exitItem = new System.Windows.Controls.MenuItem { Header = "❌ Quitter complètement" };
-            exitItem.Click += (_, _) => ExitApplication();
-            contextMenu.Items.Add(exitItem);
-            
-            // Créer l'icône
-            _trayIcon = new TaskbarIcon
-            {
-                Icon = GetTrayIcon(),
-                ToolTipText = "Wallpaper Manager - Clic droit pour le menu",
-                ContextMenu = contextMenu,
-                Visibility = Visibility.Visible
-            };
-            
-            // Double-clic pour ouvrir
-            _trayIcon.TrayMouseDoubleClick += (_, _) => ShowMainWindow();
-            
-            // Forcer la création de l'icône
-            _trayIcon.ForceCreate();
+            var mainWindow = new MainWindow();
+            MainWindow = mainWindow;
+            mainWindow.Show();
+            _mainWindowVisible = true;
         }
-        catch (Exception ex)
+        else
         {
-            System.Diagnostics.Debug.WriteLine($"Erreur création tray icon: {ex}");
+            _mainWindowVisible = false;
         }
     }
 
-    private static Icon GetTrayIcon()
+    private static void StartRotationIfEnabled()
     {
-        try
+        if (SettingsService.Current.RotationEnabled)
         {
-            // Charger l'icône depuis les ressources
-            var iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "app.ico");
-            if (System.IO.File.Exists(iconPath))
-            {
-                return new Icon(iconPath);
-            }
+            _rotationService?.Start();
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Erreur chargement icône: {ex}");
-        }
-        
-        // Fallback sur l'icône système
-        return SystemIcons.Application;
     }
 
     private void ShowMainWindow()
     {
         Dispatcher.Invoke(() =>
         {
-            // Toujours créer une nouvelle fenêtre (l'ancienne a été fermée pour libérer la RAM)
             var mainWindow = new MainWindow();
             MainWindow = mainWindow;
             mainWindow.Show();
@@ -191,12 +145,24 @@ public partial class App : Application
     
     private void ExitApplication()
     {
-        _trayIcon?.Dispose();
-        _trayIcon = null;
+        _trayIconService?.Dispose();
+        _trayIconService = null;
         Shutdown();
     }
 
     protected override void OnExit(ExitEventArgs e)
+    {
+        try
+        {
+            DisposeServicesAsync();
+        }
+        finally
+        {
+            base.OnExit(e);
+        }
+    }
+
+    private void DisposeServicesAsync()
     {
         // Se désabonner des événements système
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
@@ -208,6 +174,7 @@ public partial class App : Application
             _systemMonitorService.BatteryStateChanged -= OnBatteryStateChanged;
             _systemMonitorService.Stop();
             _systemMonitorService.Dispose();
+            _systemMonitorService = null;
         }
         
         // Nettoyer le cache de thumbnails ancien
@@ -218,23 +185,38 @@ public partial class App : Application
         
         try { SettingsService.Save(); } catch { }
         
-        _rotationService?.Stop();
-        _rotationService?.Dispose();
+        // Disposer les services de wallpaper
+        if (_rotationService != null)
+        {
+            _rotationService.Stop();
+            _rotationService.Dispose();
+            _rotationService = null;
+        }
         
-        _animatedService?.Stop();
-        _animatedService?.Dispose();
+        if (_animatedService != null)
+        {
+            _animatedService.Stop();
+            _animatedService.Dispose();
+            _animatedService = null;
+        }
         
-        _trayIcon?.Dispose();
+        // Disposer le tray icon
+        _trayIconService?.Dispose();
+        _trayIconService = null;
         
+        // Libérer le mutex
         try
         {
             _mutex?.ReleaseMutex();
             _mutex?.Dispose();
+            _mutex = null;
         }
         catch { }
         
-        base.OnExit(e);
+        _isInitialized = false;
     }
+    
+    #region Event Handlers
     
     private static void OnUnhandledException(object sender, UnhandledExceptionEventArgs e)
     {
@@ -247,7 +229,7 @@ public partial class App : Application
         e.Handled = true;
     }
     
-    private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
+    private static void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
     {
         switch (e.Mode)
         {
@@ -263,22 +245,20 @@ public partial class App : Application
                 {
                     _rotationService?.Resume();
                 }
-                // Les fonds animés reprennent seulement si pas sur batterie/plein écran
                 if (_systemMonitorService != null && !_systemMonitorService.ShouldPauseAnimated())
                 {
                     // Note: Les fonds animés ne reprennent pas automatiquement après veille
-                    // L'utilisateur doit les relancer manuellement
                 }
                 break;
         }
     }
     
-    private void OnFullscreenStateChanged(object? sender, bool isFullscreen)
+    private static void OnFullscreenStateChanged(object? sender, bool isFullscreen)
     {
         if (!SettingsService.Current.PauseOnFullscreen)
             return;
         
-        Dispatcher.BeginInvoke(() =>
+        Current.Dispatcher.BeginInvoke(() =>
         {
             if (isFullscreen)
             {
@@ -288,7 +268,6 @@ public partial class App : Application
             else
             {
                 System.Diagnostics.Debug.WriteLine("Sortie du plein écran - Vérification reprise");
-                // Reprendre seulement si pas d'autre raison de pause
                 if (_systemMonitorService != null && !_systemMonitorService.ShouldPauseAnimated())
                 {
                     _animatedService?.Resume();
@@ -297,12 +276,12 @@ public partial class App : Application
         });
     }
     
-    private void OnBatteryStateChanged(object? sender, bool isOnBattery)
+    private static void OnBatteryStateChanged(object? sender, bool isOnBattery)
     {
         if (!SettingsService.Current.PauseOnBattery)
             return;
         
-        Dispatcher.BeginInvoke(() =>
+        Current.Dispatcher.BeginInvoke(() =>
         {
             if (isOnBattery)
             {
@@ -312,7 +291,6 @@ public partial class App : Application
             else
             {
                 System.Diagnostics.Debug.WriteLine("Sur secteur - Vérification reprise");
-                // Reprendre seulement si pas d'autre raison de pause
                 if (_systemMonitorService != null && !_systemMonitorService.ShouldPauseAnimated())
                 {
                     _animatedService?.Resume();
@@ -320,7 +298,11 @@ public partial class App : Application
             }
         });
     }
-
+    
+    #endregion
+    
+    #region Public Static Properties
+    
     public static WallpaperRotationService RotationService
     {
         get
@@ -344,4 +326,6 @@ public partial class App : Application
     public static bool IsInitialized => _isInitialized;
     
     public static void SetMainWindowVisible(bool visible) => _mainWindowVisible = visible;
+    
+    #endregion
 }

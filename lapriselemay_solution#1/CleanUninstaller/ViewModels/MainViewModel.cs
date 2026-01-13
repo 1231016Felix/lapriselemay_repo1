@@ -5,191 +5,136 @@ using CleanUninstaller.Services;
 using CleanUninstaller.Services.Interfaces;
 using CleanUninstaller.Helpers;
 using System.Collections.ObjectModel;
+using Shared.Core.Extensions;
+using Shared.Core.Helpers;
 
 namespace CleanUninstaller.ViewModels;
 
 /// <summary>
-/// ViewModel principal de l'application
-/// Utilise l'injection de dépendances pour tous les services
+/// ViewModel principal de l'application.
+/// Utilise l'injection de dépendances pour tous les services.
 /// </summary>
 public partial class MainViewModel : ObservableObject
 {
+    #region Constants
+    
+    private const long Size10Mb = 10L * 1024 * 1024;
+    private const long Size100Mb = 100L * 1024 * 1024;
+    private const long Size1Gb = 1024L * 1024 * 1024;
+    
+    #endregion
+
+    #region Dependencies
+    
     private readonly IProgramScannerService _programScanner;
     private readonly IUninstallService _uninstallService;
     private readonly IResidualScannerService _residualScanner;
     private readonly ISettingsService _settingsService;
+    private readonly IDialogService _dialogService;
     private readonly ILoggerService _logger;
+    
+    #endregion
+
+    #region State
     
     private List<InstalledProgram> _allPrograms = [];
     private CancellationTokenSource? _scanCts;
+    
+    #endregion
 
     /// <summary>
-    /// Constructeur avec injection de dépendances (recommandé)
+    /// Constructeur avec injection de dépendances
     /// </summary>
     public MainViewModel(
         IProgramScannerService programScanner,
         IUninstallService uninstallService,
         IResidualScannerService residualScanner,
         ISettingsService settingsService,
+        IDialogService dialogService,
         ILoggerService logger)
     {
         _programScanner = programScanner ?? throw new ArgumentNullException(nameof(programScanner));
         _uninstallService = uninstallService ?? throw new ArgumentNullException(nameof(uninstallService));
         _residualScanner = residualScanner ?? throw new ArgumentNullException(nameof(residualScanner));
         _settingsService = settingsService ?? throw new ArgumentNullException(nameof(settingsService));
+        _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         
         _logger.Debug("MainViewModel initialisé via injection de dépendances");
     }
 
-    /// <summary>
-    /// Constructeur par défaut utilisant le ServiceContainer (pour compatibilité XAML)
-    /// </summary>
-    public MainViewModel() : this(
-        ServiceContainer.GetService<IProgramScannerService>(),
-        ServiceContainer.GetService<IUninstallService>(),
-        ServiceContainer.GetService<IResidualScannerService>(),
-        ServiceContainer.GetService<ISettingsService>(),
-        ServiceContainer.GetService<ILoggerService>())
-    { }
-
     #region Properties
 
-    /// <summary>
-    /// Liste des programmes affichés (filtrée)
-    /// </summary>
     [ObservableProperty]
     private ObservableCollection<InstalledProgram> _programs = [];
 
-    /// <summary>
-    /// Programme sélectionné
-    /// </summary>
     [ObservableProperty]
     private InstalledProgram? _selectedProgram;
 
-    /// <summary>
-    /// Résidus trouvés
-    /// </summary>
     [ObservableProperty]
     private ObservableCollection<ResidualItem> _residuals = [];
 
-    /// <summary>
-    /// Texte de recherche
-    /// </summary>
     [ObservableProperty]
     private string _searchText = "";
 
-    /// <summary>
-    /// Afficher les apps système
-    /// </summary>
     [ObservableProperty]
     private bool _showSystemApps;
 
-    /// <summary>
-    /// Afficher les apps Windows Store
-    /// </summary>
     [ObservableProperty]
     private bool _showWindowsApps = true;
 
-    /// <summary>
-    /// Option de tri actuelle
-    /// </summary>
     [ObservableProperty]
     private SortOption _sortBy = SortOption.Name;
 
-    /// <summary>
-    /// Tri descendant
-    /// </summary>
     [ObservableProperty]
     private bool _sortDescending;
 
-    /// <summary>
-    /// Filtre par taille
-    /// </summary>
     [ObservableProperty]
     private SizeFilter _sizeFilter = SizeFilter.All;
 
-    /// <summary>
-    /// Indique si un scan est en cours
-    /// </summary>
     [ObservableProperty]
     private bool _isScanning;
 
-    /// <summary>
-    /// Indique si une désinstallation est en cours
-    /// </summary>
     [ObservableProperty]
     private bool _isUninstalling;
 
-    /// <summary>
-    /// Progression actuelle (0-100)
-    /// </summary>
     [ObservableProperty]
     private int _progress;
 
-    /// <summary>
-    /// Message de statut
-    /// </summary>
     [ObservableProperty]
     private string _statusMessage = "Prêt";
 
-    /// <summary>
-    /// Nombre total de programmes
-    /// </summary>
     [ObservableProperty]
     private int _totalProgramCount;
 
-    /// <summary>
-    /// Nombre de programmes affichés (filtrés)
-    /// </summary>
     public int FilteredProgramCount => Programs.Count;
-
-    /// <summary>
-    /// Nombre de programmes sélectionnés
-    /// </summary>
     public int SelectedCount => Programs.Count(p => p.IsSelected);
 
-    /// <summary>
-    /// Taille totale des programmes sélectionnés
-    /// </summary>
     public string SelectedTotalSize
     {
         get
         {
             var total = Programs.Where(p => p.IsSelected).Sum(p => p.EstimatedSize);
-            return CommonHelpers.FormatSizeOrZero(total);
+            return SizeFormatter.FormatOrZero(total);
         }
     }
 
-    /// <summary>
-    /// Taille totale des résidus sélectionnés
-    /// </summary>
     public string ResidualsTotalSize
     {
         get
         {
             var total = Residuals.Where(r => r.IsSelected).Sum(r => r.Size);
-            return CommonHelpers.FormatSizeOrZero(total);
+            return SizeFormatter.FormatOrZero(total);
         }
     }
 
-    /// <summary>
-    /// Indique si des programmes sont sélectionnés
-    /// </summary>
     public bool HasSelection => SelectedCount > 0;
-
-    /// <summary>
-    /// Indique si des résidus sont disponibles
-    /// </summary>
     public bool HasResiduals => Residuals.Any();
 
     #endregion
 
     #region Commands
 
-    /// <summary>
-    /// Commande de scan des programmes
-    /// </summary>
     [RelayCommand]
     private async Task ScanProgramsAsync()
     {
@@ -211,7 +156,8 @@ public partial class MainViewModel : ObservableObject
                 StatusMessage = p.StatusMessage;
             });
 
-            _allPrograms = await _programScanner.ScanAllProgramsAsync(progress, _scanCts.Token);
+            _allPrograms = await _programScanner.ScanAllProgramsAsync(progress, _scanCts.Token)
+                .ConfigureAwait(true);
             TotalProgramCount = _allPrograms.Count;
             
             ApplyFilters();
@@ -236,9 +182,6 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Commande d'annulation du scan
-    /// </summary>
     [RelayCommand]
     private void CancelScan()
     {
@@ -246,14 +189,6 @@ public partial class MainViewModel : ObservableObject
         _scanCts?.Cancel();
     }
 
-    /// <summary>
-    /// Référence à la fenêtre principale pour afficher les dialogues
-    /// </summary>
-    public Microsoft.UI.Xaml.XamlRoot? XamlRoot { get; set; }
-
-    /// <summary>
-    /// Commande de désinstallation du programme sélectionné
-    /// </summary>
     [RelayCommand]
     public async Task UninstallSelectedAsync()
     {
@@ -273,13 +208,12 @@ public partial class MainViewModel : ObservableObject
                 StatusMessage = p.StatusMessage;
             });
 
-            // Créer un point de restauration si configuré
             if (_settingsService.Settings.CreateRestorePointBeforeUninstall)
             {
                 _logger.Info("Création du point de restauration...");
                 StatusMessage = "Création du point de restauration...";
                 var restorePointCreated = await _uninstallService.CreateRestorePointAsync(
-                    $"Avant désinstallation de {program.DisplayName}");
+                    $"Avant désinstallation de {program.DisplayName}").ConfigureAwait(true);
                 
                 if (!restorePointCreated)
                 {
@@ -287,15 +221,13 @@ public partial class MainViewModel : ObservableObject
                 }
             }
 
-            // Désinstaller sans scanner les résidus automatiquement
             var result = await _uninstallService.UninstallProgramAsync(
                 program,
                 _settingsService.Settings.PreferQuietUninstall,
                 scanResiduals: false,
-                progress);
+                progress).ConfigureAwait(true);
 
-            // Attendre un peu pour que le système mette à jour le registre
-            await Task.Delay(2000);
+            await Task.Delay(2000).ConfigureAwait(true);
 
             if (result.Success)
             {
@@ -303,38 +235,32 @@ public partial class MainViewModel : ObservableObject
                 program.StatusMessage = "Désinstallé";
                 _logger.Info($"Désinstallation réussie: {program.DisplayName}");
 
-                // Retirer de la liste
                 _allPrograms.Remove(program);
                 Programs.Remove(program);
                 TotalProgramCount = _allPrograms.Count;
                 SelectedProgram = null;
 
-                // Afficher le dialogue d'analyse des résidus si l'option est activée
-                if (_settingsService.Settings.ScanResidualsAfterUninstall && XamlRoot != null)
+                if (_settingsService.Settings.ScanResidualsAfterUninstall)
                 {
                     StatusMessage = "Désinstallé - Analyse des résidus...";
                     _logger.Debug("Lancement de l'analyse des résidus");
                     
-                    var residualDialog = new Views.ResidualScanDialog(program)
-                    {
-                        XamlRoot = XamlRoot
-                    };
-                    
-                    await residualDialog.ShowAsync();
+                    var (deletionPerformed, residuals) = await _dialogService
+                        .ShowResidualScanDialogAsync(program)
+                        .ConfigureAwait(true);
 
-                    // Mettre à jour le statut après le dialogue
-                    if (residualDialog.DeletionPerformed)
+                    if (deletionPerformed)
                     {
                         StatusMessage = "Désinstallation et nettoyage terminés";
                         _logger.Info("Nettoyage des résidus effectué");
                     }
-                    else if (residualDialog.Residuals.Count > 0)
+                    else if (residuals.Count > 0)
                     {
-                        Residuals = new ObservableCollection<ResidualItem>(residualDialog.Residuals);
+                        Residuals.ReplaceWith(residuals);
                         OnPropertyChanged(nameof(HasResiduals));
                         OnPropertyChanged(nameof(ResidualsTotalSize));
-                        StatusMessage = $"Désinstallé - {residualDialog.Residuals.Count} résidu(s) restant(s)";
-                        _logger.Info($"{residualDialog.Residuals.Count} résidus trouvés");
+                        StatusMessage = $"Désinstallé - {residuals.Count} résidu(s) restant(s)";
+                        _logger.Info($"{residuals.Count} résidus trouvés");
                     }
                     else
                     {
@@ -367,9 +293,6 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Commande de désinstallation en lot avec support parallèle
-    /// </summary>
     [RelayCommand]
     public async Task UninstallBatchAsync()
     {
@@ -381,14 +304,14 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            // Créer un point de restauration si configuré
             if (_settingsService.Settings.CreateRestorePointBeforeUninstall)
             {
                 StatusMessage = "Création du point de restauration...";
                 _logger.Info("Création du point de restauration avant désinstallation en lot");
                 
                 var restorePointCreated = await _uninstallService.CreateRestorePointAsync(
-                    $"Avant désinstallation de {selectedPrograms.Count} programmes");
+                    $"Avant désinstallation de {selectedPrograms.Count} programmes")
+                    .ConfigureAwait(true);
                 
                 if (!restorePointCreated)
                 {
@@ -400,29 +323,27 @@ public partial class MainViewModel : ObservableObject
             var failCount = 0;
             var uninstalledPrograms = new List<InstalledProgram>();
 
-            // Utiliser le traitement parallèle si configuré
             if (_settingsService.Settings.UseParallelBatchUninstall && selectedPrograms.Count > 1)
             {
                 _logger.Info($"Mode parallèle activé (max {_settingsService.Settings.MaxParallelUninstalls} simultanés)");
-                (successCount, failCount, uninstalledPrograms) = await UninstallBatchParallelAsync(selectedPrograms);
+                (successCount, failCount, uninstalledPrograms) = await UninstallBatchParallelAsync(selectedPrograms)
+                    .ConfigureAwait(true);
             }
             else
             {
-                // Traitement séquentiel
                 _logger.Info("Mode séquentiel pour la désinstallation en lot");
-                (successCount, failCount, uninstalledPrograms) = await UninstallBatchSequentialAsync(selectedPrograms);
+                (successCount, failCount, uninstalledPrograms) = await UninstallBatchSequentialAsync(selectedPrograms)
+                    .ConfigureAwait(true);
             }
 
             TotalProgramCount = _allPrograms.Count;
             StatusMessage = $"Terminé: {successCount} réussi(s), {failCount} échec(s)";
             _logger.Info($"Désinstallation en lot terminée: {successCount} réussi(s), {failCount} échec(s)");
 
-            // Proposer l'analyse des résidus si l'option est activée et qu'il y a eu des succès
-            if (_settingsService.Settings.ScanResidualsAfterUninstall && 
-                uninstalledPrograms.Count > 0 && 
-                XamlRoot != null)
+            if (_settingsService.Settings.ScanResidualsAfterUninstall && uninstalledPrograms.Count > 0)
             {
-                await ScanBatchResidualsAsync(uninstalledPrograms, successCount, failCount);
+                await ScanBatchResidualsAsync(uninstalledPrograms, successCount, failCount)
+                    .ConfigureAwait(true);
             }
         }
         catch (Exception ex)
@@ -439,9 +360,6 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Désinstallation séquentielle (un programme à la fois)
-    /// </summary>
     private async Task<(int success, int fail, List<InstalledProgram> uninstalled)> UninstallBatchSequentialAsync(
         List<InstalledProgram> programs)
     {
@@ -461,7 +379,7 @@ public partial class MainViewModel : ObservableObject
             var result = await _uninstallService.UninstallProgramAsync(
                 program,
                 silent: true,
-                scanResiduals: false);
+                scanResiduals: false).ConfigureAwait(false);
 
             if (result.Success)
             {
@@ -483,9 +401,6 @@ public partial class MainViewModel : ObservableObject
         return (successCount, failCount, uninstalledPrograms);
     }
 
-    /// <summary>
-    /// Désinstallation parallèle avec throttling
-    /// </summary>
     private async Task<(int success, int fail, List<InstalledProgram> uninstalled)> UninstallBatchParallelAsync(
         List<InstalledProgram> programs)
     {
@@ -499,7 +414,7 @@ public partial class MainViewModel : ObservableObject
 
         var tasks = programs.Select(async program =>
         {
-            await semaphore.WaitAsync();
+            await semaphore.WaitAsync().ConfigureAwait(false);
             try
             {
                 program.Status = ProgramStatus.Uninstalling;
@@ -508,7 +423,7 @@ public partial class MainViewModel : ObservableObject
                 var result = await _uninstallService.UninstallProgramAsync(
                     program,
                     silent: true,
-                    scanResiduals: false);
+                    scanResiduals: false).ConfigureAwait(false);
 
                 lock (lockObj)
                 {
@@ -539,9 +454,8 @@ public partial class MainViewModel : ObservableObject
             }
         });
 
-        await Task.WhenAll(tasks);
+        await Task.WhenAll(tasks).ConfigureAwait(false);
 
-        // Mettre à jour la collection sur le thread UI
         foreach (var program in uninstalledPrograms)
         {
             Programs.Remove(program);
@@ -550,9 +464,6 @@ public partial class MainViewModel : ObservableObject
         return (successCount, failCount, uninstalledPrograms);
     }
 
-    /// <summary>
-    /// Scanne les résidus pour une liste de programmes désinstallés
-    /// </summary>
     private async Task ScanBatchResidualsAsync(List<InstalledProgram> uninstalledPrograms, int successCount, int failCount)
     {
         var allResiduals = new List<ResidualItem>();
@@ -565,7 +476,7 @@ public partial class MainViewModel : ObservableObject
             
             try
             {
-                var residuals = await _residualScanner.ScanAsync(program);
+                var residuals = await _residualScanner.ScanAsync(program).ConfigureAwait(false);
                 allResiduals.AddRange(residuals);
             }
             catch (Exception ex)
@@ -576,7 +487,7 @@ public partial class MainViewModel : ObservableObject
 
         if (allResiduals.Count > 0)
         {
-            Residuals = new ObservableCollection<ResidualItem>(allResiduals);
+            Residuals.ReplaceWith(allResiduals);
             OnPropertyChanged(nameof(HasResiduals));
             OnPropertyChanged(nameof(ResidualsTotalSize));
             
@@ -589,9 +500,6 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Commande de nettoyage des résidus
-    /// </summary>
     [RelayCommand]
     public async Task CleanupResidualsAsync()
     {
@@ -609,16 +517,12 @@ public partial class MainViewModel : ObservableObject
                 StatusMessage = p.StatusMessage;
             });
 
-            var result = await _uninstallService.CleanupResidualsAsync(Residuals, progress);
+            var result = await _uninstallService.CleanupResidualsAsync(Residuals, progress)
+                .ConfigureAwait(true);
 
-            // Retirer les éléments supprimés
-            var deleted = Residuals.Where(r => r.IsDeleted).ToList();
-            foreach (var item in deleted)
-            {
-                Residuals.Remove(item);
-            }
+            Residuals.RemoveWhere(r => r.IsDeleted);
 
-            StatusMessage = $"Nettoyage terminé: {result.DeletedCount} supprimé(s), {FormatSize(result.SpaceFreed)} libéré(s)";
+            StatusMessage = $"Nettoyage terminé: {result.DeletedCount} supprimé(s), {SizeFormatter.Format(result.SpaceFreed)} libéré(s)";
             _logger.Info($"Nettoyage terminé: {result.DeletedCount} supprimé(s), {result.SpaceFreed} octets libérés");
             
             if (result.FailedCount > 0)
@@ -647,9 +551,6 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Commande de scan des résidus pour le programme sélectionné
-    /// </summary>
     [RelayCommand]
     public async Task ScanResidualsAsync()
     {
@@ -667,8 +568,9 @@ public partial class MainViewModel : ObservableObject
                 StatusMessage = p.StatusMessage;
             });
 
-            var residuals = await _residualScanner.ScanAsync(SelectedProgram, progress);
-            Residuals = new ObservableCollection<ResidualItem>(residuals);
+            var residuals = await _residualScanner.ScanAsync(SelectedProgram, progress)
+                .ConfigureAwait(true);
+            Residuals.ReplaceWith(residuals);
 
             StatusMessage = $"{residuals.Count} résidus trouvés";
             _logger.Info($"{residuals.Count} résidus trouvés pour {SelectedProgram.DisplayName}");
@@ -688,9 +590,6 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Sélectionne/désélectionne tous les programmes
-    /// </summary>
     [RelayCommand]
     private void ToggleSelectAll()
     {
@@ -704,9 +603,6 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasSelection));
     }
 
-    /// <summary>
-    /// Sélectionne/désélectionne tous les résidus
-    /// </summary>
     [RelayCommand]
     private void ToggleSelectAllResiduals()
     {
@@ -718,9 +614,6 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(ResidualsTotalSize));
     }
 
-    /// <summary>
-    /// Sélectionne les résidus avec confiance élevée (High et VeryHigh uniquement)
-    /// </summary>
     [RelayCommand]
     private void SelectHighConfidenceResiduals()
     {
@@ -742,46 +635,36 @@ public partial class MainViewModel : ObservableObject
     partial void OnSortDescendingChanged(bool value) => ApplyFilters();
     partial void OnSizeFilterChanged(SizeFilter value) => ApplyFilters();
 
-    // Constantes pour les tailles (en octets)
-    private const long SIZE_10_MB = 10L * 1024 * 1024;
-    private const long SIZE_100_MB = 100L * 1024 * 1024;
-    private const long SIZE_1_GB = 1024L * 1024 * 1024;
-
     private void ApplyFilters()
     {
         var filtered = _allPrograms.AsEnumerable();
 
-        // Filtre de recherche
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
             var search = SearchText.ToLowerInvariant();
             filtered = filtered.Where(p => p.SearchName.Contains(search));
         }
 
-        // Filtre apps système
         if (!ShowSystemApps)
         {
             filtered = filtered.Where(p => !p.IsSystemComponent);
         }
 
-        // Filtre apps Windows Store
         if (!ShowWindowsApps)
         {
             filtered = filtered.Where(p => !p.IsWindowsApp);
         }
 
-        // Filtre par taille
         filtered = SizeFilter switch
         {
-            SizeFilter.Small => filtered.Where(p => p.EstimatedSize > 0 && p.EstimatedSize < SIZE_10_MB),
-            SizeFilter.Medium => filtered.Where(p => p.EstimatedSize >= SIZE_10_MB && p.EstimatedSize < SIZE_100_MB),
-            SizeFilter.Large => filtered.Where(p => p.EstimatedSize >= SIZE_100_MB && p.EstimatedSize < SIZE_1_GB),
-            SizeFilter.VeryLarge => filtered.Where(p => p.EstimatedSize >= SIZE_1_GB),
+            SizeFilter.Small => filtered.Where(p => p.EstimatedSize > 0 && p.EstimatedSize < Size10Mb),
+            SizeFilter.Medium => filtered.Where(p => p.EstimatedSize >= Size10Mb && p.EstimatedSize < Size100Mb),
+            SizeFilter.Large => filtered.Where(p => p.EstimatedSize >= Size100Mb && p.EstimatedSize < Size1Gb),
+            SizeFilter.VeryLarge => filtered.Where(p => p.EstimatedSize >= Size1Gb),
             SizeFilter.Unknown => filtered.Where(p => p.EstimatedSize == 0),
-            _ => filtered // SizeFilter.All
+            _ => filtered
         };
 
-        // Tri
         filtered = SortBy switch
         {
             SortOption.Name => SortDescending 
@@ -797,16 +680,13 @@ public partial class MainViewModel : ObservableObject
             _ => filtered.OrderBy(p => p.DisplayName)
         };
 
-        Programs = new ObservableCollection<InstalledProgram>(filtered);
+        Programs.ReplaceWith(filtered);
         OnPropertyChanged(nameof(FilteredProgramCount));
         OnPropertyChanged(nameof(SelectedCount));
         OnPropertyChanged(nameof(SelectedTotalSize));
         OnPropertyChanged(nameof(HasSelection));
     }
 
-    /// <summary>
-    /// Tri par taille avec les tailles inconnues à la fin
-    /// </summary>
     private IEnumerable<InstalledProgram> SortBySize(IEnumerable<InstalledProgram> programs)
     {
         var withSize = programs.Where(p => p.EstimatedSize > 0);
@@ -823,33 +703,13 @@ public partial class MainViewModel : ObservableObject
 
     #endregion
 
-    #region Helpers
+    #region Initialization
 
-    /// <summary>
-    /// Initialise le ViewModel (charger les settings et lancer le scan)
-    /// </summary>
     public async Task InitializeAsync()
     {
         _logger.Info("Initialisation du MainViewModel");
         _settingsService.Load();
-        await ScanProgramsAsync();
-    }
-
-    /// <summary>
-    /// Formate une taille en octets en chaîne lisible
-    /// </summary>
-    private static string FormatSize(long bytes)
-    {
-        if (bytes <= 0) return "0 o";
-        string[] suffixes = ["o", "Ko", "Mo", "Go", "To"];
-        var i = 0;
-        var size = (double)bytes;
-        while (size >= 1024 && i < suffixes.Length - 1)
-        {
-            size /= 1024;
-            i++;
-        }
-        return $"{size:N1} {suffixes[i]}";
+        await ScanProgramsAsync().ConfigureAwait(true);
     }
 
     #endregion

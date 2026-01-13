@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Win32;
 using CleanUninstaller.Models;
@@ -15,6 +16,34 @@ namespace CleanUninstaller.Services;
 /// </summary>
 public partial class ResidualScannerService : IResidualScannerService
 {
+    #region Constants
+    
+    /// <summary>Longueur minimale pour qu'un mot-clé soit considéré</summary>
+    private const int MinKeywordLength = 4;
+    
+    /// <summary>Longueur minimale pour un mot-clé "fort" (filtrage standard)</summary>
+    private const int MinStrongKeywordLength = 5;
+    
+    /// <summary>Longueur minimale pour un mot-clé "très fort" (haute confiance)</summary>
+    private const int MinVeryStrongKeywordLength = 6;
+    
+    /// <summary>Profondeur maximale de scan dans le registre</summary>
+    private const int MaxRegistryScanDepth = 3;
+    
+    /// <summary>Nombre maximum de résultats par dossier scanné</summary>
+    private const int MaxResultsPerFolder = 50;
+    
+    /// <summary>Taille minimale d'un dossier pour être considéré significatif (1 Ko)</summary>
+    private const long MinSignificantFolderSize = 1024;
+    
+    /// <summary>Délai d'expiration du cache des chemins protégés (minutes)</summary>
+    private const int ProtectedPathCacheExpirationMinutes = 30;
+    
+    /// <summary>Délai d'expiration du cache des tailles (minutes)</summary>
+    private const int SizeCacheExpirationMinutes = 5;
+    
+    #endregion
+    
     private readonly ILoggerService _logger;
 
     public ResidualScannerService(ILoggerService logger)
@@ -39,12 +68,12 @@ public partial class ResidualScannerService : IResidualScannerService
     private static readonly MemoryCacheEntryOptions _protectedPathCacheOptions = new()
     {
         Size = 1,
-        SlidingExpiration = TimeSpan.FromMinutes(30) // Expire après 30 min d'inactivité
+        SlidingExpiration = TimeSpan.FromMinutes(ProtectedPathCacheExpirationMinutes)
     };
     private static readonly MemoryCacheEntryOptions _sizeCacheOptions = new()
     {
         Size = 1,
-        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) // Les tailles peuvent changer
+        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(SizeCacheExpirationMinutes)
     };
 
     /// <summary>
@@ -60,8 +89,9 @@ public partial class ResidualScannerService : IResidualScannerService
 
     /// <summary>
     /// Dossiers ABSOLUMENT protégés - Ne jamais suggérer leur suppression
+    /// Utilise FrozenSet pour des performances de lecture optimales (~40% plus rapide)
     /// </summary>
-    private static readonly HashSet<string> ProtectedFolderNames = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly FrozenSet<string> ProtectedFolderNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         // Windows Core
         "Windows", "System32", "SysWOW64", "WinSxS", "assembly",
@@ -105,7 +135,7 @@ public partial class ResidualScannerService : IResidualScannerService
         
         // Autres critiques
         "Common Files", "Uninstall Information", "MicrosoftEdgeWebView"
-    };
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Chemins complets protégés (patterns)
@@ -148,19 +178,19 @@ public partial class ResidualScannerService : IResidualScannerService
     /// <summary>
     /// Clés de registre protégées (ne jamais supprimer)
     /// </summary>
-    private static readonly HashSet<string> ProtectedRegistryKeys = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly FrozenSet<string> ProtectedRegistryKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "Microsoft", "Windows", "Classes", "Policies", "CurrentVersion",
         "Explorer", "Shell", "Run", "RunOnce", "Uninstall",
         ".NET", "dotnet", "Visual Studio", "MSBuild", "DevDiv",
         "NVIDIA", "AMD", "Intel", "Realtek",
         "MicrosoftEdge", "Edge", "Internet Explorer"
-    };
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Mots-clés trop génériques qui ne doivent PAS déclencher une détection seuls
     /// </summary>
-    private static readonly HashSet<string> TooGenericKeywords = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly FrozenSet<string> TooGenericKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         // Termes graphiques/média (pourraient matcher des SDK)
         "video", "audio", "media", "graphics", "image", "picture", "photo",
@@ -186,7 +216,7 @@ public partial class ResidualScannerService : IResidualScannerService
         
         // Termes d'application génériques
         "app", "application", "program", "tool", "utility", "launcher"
-    };
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
     #endregion
 
@@ -316,7 +346,7 @@ public partial class ResidualScannerService : IResidualScannerService
         foreach (var keyword in keywords)
         {
             // Ignorer les mots-clés trop courts
-            if (keyword.Length < 4) continue;
+            if (keyword.Length < MinKeywordLength) continue;
             
             // Ignorer les mots-clés trop génériques
             if (TooGenericKeywords.Contains(keyword)) continue;
@@ -349,11 +379,11 @@ public partial class ResidualScannerService : IResidualScannerService
             
             // Pré-calculer les mots-clés forts UNE SEULE FOIS
             StrongKeywords = keywords
-                .Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k))
+                .Where(k => k.Length >= MinStrongKeywordLength && !TooGenericKeywords.Contains(k))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             
             VeryStrongKeywords = keywords
-                .Where(k => k.Length >= 6 && !TooGenericKeywords.Contains(k))
+                .Where(k => k.Length >= MinVeryStrongKeywordLength && !TooGenericKeywords.Contains(k))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             
             // Pré-calculer les noms normalisés
@@ -371,12 +401,12 @@ public partial class ResidualScannerService : IResidualScannerService
         /// <summary>
         /// Vérifie si le texte contient un mot-clé (avec longueur minimale optionnelle)
         /// </summary>
-        public bool ContainsKeyword(string text, int minKeywordLength = 5)
+        public bool ContainsKeyword(string text, int minKeywordLength = MinStrongKeywordLength)
         {
             if (string.IsNullOrEmpty(text)) return false;
             var lowerText = text.ToLowerInvariant();
             
-            var keywordsToCheck = minKeywordLength >= 6 ? VeryStrongKeywords : StrongKeywords;
+            var keywordsToCheck = minKeywordLength >= MinVeryStrongKeywordLength ? VeryStrongKeywords : StrongKeywords;
             return keywordsToCheck.Any(k => lowerText.Contains(k.ToLowerInvariant()));
         }
     }

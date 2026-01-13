@@ -1,0 +1,45 @@
+<Project>
+  <!-- Gestion centralisée des versions de packages NuGet -->
+  
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <!-- MVVM et UI Toolkit -->
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageVersion Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
+    <PackageVersion Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.251219" />
+    <PackageVersion Include="CommunityToolkit.WinUI.Converters" Version="8.2.251219" />
+    
+    <!-- Windows App SDK / WinUI 3 -->
+    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="1.8.251106002" />
+    <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7175" />
+    <PackageVersion Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
+    
+    <!-- System Extensions (.NET 9) -->
+    <PackageVersion Include="System.Threading.Channels" Version="9.0.0" />
+    <PackageVersion Include="System.Text.Json" Version="9.0.5" />
+    <PackageVersion Include="System.Drawing.Common" Version="9.0.5" />
+    <PackageVersion Include="System.Management" Version="9.0.5" />
+    
+    <!-- Injection de dépendances -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.5" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.5" />
+    
+    <!-- Base de données -->
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+    
+    <!-- System Tray -->
+    <PackageVersion Include="H.NotifyIcon.Wpf" Version="2.2.0" />
+    
+    <!-- Tâches planifiées -->
+    <PackageVersion Include="TaskScheduler" Version="2.11.0" />
+    
+    <!-- Vidéo (WallpaperManager) -->
+    <PackageVersion Include="LibVLCSharp" Version="3.9.3" />
+    <PackageVersion Include="LibVLCSharp.WPF" Version="3.9.3" />
+    <PackageVersion Include="VideoLAN.LibVLC.Windows" Version="3.0.21" />
+  </ItemGroup>
+
+</Project>

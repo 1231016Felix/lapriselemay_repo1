@@ -7,18 +7,13 @@
     <RootNamespace>CleanUninstaller</RootNamespace>
     <AssemblyName>CleanUninstaller</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsPackageType>None</WindowsPackageType>
     <PublishProfile>win-$(Platform).pubxml</PublishProfile>
     <Version>1.0.0</Version>
-    <Authors>Felix-Antoine</Authors>
-    <Company>Laprise-Lemay</Company>
     <Product>Clean Uninstaller</Product>
     <Description>Désinstalleur intelligent avec détection avancée des fichiers résiduels - Interface WinUI 3 moderne</Description>
-    <Copyright>© 2025 Felix-Antoine</Copyright>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
@@ -27,20 +22,8 @@
     <NoWarn>$(NoWarn);MVVMTK0045;CsWinRT1028</NoWarn>
   </PropertyGroup>
 
-  <!-- Configuration Debug -->
-  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>portable</DebugType>
-    <Optimize>false</Optimize>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-  </PropertyGroup>
-
-  <!-- Configuration Release -->
+  <!-- Configuration Release (hérite de Directory.Build.props) -->
   <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <DebugSymbols>false</DebugSymbols>
-    <DebugType>none</DebugType>
-    <Optimize>true</Optimize>
-    <DefineConstants>TRACE</DefineConstants>
     <PublishTrimmed>false</PublishTrimmed>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -49,36 +32,28 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Windows App SDK / WinUI 3 -->
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.251106002" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.7175" />
+    <!-- Windows App SDK / WinUI 3 (versions centralisées) -->
+    <PackageReference Include="Microsoft.WindowsAppSDK" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
+    <PackageReference Include="Microsoft.Windows.CsWinRT" />
     
-    <!-- Force WinRT.Runtime 2.2.0 pour résoudre le conflit -->
-    <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
+    <!-- MVVM Toolkit (versions centralisées) -->
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" />
+    <PackageReference Include="CommunityToolkit.WinUI.Converters" />
     
-    <!-- MVVM Toolkit -->
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.251219" />
-    <PackageReference Include="CommunityToolkit.WinUI.Controls.Sizers" Version="8.2.251219" />
-    <PackageReference Include="CommunityToolkit.WinUI.Converters" Version="8.2.251219" />
+    <!-- System Extensions (versions centralisées) -->
+    <PackageReference Include="System.Text.Json" />
+    <PackageReference Include="System.Drawing.Common" />
+    <PackageReference Include="System.Management" />
     
-    <!-- JSON pour les settings -->
-    <PackageReference Include="System.Text.Json" Version="9.0.5" />
+    <!-- Injection de dépendances (versions centralisées) -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     
-    <!-- Injection de dépendances -->
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.5" />
-    
-    <!-- Cache mémoire avec expiration pour éviter les fuites -->
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.5" />
-    
-    <!-- Pour l'extraction des icônes -->
-    <PackageReference Include="System.Drawing.Common" Version="9.0.5" />
-    
-    <!-- Pour WMI (System.Management) -->
-    <PackageReference Include="System.Management" Version="9.0.5" />
-    
-    <!-- Pour la gestion des tâches planifiées -->
-    <PackageReference Include="TaskScheduler" Version="2.11.0" />
+    <!-- Tâches planifiées -->
+    <PackageReference Include="TaskScheduler" />
   </ItemGroup>
 
   <!-- Référence COM pour Windows Script Host (résolution des raccourcis .lnk) -->
@@ -111,6 +86,10 @@
     <Content Include="Assets\*.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Shared\Shared.Core\Shared.Core.csproj" />
   </ItemGroup>
 
 </Project>

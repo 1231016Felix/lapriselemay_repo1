@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>Shared.Logging</RootNamespace>
+    <AssemblyName>Shared.Logging</AssemblyName>
+    <Version>1.0.0</Version>
+    <Description>Bibliothèque de logging partagée pour les projets Laprise-Lemay</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Threading.Channels" />
+  </ItemGroup>
+
+</Project>

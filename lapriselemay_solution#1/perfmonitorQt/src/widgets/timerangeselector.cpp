@@ -68,7 +68,7 @@ std::pair<QDateTime, QDateTime> TimeRangeSelector::timeRange() const
     return {m_startTime, m_endTime};
 }
 
-void TimeRangeSelector::onPresetChanged(int index)
+void TimeRangeSelector::onPresetChanged([[maybe_unused]] int index)
 {
     int hours = m_presetCombo->currentData().toInt();
     

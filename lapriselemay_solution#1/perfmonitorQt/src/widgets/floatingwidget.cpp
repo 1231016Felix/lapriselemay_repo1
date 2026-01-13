@@ -175,7 +175,7 @@ void FloatingWidget::paintEvent(QPaintEvent*)
 
 void FloatingWidget::updateMetrics(double cpuUsage, double memoryUsage,
                                    double gpuUsage, int batteryPercent,
-                                   double cpuTemp, double gpuTemp)
+                                   [[maybe_unused]] double cpuTemp, double gpuTemp)
 {
     // CPU
     m_cpuValueLabel->setText(formatValue(cpuUsage));

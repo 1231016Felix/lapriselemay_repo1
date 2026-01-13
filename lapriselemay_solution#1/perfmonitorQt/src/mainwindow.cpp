@@ -857,16 +857,16 @@ void MainWindow::showProcessImpact()
 
 // ============================================
 
-void MainWindow::onMonitorDataReady(const MonitorData& data)
+void MainWindow::onMonitorDataReady(const MonitorData& newData)
 {
     // Store the data for other uses
-    m_monitorData = data;
+    m_monitorData = newData;
     
     // Record metrics to history database
     recordMetrics();
     
     // Update CPU UI
-    const auto& cpuInfo = data.cpu;
+    const auto& cpuInfo = newData.cpu;
     m_cpuNameLabel->setText(cpuInfo.name);
     m_cpuUsageLabel->setText(QString("%1%").arg(cpuInfo.usage, 0, 'f', 1));
     m_cpuSpeedLabel->setText(QString("%1 GHz").arg(cpuInfo.currentSpeed, 0, 'f', 2));
@@ -879,7 +879,7 @@ void MainWindow::onMonitorDataReady(const MonitorData& data)
     m_cpuStatusLabel->setText(QString("CPU: %1%").arg(cpuInfo.usage, 0, 'f', 0));
     
     // Update Temperature UI
-    const auto& tempInfo = data.temperature;
+    const auto& tempInfo = newData.temperature;
     if (tempInfo.hasTemperature) {
         QString cpuTempColor;
         if (tempInfo.cpuTemperature >= 80) {
@@ -906,7 +906,7 @@ void MainWindow::onMonitorDataReady(const MonitorData& data)
     }
     
     // Update GPU UI
-    const auto& gpuInfo = data.primaryGpu;
+    const auto& gpuInfo = newData.primaryGpu;
     m_gpuNameLabel->setText(gpuInfo.name);
     m_gpuVendorLabel->setText(gpuInfo.vendor);
     m_gpuUsageLabel->setText(QString("%1%").arg(gpuInfo.usage, 0, 'f', 1));
@@ -931,7 +931,7 @@ void MainWindow::onMonitorDataReady(const MonitorData& data)
     m_gpuStatusLabel->setText(QString("GPU: %1%").arg(gpuInfo.usage, 0, 'f', 0));
     
     // Update Memory UI
-    const auto& memInfo = data.memory;
+    const auto& memInfo = newData.memory;
     m_memUsageLabel->setText(QString("%1 GB / %2 GB")
         .arg(memInfo.usedGB, 0, 'f', 1)
         .arg(memInfo.totalGB, 0, 'f', 1));
@@ -950,21 +950,21 @@ void MainWindow::onMonitorDataReady(const MonitorData& data)
     m_memStatusLabel->setText(QString("Memory: %1%").arg(memInfo.usagePercent, 0, 'f', 0));
     
     // Update Disk UI
-    const auto& diskActivity = data.diskActivity;
+    const auto& diskActivity = newData.diskActivity;
     m_diskReadLabel->setText(formatBytes(diskActivity.readBytesPerSec) + "/s");
     m_diskWriteLabel->setText(formatBytes(diskActivity.writeBytesPerSec) + "/s");
     m_diskReadGraph->addValue(diskActivity.readBytesPerSec / 1048576.0);  // MB/s
     m_diskWriteGraph->addValue(diskActivity.writeBytesPerSec / 1048576.0);
     
     // Update Network UI
-    const auto& netActivity = data.networkActivity;
+    const auto& netActivity = newData.networkActivity;
     m_netSendLabel->setText(formatBytes(netActivity.sentBytesPerSec) + "/s");
     m_netRecvLabel->setText(formatBytes(netActivity.receivedBytesPerSec) + "/s");
     m_netSendGraph->addValue(netActivity.sentBytesPerSec / 1048576.0);
     m_netRecvGraph->addValue(netActivity.receivedBytesPerSec / 1048576.0);
     
     // Update Battery UI
-    const auto& batteryInfo = data.battery;
+    const auto& batteryInfo = newData.battery;
     if (batteryInfo.hasBattery) {
         m_batteryPercentLabel->setText(QString("%1%").arg(batteryInfo.percentage));
         m_batteryStatusLabel2->setText(batteryInfo.status);
@@ -1036,7 +1036,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
         
         QPushButton* minimizeBtn = msgBox.addButton(tr("Minimize to Tray"), QMessageBox::ActionRole);
         QPushButton* quitBtn = msgBox.addButton(tr("Quit"), QMessageBox::DestructiveRole);
-        QPushButton* cancelBtn = msgBox.addButton(QMessageBox::Cancel);
+        msgBox.addButton(QMessageBox::Cancel);
         
         msgBox.setDefaultButton(minimizeBtn);
         msgBox.exec();

@@ -3,39 +3,27 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon Condition="Exists('Resources\app.ico')">Resources\app.ico</ApplicationIcon>
     <AssemblyName>QuickLauncher</AssemblyName>
     <RootNamespace>QuickLauncher</RootNamespace>
     <Version>1.0.0</Version>
-    <Authors>Felix-Antoine</Authors>
     <Description>Application Launcher style Spotlight/PowerToys Run</Description>
     <StartupObject>QuickLauncher.App</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
-  <!-- Configuration Debug -->
-  <PropertyGroup Condition="'$(Configuration)'=='Debug'">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>portable</DebugType>
-    <Optimize>false</Optimize>
-  </PropertyGroup>
-
-  <!-- Configuration Release optimisée -->
-  <PropertyGroup Condition="'$(Configuration)'=='Release'">
-    <DebugSymbols>false</DebugSymbols>
-    <DebugType>none</DebugType>
-    <Optimize>true</Optimize>
-  </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="System.Data.SQLite.Core" Version="1.0.119" />
-    <PackageReference Include="H.NotifyIcon.Wpf" Version="2.2.0" />
+    <!-- MVVM Toolkit (version centralisée) -->
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    
+    <!-- SQLite - Migré vers Microsoft.Data.Sqlite (plus moderne, maintenu par Microsoft) -->
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    
+    <!-- System Tray (version centralisée) -->
+    <PackageReference Include="H.NotifyIcon.Wpf" />
   </ItemGroup>
 
   <ItemGroup>

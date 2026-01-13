@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.UI.Xaml;
 using CleanUninstaller.Services.Interfaces;
 using CleanUninstaller.ViewModels;
 
@@ -12,6 +13,15 @@ public static class ServiceContainer
 {
     private static IServiceProvider? _serviceProvider;
     private static readonly object _lock = new();
+    private static Func<XamlRoot?>? _xamlRootProvider;
+
+    /// <summary>
+    /// Configure le provider de XamlRoot (doit être appelé avant d'utiliser les services UI)
+    /// </summary>
+    public static void SetXamlRootProvider(Func<XamlRoot?> provider)
+    {
+        _xamlRootProvider = provider ?? throw new ArgumentNullException(nameof(provider));
+    }
 
     /// <summary>
     /// Obtient le fournisseur de services (lazy initialization thread-safe)
@@ -54,6 +64,10 @@ public static class ServiceContainer
         
         // Moniteur d'installation (conserve l'état)
         services.AddSingleton<IInstallationMonitorService, InstallationMonitorService>();
+        
+        // Service de dialogues (singleton car utilise le même XamlRoot)
+        services.AddSingleton<IDialogService>(sp => 
+            new DialogService(_xamlRootProvider ?? (() => null)));
 
         // ==========================================
         // Services Transient (nouvelle instance à chaque demande)
@@ -120,6 +134,7 @@ public static class ServiceContainer
             disposable.Dispose();
         }
         _serviceProvider = null;
+        _xamlRootProvider = null;
     }
 }
 
