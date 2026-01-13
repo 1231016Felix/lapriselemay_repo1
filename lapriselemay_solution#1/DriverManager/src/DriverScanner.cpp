@@ -4,10 +4,46 @@
 #include <fstream>
 #include <iomanip>
 #include <algorithm>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace DriverManager {
 
-    // Known device class GUIDs
+    // Helper pour convertir un GUID en wstring
+    static std::wstring GuidToWString(const GUID& guid) {
+        wchar_t buffer[64];
+        swprintf_s(buffer, L"{%08lX-%04hX-%04hX-%02hhX%02hhX-%02hhX%02hhX%02hhX%02hhX%02hhX%02hhX}",
+            guid.Data1, guid.Data2, guid.Data3,
+            guid.Data4[0], guid.Data4[1], guid.Data4[2], guid.Data4[3],
+            guid.Data4[4], guid.Data4[5], guid.Data4[6], guid.Data4[7]);
+        return buffer;
+    }
+
+    // Hash map pour lookup O(1) des GUIDs par string (évite CLSIDFromString)
+    static std::unordered_map<std::wstring, DriverType> CreateGuidLookupMap() {
+        std::unordered_map<std::wstring, DriverType> map;
+        // Convertir les GUIDs connus en strings une seule fois au démarrage
+        map[GuidToWString(GUID_DEVCLASS_DISPLAY)] = DriverType::Display;
+        map[GuidToWString(GUID_DEVCLASS_MEDIA)] = DriverType::Audio;
+        map[GuidToWString(GUID_DEVCLASS_NET)] = DriverType::Network;
+        map[GuidToWString(GUID_DEVCLASS_DISKDRIVE)] = DriverType::Storage;
+        map[GuidToWString(GUID_DEVCLASS_USB)] = DriverType::USB;
+        map[GuidToWString(GUID_DEVCLASS_BLUETOOTH)] = DriverType::Bluetooth;
+        map[GuidToWString(GUID_DEVCLASS_PRINTER)] = DriverType::Printer;
+        map[GuidToWString(GUID_DEVCLASS_HIDCLASS)] = DriverType::HID;
+        map[GuidToWString(GUID_DEVCLASS_SYSTEM)] = DriverType::System;
+        map[GuidToWString(GUID_DEVCLASS_KEYBOARD)] = DriverType::HID;
+        map[GuidToWString(GUID_DEVCLASS_MOUSE)] = DriverType::HID;
+        map[GuidToWString(GUID_DEVCLASS_MONITOR)] = DriverType::Display;
+        map[GuidToWString(GUID_DEVCLASS_VOLUME)] = DriverType::Storage;
+        map[GuidToWString(GUID_DEVCLASS_HDC)] = DriverType::Storage;
+        return map;
+    }
+
+    // Map statique initialisée une seule fois
+    static const std::unordered_map<std::wstring, DriverType> s_guidLookup = CreateGuidLookupMap();
+
+    // Known device class GUIDs (conservé pour ScanDeviceClass)
     const std::vector<std::pair<GUID, DriverType>> DriverScanner::s_classGuids = {
         { GUID_DEVCLASS_DISPLAY,        DriverType::Display },
         { GUID_DEVCLASS_MEDIA,          DriverType::Audio },
@@ -113,19 +149,24 @@ namespace DriverManager {
     }
 
     void DriverScanner::ScanDeviceClass(const GUID& classGuid, DriverType type) {
-        HDEVINFO deviceInfoSet;
+        // Utiliser le wrapper RAII pour garantir la libération des ressources
+        DeviceInfoSetHandle deviceInfoSet;
         
         if (classGuid == GUID_NULL) {
-            deviceInfoSet = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, 
-                DIGCF_ALLCLASSES | DIGCF_PRESENT);
+            deviceInfoSet.Reset(SetupDiGetClassDevsW(nullptr, nullptr, nullptr, 
+                DIGCF_ALLCLASSES | DIGCF_PRESENT));
         } else {
-            deviceInfoSet = SetupDiGetClassDevsW(&classGuid, nullptr, nullptr, 
-                DIGCF_PRESENT);
+            deviceInfoSet.Reset(SetupDiGetClassDevsW(&classGuid, nullptr, nullptr, 
+                DIGCF_PRESENT));
         }
 
-        if (deviceInfoSet == INVALID_HANDLE_VALUE) {
+        if (!deviceInfoSet.IsValid()) {
             return;
         }
+
+        // Collecter d'abord tous les drivers sans lock
+        std::vector<DriverInfo> scannedDrivers;
+        scannedDrivers.reserve(50);
 
         SP_DEVINFO_DATA deviceInfoData;
         deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
@@ -142,29 +183,38 @@ namespace DriverManager {
                 info.type = type;
             }
 
-            // Add to appropriate category
-            std::lock_guard<std::mutex> lock(m_mutex);
-            auto& category = GetOrCreateCategory(info.type);
-            
-            // Avoid duplicates
-            bool exists = false;
-            for (const auto& existing : category.drivers) {
-                if (existing.deviceInstanceId == info.deviceInstanceId) {
-                    exists = true;
-                    break;
-                }
-            }
-            
-            if (!exists && !info.deviceName.empty()) {
-                category.drivers.push_back(info);
+            if (!info.deviceName.empty()) {
+                scannedDrivers.push_back(std::move(info));
             }
 
             if (m_progressCallback) {
-                m_progressCallback(i, -1, info.deviceName);
+                m_progressCallback(i, -1, scannedDrivers.empty() ? L"" : scannedDrivers.back().deviceName);
             }
         }
 
-        SetupDiDestroyDeviceInfoList(deviceInfoSet);
+        // Un seul lock pour ajouter tous les drivers avec détection O(1) des doublons
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            
+            // Construire un set des IDs existants pour lookup O(1)
+            std::unordered_set<std::wstring> existingIds;
+            for (const auto& cat : m_categories) {
+                for (const auto& driver : cat.drivers) {
+                    existingIds.insert(driver.deviceInstanceId);
+                }
+            }
+            
+            for (auto& info : scannedDrivers) {
+                // O(1) au lieu de O(n) pour chaque driver
+                if (existingIds.find(info.deviceInstanceId) == existingIds.end()) {
+                    auto& category = GetOrCreateCategory(info.type);
+                    existingIds.insert(info.deviceInstanceId); // Pour éviter doublons dans ce batch
+                    category.drivers.push_back(std::move(info));
+                }
+            }
+        }
+        
+        // Le wrapper RAII libère automatiquement deviceInfoSet ici
     }
 
     DriverInfo DriverScanner::GetDriverInfo(HDEVINFO deviceInfoSet, SP_DEVINFO_DATA& deviceInfoData) {
@@ -268,16 +318,19 @@ namespace DriverManager {
     }
 
     DriverType DriverScanner::ClassifyDriverType(const std::wstring& classGuid) {
-        // Convert string GUID to GUID structure
-        GUID guid;
-        if (CLSIDFromString(classGuid.c_str(), &guid) != S_OK) {
-            return DriverType::Other;
+        // Lookup O(1) dans la hash map au lieu de convertir le GUID
+        auto it = s_guidLookup.find(classGuid);
+        if (it != s_guidLookup.end()) {
+            return it->second;
         }
 
-        for (const auto& [knownGuid, type] : s_classGuids) {
-            if (IsEqualGUID(guid, knownGuid)) {
-                return type;
-            }
+        // Essayer avec des variantes de casse (les GUIDs peuvent être en minuscules)
+        std::wstring upperGuid = classGuid;
+        std::transform(upperGuid.begin(), upperGuid.end(), upperGuid.begin(), ::towupper);
+        
+        it = s_guidLookup.find(upperGuid);
+        if (it != s_guidLookup.end()) {
+            return it->second;
         }
 
         return DriverType::Other;
@@ -357,11 +410,11 @@ namespace DriverManager {
             }
         }
         
-        // Method 2: Fallback to SetupDi approach
-        HDEVINFO deviceInfoSet = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, 
-            DIGCF_ALLCLASSES | DIGCF_PRESENT);
+        // Method 2: Fallback to SetupDi approach avec RAII
+        DeviceInfoSetHandle deviceInfoSet(SetupDiGetClassDevsW(nullptr, nullptr, nullptr, 
+            DIGCF_ALLCLASSES | DIGCF_PRESENT));
         
-        if (deviceInfoSet == INVALID_HANDLE_VALUE) {
+        if (!deviceInfoSet.IsValid()) {
             return false;
         }
 
@@ -402,7 +455,7 @@ namespace DriverManager {
             }
         }
 
-        SetupDiDestroyDeviceInfoList(deviceInfoSet);
+        // Le wrapper RAII libère automatiquement deviceInfoSet
         return success;
     }
 
@@ -421,11 +474,11 @@ namespace DriverManager {
             }
         }
         
-        // Method 2: Fallback to SetupDi approach
-        HDEVINFO deviceInfoSet = SetupDiGetClassDevsW(nullptr, nullptr, nullptr, 
-            DIGCF_ALLCLASSES | DIGCF_PRESENT);
+        // Method 2: Fallback to SetupDi approach avec RAII
+        DeviceInfoSetHandle deviceInfoSet(SetupDiGetClassDevsW(nullptr, nullptr, nullptr, 
+            DIGCF_ALLCLASSES | DIGCF_PRESENT));
         
-        if (deviceInfoSet == INVALID_HANDLE_VALUE) {
+        if (!deviceInfoSet.IsValid()) {
             return false;
         }
 
@@ -466,7 +519,7 @@ namespace DriverManager {
             }
         }
 
-        SetupDiDestroyDeviceInfoList(deviceInfoSet);
+        // Le wrapper RAII libère automatiquement deviceInfoSet
         return success;
     }
 

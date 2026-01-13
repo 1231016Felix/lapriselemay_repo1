@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using CleanUninstaller.Models;
+using CleanUninstaller.Services.Interfaces;
 
 namespace CleanUninstaller.Services;
 
@@ -10,9 +11,10 @@ namespace CleanUninstaller.Services;
 /// Combine la surveillance en temps réel (FileSystemWatcher) et les snapshots
 /// pour une détection complète des changements
 /// </summary>
-public class InstallationMonitorService : IDisposable
+public class InstallationMonitorService : IInstallationMonitorService, IDisposable
 {
     private readonly SnapshotService _snapshotService;
+    private readonly ILoggerService _logger;
     private readonly List<FileSystemWatcher> _fileWatchers = [];
     private readonly ConcurrentDictionary<string, SystemChange> _realTimeChanges = new();
     private readonly string _dataFolder;
@@ -55,13 +57,59 @@ public class InstallationMonitorService : IDisposable
     /// </summary>
     public bool IsMonitoring => _currentMonitoring?.Status == MonitoringStatus.Monitoring;
 
+    #region IInstallationMonitorService Implementation
+
+    /// <summary>
+    /// Démarre le monitoring (implémentation de l'interface)
+    /// </summary>
+    void IInstallationMonitorService.StartMonitoring()
+    {
+        // Démarre le monitoring de façon synchrone
+        _ = StartMonitoringAsync();
+    }
+
+    /// <summary>
+    /// Arrête le monitoring (implémentation de l'interface)
+    /// </summary>
+    void IInstallationMonitorService.StopMonitoring()
+    {
+        // Arrête le monitoring de façon synchrone
+        _ = StopMonitoringAsync();
+    }
+
+    /// <summary>
+    /// Prend un snapshot du système (implémentation de l'interface)
+    /// </summary>
+    async Task<InstallationSnapshot> IInstallationMonitorService.TakeSnapshotAsync(CancellationToken cancellationToken)
+    {
+        return await _snapshotService.CreateSnapshotAsync(
+            SnapshotType.Manual,
+            "Manual Snapshot",
+            null,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Compare deux snapshots (implémentation de l'interface)
+    /// </summary>
+    async Task<List<SystemChange>> IInstallationMonitorService.CompareSnapshotsAsync(
+        InstallationSnapshot before,
+        InstallationSnapshot after,
+        CancellationToken cancellationToken)
+    {
+        return await _snapshotService.CompareSnapshotsAsync(before, after, null, cancellationToken);
+    }
+
+    #endregion
+
     /// <summary>
     /// Nombre de changements détectés en temps réel
     /// </summary>
     public int RealTimeChangeCount => _realTimeChanges.Count;
 
-    public InstallationMonitorService()
+    public InstallationMonitorService(ILoggerService logger)
     {
+        _logger = logger;
         _snapshotService = new SnapshotService();
         _dataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -70,6 +118,10 @@ public class InstallationMonitorService : IDisposable
 
         Directory.CreateDirectory(_dataFolder);
     }
+
+    // Constructeur sans paramètre pour compatibilité
+    public InstallationMonitorService() : this(ServiceContainer.GetService<ILoggerService>())
+    { }
 
     /// <summary>
     /// Démarre le monitoring d'une nouvelle installation

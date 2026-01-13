@@ -121,7 +121,8 @@ public enum SnapshotType
 {
     Before,
     After,
-    Baseline
+    Baseline,
+    Manual
 }
 
 /// <summary>

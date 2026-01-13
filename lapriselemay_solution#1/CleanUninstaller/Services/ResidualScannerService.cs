@@ -1,8 +1,10 @@
 using System.Text.RegularExpressions;
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Win32;
 using CleanUninstaller.Models;
 using CleanUninstaller.Helpers;
+using CleanUninstaller.Services.Interfaces;
 
 namespace CleanUninstaller.Services;
 
@@ -11,11 +13,48 @@ namespace CleanUninstaller.Services;
 /// Détecte les fichiers, dossiers, clés de registre, services et tâches planifiées orphelins
 /// SÉCURISÉ: Protège les fichiers système, SDK, et outils de développement
 /// </summary>
-public partial class ResidualScannerService
+public partial class ResidualScannerService : IResidualScannerService
 {
+    private readonly ILoggerService _logger;
+
+    public ResidualScannerService(ILoggerService logger)
+    {
+        _logger = logger;
+    }
+
+    // Constructeur sans paramètre pour compatibilité
+    public ResidualScannerService() : this(ServiceContainer.GetService<ILoggerService>())
+    { }
+
     // Cache pour les vérifications de chemins protégés (optimisation performance)
-    private static readonly ConcurrentDictionary<string, bool> _protectedPathCache = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly ConcurrentDictionary<string, long> _directorySizeCache = new(StringComparer.OrdinalIgnoreCase);
+    // Utilise MemoryCache avec expiration pour éviter les fuites mémoire
+    private static readonly MemoryCache _protectedPathCache = new(new MemoryCacheOptions
+    {
+        SizeLimit = 10000 // Limite à 10000 entrées
+    });
+    private static readonly MemoryCache _directorySizeCache = new(new MemoryCacheOptions
+    {
+        SizeLimit = 5000 // Limite à 5000 entrées
+    });
+    private static readonly MemoryCacheEntryOptions _protectedPathCacheOptions = new()
+    {
+        Size = 1,
+        SlidingExpiration = TimeSpan.FromMinutes(30) // Expire après 30 min d'inactivité
+    };
+    private static readonly MemoryCacheEntryOptions _sizeCacheOptions = new()
+    {
+        Size = 1,
+        AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) // Les tailles peuvent changer
+    };
+
+    /// <summary>
+    /// Vide les caches pour libérer la mémoire. Appelé après un scan complet.
+    /// </summary>
+    public static void ClearCaches()
+    {
+        _protectedPathCache.Compact(1.0); // Supprime toutes les entrées
+        _directorySizeCache.Compact(1.0);
+    }
     
     #region Protected Paths and Folders - CRITICAL SAFETY
 
@@ -197,11 +236,12 @@ public partial class ResidualScannerService
         if (string.IsNullOrEmpty(path)) return true; // Par sécurité
 
         // Utiliser le cache pour éviter les recalculs
-        if (_protectedPathCache.TryGetValue(path, out var cached))
+        var cacheKey = path.ToLowerInvariant();
+        if (_protectedPathCache.TryGetValue(cacheKey, out bool cached))
             return cached;
 
         var isProtected = CheckPathProtection(path);
-        _protectedPathCache.TryAdd(path, isProtected);
+        _protectedPathCache.Set(cacheKey, isProtected, _protectedPathCacheOptions);
         return isProtected;
     }
 
@@ -290,6 +330,94 @@ public partial class ResidualScannerService
         return filtered;
     }
 
+    /// <summary>
+    /// Contexte de scan pré-calculé pour éviter les recalculs répétés
+    /// </summary>
+    private sealed class ScanContext
+    {
+        public HashSet<string> AllKeywords { get; }
+        public HashSet<string> StrongKeywords { get; }  // >= 5 chars, non génériques
+        public HashSet<string> VeryStrongKeywords { get; }  // >= 6 chars, non génériques
+        public InstalledProgram Program { get; }
+        public string? CleanDisplayNameLower { get; }
+        public string? RegistryKeyNameLower { get; }
+
+        public ScanContext(HashSet<string> keywords, InstalledProgram program)
+        {
+            AllKeywords = keywords;
+            Program = program;
+            
+            // Pré-calculer les mots-clés forts UNE SEULE FOIS
+            StrongKeywords = keywords
+                .Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            
+            VeryStrongKeywords = keywords
+                .Where(k => k.Length >= 6 && !TooGenericKeywords.Contains(k))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            
+            // Pré-calculer les noms normalisés
+            if (!string.IsNullOrEmpty(program.DisplayName))
+            {
+                CleanDisplayNameLower = CleanNameRegex().Replace(program.DisplayName, "").ToLowerInvariant();
+            }
+            
+            if (!string.IsNullOrEmpty(program.RegistryKeyName))
+            {
+                RegistryKeyNameLower = program.RegistryKeyName.ToLowerInvariant();
+            }
+        }
+
+        /// <summary>
+        /// Vérifie si le texte contient un mot-clé (avec longueur minimale optionnelle)
+        /// </summary>
+        public bool ContainsKeyword(string text, int minKeywordLength = 5)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            var lowerText = text.ToLowerInvariant();
+            
+            var keywordsToCheck = minKeywordLength >= 6 ? VeryStrongKeywords : StrongKeywords;
+            return keywordsToCheck.Any(k => lowerText.Contains(k.ToLowerInvariant()));
+        }
+    }
+
+    /// <summary>
+    /// Vérifie si le texte contient un des mots-clés forts (helper statique)
+    /// </summary>
+    private static bool ContainsStrongKeyword(string text, HashSet<string> strongKeywords)
+    {
+        if (string.IsNullOrEmpty(text) || strongKeywords.Count == 0) return false;
+        var lowerText = text.ToLowerInvariant();
+        return strongKeywords.Any(k => lowerText.Contains(k.ToLowerInvariant()));
+    }
+
+    #endregion
+
+    #region ScanContext Overloads
+    
+    // Surcharges pour accepter ScanContext au lieu de HashSet<string> + InstalledProgram
+    
+    private Task<List<ResidualItem>> ScanShortcutsAsync(ScanContext ctx, CancellationToken cancellationToken)
+        => ScanShortcutsAsync(ctx.AllKeywords, ctx.Program, cancellationToken);
+    
+    private Task<List<ResidualItem>> ScanTempFilesAsync(ScanContext ctx, CancellationToken cancellationToken)
+        => ScanTempFilesAsync(ctx.AllKeywords, cancellationToken);
+    
+    private Task<List<ResidualItem>> ScanInstallLocationAsync(ScanContext ctx, CancellationToken cancellationToken)
+        => ScanInstallLocationAsync(ctx.AllKeywords, ctx.Program, cancellationToken);
+    
+    private Task<List<ResidualItem>> ScanFileAssociationsAsync(ScanContext ctx, CancellationToken cancellationToken)
+        => ScanFileAssociationsAsync(ctx.AllKeywords, ctx.Program, cancellationToken);
+    
+    private Task<List<ResidualItem>> ScanComComponentsAsync(ScanContext ctx, CancellationToken cancellationToken)
+        => ScanComComponentsAsync(ctx.AllKeywords, ctx.Program, cancellationToken);
+    
+    private Task<List<ResidualItem>> ScanEnvironmentPathAsync(ScanContext ctx, CancellationToken cancellationToken)
+        => ScanEnvironmentPathAsync(ctx.AllKeywords, ctx.Program, cancellationToken);
+    
+    private Task<List<ResidualItem>> DeepScanProgramFilesAsync(ScanContext ctx, CancellationToken cancellationToken)
+        => DeepScanProgramFilesAsync(ctx.AllKeywords, ctx.Program, cancellationToken);
+    
     #endregion
 
 
@@ -307,81 +435,136 @@ public partial class ResidualScannerService
     }
 
     /// <summary>
-    /// Scan complet des résidus pour un programme (alias)
+    /// Scan complet des résidus pour un programme (alias) - VERSION PARALLÉLISÉE ET OPTIMISÉE
     /// </summary>
     public async Task<List<ResidualItem>> ScanResidualsAsync(
         InstalledProgram program,
         IProgress<ScanProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var residuals = new List<ResidualItem>();
         var rawKeywords = ExtractKeywords(program);
-        var keywords = FilterKeywords(rawKeywords); // FILTRER les mots-clés génériques
+        var keywords = FilterKeywords(rawKeywords);
 
         if (keywords.Count == 0)
         {
-            return residuals;
+            return [];
         }
 
-        // 1. Scanner les dossiers de données (30%)
-        progress?.Report(new ScanProgress(0, "Scan des dossiers de données..."));
-        var folderResiduals = await ScanDataFoldersAsync(keywords, program, cancellationToken);
-        residuals.AddRange(folderResiduals);
+        // OPTIMISATION: Créer le contexte UNE SEULE FOIS avec tous les calculs pré-faits
+        var ctx = new ScanContext(keywords, program);
 
-        // 2. Scanner le registre (60%)
-        progress?.Report(new ScanProgress(30, "Scan du registre..."));
-        var registryResiduals = await ScanRegistryAsync(keywords, program, cancellationToken);
-        residuals.AddRange(registryResiduals);
+        // Utiliser ConcurrentBag pour collecter les résultats de manière thread-safe
+        var residuals = new ConcurrentBag<ResidualItem>();
+        var completedTasks = 0;
+        var totalTasks = 11;
+        var progressLock = new object();
 
-        // 3. Scanner les services (75%)
-        progress?.Report(new ScanProgress(60, "Scan des services..."));
-        var serviceResiduals = await ScanServicesAsync(keywords, cancellationToken);
-        residuals.AddRange(serviceResiduals);
+        void ReportProgress(string message)
+        {
+            lock (progressLock)
+            {
+                completedTasks++;
+                var percentage = (int)((completedTasks / (float)totalTasks) * 100);
+                progress?.Report(new ScanProgress(percentage, message));
+            }
+        }
 
-        // 4. Scanner les tâches planifiées (85%)
-        progress?.Report(new ScanProgress(75, "Scan des tâches planifiées..."));
-        var taskResiduals = await ScanScheduledTasksAsync(keywords, cancellationToken);
-        residuals.AddRange(taskResiduals);
+        progress?.Report(new ScanProgress(0, "Démarrage du scan parallélisé..."));
 
-        // 5. Scanner les raccourcis (70%)
-        progress?.Report(new ScanProgress(65, "Scan des raccourcis..."));
-        var shortcutResiduals = await ScanShortcutsAsync(keywords, program, cancellationToken);
-        residuals.AddRange(shortcutResiduals);
+        // PHASE 1: Scans parallèles rapides (fichiers et registre)
+        var phase1Tasks = new List<Task>
+        {
+            Task.Run(async () =>
+            {
+                var results = await ScanDataFoldersAsync(ctx, cancellationToken);
+                foreach (var r in results) residuals.Add(r);
+                ReportProgress("Dossiers de données scannés");
+            }, cancellationToken),
 
-        // 6. Scanner les fichiers temporaires (75%)
-        progress?.Report(new ScanProgress(70, "Scan des fichiers temporaires..."));
-        var tempResiduals = await ScanTempFilesAsync(keywords, cancellationToken);
-        residuals.AddRange(tempResiduals);
+            Task.Run(async () =>
+            {
+                var results = await ScanRegistryAsync(ctx, cancellationToken);
+                foreach (var r in results) residuals.Add(r);
+                ReportProgress("Registre scanné");
+            }, cancellationToken),
 
-        // 7. Scan approfondi du dossier d'installation original (80%)
-        progress?.Report(new ScanProgress(75, "Vérification du dossier d'installation..."));
-        var installResiduals = await ScanInstallLocationAsync(keywords, program, cancellationToken);
-        residuals.AddRange(installResiduals);
+            Task.Run(async () =>
+            {
+                var results = await ScanShortcutsAsync(ctx, cancellationToken);
+                foreach (var r in results) residuals.Add(r);
+                ReportProgress("Raccourcis scannés");
+            }, cancellationToken),
 
-        // 8. Scanner les associations de fichiers (85%)
-        progress?.Report(new ScanProgress(80, "Scan des associations de fichiers..."));
-        var fileAssocResiduals = await ScanFileAssociationsAsync(keywords, program, cancellationToken);
-        residuals.AddRange(fileAssocResiduals);
+            Task.Run(async () =>
+            {
+                var results = await ScanTempFilesAsync(ctx, cancellationToken);
+                foreach (var r in results) residuals.Add(r);
+                ReportProgress("Fichiers temporaires scannés");
+            }, cancellationToken),
 
-        // 9. Scanner les composants COM/CLSID (90%)
-        progress?.Report(new ScanProgress(85, "Scan des composants COM..."));
-        var comResiduals = await ScanComComponentsAsync(keywords, program, cancellationToken);
-        residuals.AddRange(comResiduals);
+            Task.Run(async () =>
+            {
+                var results = await ScanInstallLocationAsync(ctx, cancellationToken);
+                foreach (var r in results) residuals.Add(r);
+                ReportProgress("Dossier d'installation vérifié");
+            }, cancellationToken)
+        };
 
-        // 10. Scanner les variables PATH (95%)
-        progress?.Report(new ScanProgress(90, "Scan des variables d'environnement..."));
-        var pathResiduals = await ScanEnvironmentPathAsync(keywords, program, cancellationToken);
-        residuals.AddRange(pathResiduals);
+        await Task.WhenAll(phase1Tasks);
 
-        // 11. Deep Scan des Program Files (98%)
-        progress?.Report(new ScanProgress(95, "Analyse approfondie..."));
-        var deepScanResiduals = await DeepScanProgramFilesAsync(keywords, program, cancellationToken);
-        residuals.AddRange(deepScanResiduals);
+        // PHASE 2: Scans parallèles plus lourds (services, tâches, etc.)
+        var phase2Tasks = new List<Task>
+        {
+            Task.Run(async () =>
+            {
+                var results = await ScanServicesAsync(ctx, cancellationToken);
+                foreach (var r in results) residuals.Add(r);
+                ReportProgress("Services scannés");
+            }, cancellationToken),
+
+            Task.Run(async () =>
+            {
+                var results = await ScanScheduledTasksAsync(ctx, cancellationToken);
+                foreach (var r in results) residuals.Add(r);
+                ReportProgress("Tâches planifiées scannées");
+            }, cancellationToken),
+
+            Task.Run(async () =>
+            {
+                var results = await ScanFileAssociationsAsync(ctx, cancellationToken);
+                foreach (var r in results) residuals.Add(r);
+                ReportProgress("Associations de fichiers scannées");
+            }, cancellationToken),
+
+            Task.Run(async () =>
+            {
+                var results = await ScanComComponentsAsync(ctx, cancellationToken);
+                foreach (var r in results) residuals.Add(r);
+                ReportProgress("Composants COM scannés");
+            }, cancellationToken),
+
+            Task.Run(async () =>
+            {
+                var results = await ScanEnvironmentPathAsync(ctx, cancellationToken);
+                foreach (var r in results) residuals.Add(r);
+                ReportProgress("Variables d'environnement scannées");
+            }, cancellationToken)
+        };
+
+        await Task.WhenAll(phase2Tasks);
+
+        // PHASE 3: Deep scan (le plus lourd, exécuté en dernier)
+        var deepScanResiduals = await DeepScanProgramFilesAsync(ctx, cancellationToken);
+        foreach (var r in deepScanResiduals) residuals.Add(r);
+        ReportProgress("Analyse approfondie terminée");
 
         progress?.Report(new ScanProgress(100, $"{residuals.Count} résidus trouvés"));
 
+        // Vider les caches après un scan complet pour libérer la mémoire
+        ClearCaches();
+
         // FILTRE FINAL DE SÉCURITÉ: Éliminer tout chemin protégé qui aurait passé les filtres
-        var safeResiduals = residuals
+        var safeResiduals = residuals.ToList()
             .Where(r => !IsProtectedPath(r.Path))
             .Where(r => r.Type != ResidualType.RegistryKey || !IsProtectedRegistryPath(r.Path))
             .ToList();
@@ -408,8 +591,10 @@ public partial class ResidualScannerService
 
         if (keywords.Count == 0) return residuals;
 
-        var folderTask = ScanDataFoldersAsync(keywords, program, cancellationToken);
-        var registryTask = ScanRegistryAsync(keywords, program, cancellationToken);
+        var ctx = new ScanContext(keywords, program);
+
+        var folderTask = ScanDataFoldersAsync(ctx, cancellationToken);
+        var registryTask = ScanRegistryAsync(ctx, cancellationToken);
 
         await Task.WhenAll(folderTask, registryTask);
 
@@ -619,8 +804,7 @@ public partial class ResidualScannerService
     #region Folder Scanning
 
     private async Task<List<ResidualItem>> ScanDataFoldersAsync(
-        HashSet<string> keywords,
-        InstalledProgram program,
+        ScanContext ctx,
         CancellationToken cancellationToken)
     {
         var residuals = new List<ResidualItem>();
@@ -647,7 +831,7 @@ public partial class ResidualScannerService
                         // SÉCURITÉ: Ignorer les dossiers protégés
                         if (ProtectedFolderNames.Contains(dirName)) continue;
 
-                        var confidence = CalculateFolderConfidence(dirName, keywords, program);
+                        var confidence = CalculateFolderConfidence(dirName, ctx);
 
                         if (confidence >= ConfidenceLevel.Low)
                         {
@@ -668,18 +852,18 @@ public partial class ResidualScannerService
             }
 
             // Scanner aussi le dossier Program Files si le programme y était
-            if (!string.IsNullOrEmpty(program.InstallLocation))
+            if (!string.IsNullOrEmpty(ctx.Program.InstallLocation))
             {
-                var parentDir = Path.GetDirectoryName(program.InstallLocation);
+                var parentDir = Path.GetDirectoryName(ctx.Program.InstallLocation);
                 if (!string.IsNullOrEmpty(parentDir) && Directory.Exists(parentDir))
                 {
-                    foreach (var keyword in keywords.Take(3))
+                    foreach (var keyword in ctx.StrongKeywords.Take(3))
                     {
                         try
                         {
                             foreach (var dir in Directory.EnumerateDirectories(parentDir, $"*{keyword}*"))
                             {
-                                if (dir.Equals(program.InstallLocation, StringComparison.OrdinalIgnoreCase))
+                                if (dir.Equals(ctx.Program.InstallLocation, StringComparison.OrdinalIgnoreCase))
                                     continue;
 
                                 // SÉCURITÉ: Vérifier la protection
@@ -706,52 +890,57 @@ public partial class ResidualScannerService
     }
 
     /// <summary>
-    /// Calcul de confiance DURCI - nécessite des correspondances plus fortes
+    /// Calcul de confiance DURCI - utilise ScanContext pré-calculé pour performance
     /// </summary>
-    private static ConfidenceLevel CalculateFolderConfidence(
-        string folderName,
-        HashSet<string> keywords,
-        InstalledProgram program)
+    private static ConfidenceLevel CalculateFolderConfidence(string folderName, ScanContext ctx)
     {
         var lowerName = folderName.ToLowerInvariant();
 
         // SÉCURITÉ: Jamais de haute confiance pour les dossiers système
-        if (ProtectedFolderNames.Any(p => lowerName.Contains(p.ToLowerInvariant())))
+        // Utiliser StringComparison au lieu de ToLowerInvariant pour chaque élément
+        if (ProtectedFolderNames.Any(p => lowerName.Contains(p, StringComparison.OrdinalIgnoreCase)))
             return ConfidenceLevel.None;
 
-        // Correspondance EXACTE avec le nom du programme nettoyé
-        if (!string.IsNullOrEmpty(program.DisplayName))
+        // Correspondance EXACTE avec le nom du programme nettoyé (pré-calculé)
+        if (ctx.CleanDisplayNameLower != null)
         {
-            var cleanDisplayName = CleanNameRegex().Replace(program.DisplayName, "").ToLowerInvariant();
-            
             // VeryHigh: Nom IDENTIQUE (pas juste "contient")
-            if (lowerName == cleanDisplayName)
+            if (lowerName.Equals(ctx.CleanDisplayNameLower, StringComparison.Ordinal))
             {
                 return ConfidenceLevel.VeryHigh;
             }
             
             // High: Le nom du dossier COMMENCE par le nom du programme
-            if (lowerName.StartsWith(cleanDisplayName) && cleanDisplayName.Length >= 5)
+            if (ctx.CleanDisplayNameLower.Length >= 5 && 
+                lowerName.StartsWith(ctx.CleanDisplayNameLower, StringComparison.Ordinal))
             {
                 return ConfidenceLevel.High;
             }
         }
 
-        // Correspondance avec la clé de registre (exacte)
-        if (!string.IsNullOrEmpty(program.RegistryKeyName))
+        // Correspondance avec la clé de registre (exacte, pré-calculée)
+        if (ctx.RegistryKeyNameLower != null && 
+            lowerName.Equals(ctx.RegistryKeyNameLower, StringComparison.Ordinal))
         {
-            var regKeyLower = program.RegistryKeyName.ToLowerInvariant();
-            if (lowerName == regKeyLower)
-            {
-                return ConfidenceLevel.High;
-            }
+            return ConfidenceLevel.High;
         }
 
-        // Correspondance avec les mots-clés - DURCIE
-        // Seuls les mots-clés LONGS et SPÉCIFIQUES comptent
-        var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToList();
-        int exactMatches = strongKeywords.Count(k => lowerName == k.ToLowerInvariant());
-        int containsMatches = strongKeywords.Count(k => lowerName.Contains(k.ToLowerInvariant()));
+        // Correspondance avec les mots-clés forts (PRÉ-CALCULÉS dans ScanContext)
+        int exactMatches = 0;
+        int containsMatches = 0;
+        
+        foreach (var keyword in ctx.StrongKeywords)
+        {
+            var keywordLower = keyword.ToLowerInvariant();
+            if (lowerName.Equals(keywordLower, StringComparison.Ordinal))
+            {
+                exactMatches++;
+            }
+            else if (lowerName.Contains(keywordLower, StringComparison.Ordinal))
+            {
+                containsMatches++;
+            }
+        }
         
         // DURCI: Besoin de correspondance EXACTE ou plusieurs correspondances fortes
         if (exactMatches >= 1) return ConfidenceLevel.High;
@@ -770,11 +959,12 @@ public partial class ResidualScannerService
             return 0;
 
         // Utiliser le cache pour éviter les recalculs
-        if (_directorySizeCache.TryGetValue(path, out var cached))
+        var cacheKey = path.ToLowerInvariant();
+        if (_directorySizeCache.TryGetValue(cacheKey, out long cached))
             return cached;
 
         var size = CommonHelpers.CalculateDirectorySize(path);
-        _directorySizeCache.TryAdd(path, size);
+        _directorySizeCache.Set(cacheKey, size, _sizeCacheOptions);
         return size;
     }
 
@@ -784,8 +974,7 @@ public partial class ResidualScannerService
     #region Registry Scanning
 
     private async Task<List<ResidualItem>> ScanRegistryAsync(
-        HashSet<string> keywords,
-        InstalledProgram program,
+        ScanContext ctx,
         CancellationToken cancellationToken)
     {
         var residuals = new List<ResidualItem>();
@@ -802,9 +991,12 @@ public partial class ResidualScannerService
                     if (baseKey == null) continue;
 
                     ScanRegistryKeyRecursive(baseKey, $"{GetRootName(root)}\\{path}", 
-                        keywords, program, residuals, 0, cancellationToken);
+                        ctx, residuals, 0, cancellationToken);
                 }
-                catch { }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ResidualScanner] Erreur scan registre {path}: {ex.Message}");
+                }
             }
         }, cancellationToken);
 
@@ -814,8 +1006,7 @@ public partial class ResidualScannerService
     private static void ScanRegistryKeyRecursive(
         RegistryKey key,
         string fullPath,
-        HashSet<string> keywords,
-        InstalledProgram program,
+        ScanContext ctx,
         List<ResidualItem> residuals,
         int depth,
         CancellationToken cancellationToken)
@@ -834,7 +1025,7 @@ public partial class ResidualScannerService
                 if (IsProtectedRegistryPath(subKeyPath)) continue;
                 if (ProtectedRegistryKeys.Contains(subKeyName)) continue;
 
-                var confidence = CalculateRegistryConfidence(subKeyName, keywords, program);
+                var confidence = CalculateRegistryConfidence(subKeyName, ctx);
 
                 if (confidence >= ConfidenceLevel.Medium)
                 {
@@ -853,11 +1044,15 @@ public partial class ResidualScannerService
                         using var subKey = key.OpenSubKey(subKeyName);
                         if (subKey != null)
                         {
-                            ScanRegistryKeyRecursive(subKey, subKeyPath, keywords, 
-                                program, residuals, depth + 1, cancellationToken);
+                            ScanRegistryKeyRecursive(subKey, subKeyPath, ctx, 
+                                residuals, depth + 1, cancellationToken);
                         }
                     }
-                    catch { }
+                    catch (System.Security.SecurityException) { /* Accès refusé, normal */ }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ResidualScanner] Erreur sous-clé {subKeyPath}: {ex.Message}");
+                    }
                 }
             }
 
@@ -871,7 +1066,7 @@ public partial class ResidualScannerService
                 // SÉCURITÉ: Ne pas signaler de valeurs pointant vers des chemins protégés
                 if (IsProtectedPath(value)) continue;
                 
-                if (ContainsKeyword(value, keywords) || ContainsKeyword(valueName, keywords))
+                if (ctx.ContainsKeyword(value) || ctx.ContainsKeyword(valueName))
                 {
                     residuals.Add(new ResidualItem
                     {
@@ -883,13 +1078,14 @@ public partial class ResidualScannerService
                 }
             }
         }
-        catch { }
+        catch (System.Security.SecurityException) { /* Accès refusé, normal */ }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ResidualScanner] Erreur scan récursif {fullPath}: {ex.Message}");
+        }
     }
 
-    private static ConfidenceLevel CalculateRegistryConfidence(
-        string keyName,
-        HashSet<string> keywords,
-        InstalledProgram program)
+    private static ConfidenceLevel CalculateRegistryConfidence(string keyName, ScanContext ctx)
     {
         var lowerName = keyName.ToLowerInvariant();
 
@@ -897,40 +1093,41 @@ public partial class ResidualScannerService
         if (ProtectedRegistryKeys.Contains(keyName))
             return ConfidenceLevel.None;
 
-        // Correspondance exacte avec la clé de registre du programme
-        if (!string.IsNullOrEmpty(program.RegistryKeyName) &&
-            lowerName == program.RegistryKeyName.ToLowerInvariant())
+        // Correspondance exacte avec la clé de registre du programme (pré-calculé)
+        if (ctx.RegistryKeyNameLower != null &&
+            lowerName.Equals(ctx.RegistryKeyNameLower, StringComparison.Ordinal))
         {
             return ConfidenceLevel.VeryHigh;
         }
 
-        if (!string.IsNullOrEmpty(program.DisplayName))
+        // Correspondance avec le nom du programme (pré-calculé)
+        if (ctx.CleanDisplayNameLower != null &&
+            lowerName.Equals(ctx.CleanDisplayNameLower, StringComparison.Ordinal))
         {
-            var cleanName = CleanNameRegex().Replace(program.DisplayName, "").ToLowerInvariant();
-            if (lowerName == cleanName)
-            {
-                return ConfidenceLevel.High;
-            }
+            return ConfidenceLevel.High;
         }
 
-        // DURCI: Besoin de correspondances fortes
-        var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToList();
-        int exactMatches = strongKeywords.Count(k => lowerName == k.ToLowerInvariant());
-        int containsMatches = strongKeywords.Count(k => lowerName.Contains(k.ToLowerInvariant()));
+        // DURCI: Besoin de correspondances fortes (PRÉ-CALCULÉES)
+        int exactMatches = 0;
+        int containsMatches = 0;
+        
+        foreach (var keyword in ctx.StrongKeywords)
+        {
+            var keywordLower = keyword.ToLowerInvariant();
+            if (lowerName.Equals(keywordLower, StringComparison.Ordinal))
+            {
+                exactMatches++;
+            }
+            else if (lowerName.Contains(keywordLower, StringComparison.Ordinal))
+            {
+                containsMatches++;
+            }
+        }
         
         if (exactMatches >= 1) return ConfidenceLevel.High;
         if (containsMatches >= 2) return ConfidenceLevel.Medium;
         
         return ConfidenceLevel.None;
-    }
-
-    private static bool ContainsKeyword(string text, HashSet<string> keywords)
-    {
-        var lowerText = text.ToLowerInvariant();
-        // DURCI: Seuls les mots-clés longs comptent
-        return keywords
-            .Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k))
-            .Any(k => lowerText.Contains(k.ToLowerInvariant()));
     }
 
     private static string GetRootName(RegistryKey root)
@@ -947,7 +1144,7 @@ public partial class ResidualScannerService
     #region Services Scanning
 
     private async Task<List<ResidualItem>> ScanServicesAsync(
-        HashSet<string> keywords,
+        ScanContext ctx,
         CancellationToken cancellationToken)
     {
         var residuals = new List<ResidualItem>();
@@ -972,12 +1169,10 @@ public partial class ResidualScannerService
                     // SÉCURITÉ: Ignorer les services pointant vers des chemins protégés
                     if (IsProtectedPath(imagePath)) continue;
 
-                    // DURCI: Utiliser uniquement des mots-clés forts
-                    var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToHashSet();
-                    
-                    if (ContainsStrongKeyword(serviceName, strongKeywords) ||
-                        ContainsStrongKeyword(displayName, strongKeywords) ||
-                        ContainsStrongKeyword(imagePath, strongKeywords))
+                    // DURCI: Utiliser uniquement des mots-clés forts (pré-calculés dans ctx)
+                    if (ctx.ContainsKeyword(serviceName) ||
+                        ctx.ContainsKeyword(displayName) ||
+                        ctx.ContainsKeyword(imagePath))
                     {
                         residuals.Add(new ResidualItem
                         {
@@ -995,19 +1190,12 @@ public partial class ResidualScannerService
         return residuals;
     }
 
-    private static bool ContainsStrongKeyword(string text, HashSet<string> strongKeywords)
-    {
-        if (string.IsNullOrEmpty(text)) return false;
-        var lowerText = text.ToLowerInvariant();
-        return strongKeywords.Any(k => lowerText.Contains(k.ToLowerInvariant()));
-    }
-
     #endregion
 
     #region Scheduled Tasks Scanning
 
     private async Task<List<ResidualItem>> ScanScheduledTasksAsync(
-        HashSet<string> keywords,
+        ScanContext ctx,
         CancellationToken cancellationToken)
     {
         var residuals = new List<ResidualItem>();
@@ -1020,7 +1208,7 @@ public partial class ResidualScannerService
 
             if (!Directory.Exists(taskFolder)) return;
 
-            var strongKeywords = keywords.Where(k => k.Length >= 5 && !TooGenericKeywords.Contains(k)).ToHashSet();
+            var strongKeywords = ctx.StrongKeywords; // Utilise les mots-clés pré-calculés
 
             try
             {

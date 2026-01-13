@@ -136,38 +136,5 @@ public enum SizeFilter
     Unknown
 }
 
-/// <summary>
-/// Paramètres de l'application
-/// </summary>
-public class AppSettings
-{
-    /// <summary>
-    /// Créer une sauvegarde du registre avant nettoyage
-    /// </summary>
-    public bool CreateRegistryBackup { get; set; } = true;
-
-    /// <summary>
-    /// Créer un point de restauration avant désinstallation en lot
-    /// </summary>
-    public bool CreateRestorePoint { get; set; } = true;
-
-    /// <summary>
-    /// Utiliser la désinstallation silencieuse quand disponible
-    /// </summary>
-    public bool PreferQuietUninstall { get; set; } = true;
-
-    /// <summary>
-    /// Activer l'analyse minutieuse des résidus après désinstallation
-    /// </summary>
-    public bool ThoroughAnalysisEnabled { get; set; } = true;
-
-    /// <summary>
-    /// Emplacements supplémentaires à scanner pour les résidus
-    /// </summary>
-    public List<string> AdditionalScanPaths { get; set; } = [];
-
-    /// <summary>
-    /// Thème de l'application (0 = Système, 1 = Clair, 2 = Sombre)
-    /// </summary>
-    public int Theme { get; set; } = 0;
-}
+// Note: AppSettings a été déplacé vers Services/Interfaces/IServiceInterfaces.cs
+// pour centraliser toutes les définitions de types liés aux services

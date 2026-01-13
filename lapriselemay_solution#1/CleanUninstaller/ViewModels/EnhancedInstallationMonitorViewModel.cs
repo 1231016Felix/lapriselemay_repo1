@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CleanUninstaller.Models;
 using CleanUninstaller.Services;
+using CleanUninstaller.Services.Interfaces;
 using System.Collections.ObjectModel;
 
 namespace CleanUninstaller.ViewModels;
@@ -9,16 +10,22 @@ namespace CleanUninstaller.ViewModels;
 /// <summary>
 /// ViewModel amélioré pour la page de monitoring d'installation
 /// Avec support backup/restore et statistiques temps réel avancées
+/// Utilise l'injection de dépendances pour les services
 /// </summary>
 public partial class EnhancedInstallationMonitorViewModel : ObservableObject, IDisposable
 {
     private readonly EnhancedInstallationMonitorService _monitorService;
     private readonly BackupService _backupService;
+    private readonly ILoggerService _logger;
     private bool _isDisposed;
     private System.Timers.Timer? _durationTimer;
 
-    public EnhancedInstallationMonitorViewModel()
+    /// <summary>
+    /// Constructeur avec injection de dépendances
+    /// </summary>
+    public EnhancedInstallationMonitorViewModel(ILoggerService logger)
     {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _monitorService = new EnhancedInstallationMonitorService();
         _backupService = new BackupService();
         
@@ -27,7 +34,15 @@ public partial class EnhancedInstallationMonitorViewModel : ObservableObject, ID
         _monitorService.InstallerProcessDetected += OnInstallerProcessDetected;
         _monitorService.InstallerProcessExited += OnInstallerProcessExited;
         _monitorService.StatisticsUpdated += OnStatisticsUpdated;
+        
+        _logger.Debug("EnhancedInstallationMonitorViewModel initialisé");
     }
+
+    /// <summary>
+    /// Constructeur par défaut pour compatibilité XAML
+    /// </summary>
+    public EnhancedInstallationMonitorViewModel() : this(ServiceContainer.GetService<ILoggerService>())
+    { }
 
     #region Observable Properties
 

@@ -1,4 +1,5 @@
 using CleanUninstaller.Models;
+using CleanUninstaller.Services.Interfaces;
 using System.Diagnostics;
 using System.Text.Json;
 
@@ -7,7 +8,7 @@ namespace CleanUninstaller.Services;
 /// <summary>
 /// Service pour gérer les paramètres de l'application
 /// </summary>
-public class SettingsService
+public class SettingsService : ISettingsService
 {
     private static readonly string SettingsFolder = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -17,14 +18,65 @@ public class SettingsService
     private static readonly string BackupsFolder = Path.Combine(SettingsFolder, "Backups");
 
     private AppSettings _settings = new();
+    private readonly ILoggerService _logger;
 
     /// <summary>
     /// Paramètres actuels
     /// </summary>
     public AppSettings Settings => _settings;
 
+    public SettingsService(ILoggerService logger)
+    {
+        _logger = logger;
+        Load();
+    }
+
+    // Constructeur sans paramètre pour compatibilité
+    public SettingsService() : this(ServiceContainer.TryGetService<ILoggerService>() ?? new LoggerService())
+    { }
+
     /// <summary>
-    /// Charge les paramètres depuis le fichier
+    /// Charge les paramètres (synchrone) - Implémente ISettingsService
+    /// </summary>
+    public void Load()
+    {
+        try
+        {
+            EnsureDirectoriesExist();
+            if (File.Exists(SettingsFile))
+            {
+                var json = File.ReadAllText(SettingsFile);
+                _settings = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+                _logger.Info("Paramètres chargés avec succès");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Erreur chargement settings: {ex.Message}");
+            _settings = new AppSettings();
+        }
+    }
+
+    /// <summary>
+    /// Sauvegarde les paramètres (synchrone) - Implémente ISettingsService
+    /// </summary>
+    public void Save()
+    {
+        try
+        {
+            EnsureDirectoriesExist();
+            var json = JsonSerializer.Serialize(_settings, new JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(SettingsFile, json);
+            _logger.Info("Paramètres sauvegardés");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Erreur sauvegarde settings: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Charge les paramètres depuis le fichier (asynchrone)
     /// </summary>
     public async Task LoadAsync()
     {

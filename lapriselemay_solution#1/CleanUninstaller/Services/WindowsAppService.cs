@@ -1,4 +1,5 @@
 using CleanUninstaller.Models;
+using CleanUninstaller.Services.Interfaces;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -8,8 +9,46 @@ namespace CleanUninstaller.Services;
 /// <summary>
 /// Service spécialisé pour les applications Windows Store (AppX/MSIX)
 /// </summary>
-public class WindowsAppService
+public class WindowsAppService : IWindowsAppService
 {
+    private readonly ILoggerService _logger;
+
+    public WindowsAppService(ILoggerService logger)
+    {
+        _logger = logger;
+    }
+
+    // Constructeur sans paramètre pour compatibilité
+    public WindowsAppService() : this(ServiceContainer.GetService<ILoggerService>())
+    { }
+
+    /// <summary>
+    /// Implémente IWindowsAppService.GetStoreAppsAsync
+    /// </summary>
+    public Task<List<InstalledProgram>> GetStoreAppsAsync(CancellationToken cancellationToken = default)
+        => GetWindowsAppsAsync(cancellationToken);
+
+    /// <summary>
+    /// Implémente IWindowsAppService.UninstallStoreAppAsync
+    /// </summary>
+    public async Task<bool> UninstallStoreAppAsync(string packageFullName, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(packageFullName))
+            return false;
+
+        try
+        {
+            var script = $"Remove-AppxPackage -Package '{packageFullName}' -ErrorAction Stop";
+            await ExecutePowerShellAsync(script, cancellationToken);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Erreur désinstallation {packageFullName}: {ex.Message}");
+            return false;
+        }
+    }
+    
     /// <summary>
     /// Récupère toutes les applications Windows Store installées
     /// </summary>

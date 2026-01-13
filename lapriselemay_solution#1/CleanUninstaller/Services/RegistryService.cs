@@ -1,5 +1,6 @@
 using Microsoft.Win32;
 using CleanUninstaller.Models;
+using CleanUninstaller.Services.Interfaces;
 using System.Diagnostics;
 using System.Globalization;
 
@@ -8,8 +9,56 @@ namespace CleanUninstaller.Services;
 /// <summary>
 /// Service pour les opérations sur le registre Windows
 /// </summary>
-public class RegistryService
+public class RegistryService : IRegistryService
 {
+    #region IRegistryService Implementation
+
+    /// <summary>
+    /// Vérifie si une clé de registre existe
+    /// </summary>
+    public bool KeyExists(string keyPath)
+    {
+        try
+        {
+            var parts = keyPath.Split('\\', 2);
+            if (parts.Length != 2) return false;
+
+            var hive = parts[0].ToUpperInvariant() switch
+            {
+                "HKEY_LOCAL_MACHINE" or "HKLM" => RegistryHive.LocalMachine,
+                "HKEY_CURRENT_USER" or "HKCU" => RegistryHive.CurrentUser,
+                "HKEY_CLASSES_ROOT" or "HKCR" => RegistryHive.ClassesRoot,
+                _ => throw new ArgumentException($"Hive non reconnu: {parts[0]}")
+            };
+
+            using var baseKey = RegistryKey.OpenBaseKey(hive, RegistryView.Registry64);
+            using var key = baseKey.OpenSubKey(parts[1]);
+            return key != null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Supprime une clé de registre (implémentation de l'interface)
+    /// </summary>
+    public void DeleteKey(string keyPath)
+    {
+        DeleteRegistryKey(keyPath);
+    }
+
+    /// <summary>
+    /// Lit tous les programmes installés (implémentation de l'interface)
+    /// </summary>
+    Task<List<InstalledProgram>> IRegistryService.GetInstalledProgramsAsync(IProgress<ScanProgress>? progress, CancellationToken cancellationToken)
+    {
+        return GetInstalledProgramsAsync(progress, cancellationToken);
+    }
+
+    #endregion
+
     // Chemins du registre pour les programmes installés
     private static readonly string[] UninstallPaths =
     [

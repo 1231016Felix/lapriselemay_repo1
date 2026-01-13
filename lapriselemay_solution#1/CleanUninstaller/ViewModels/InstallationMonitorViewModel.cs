@@ -2,24 +2,48 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CleanUninstaller.Models;
 using CleanUninstaller.Services;
+using CleanUninstaller.Services.Interfaces;
 using System.Collections.ObjectModel;
 
 namespace CleanUninstaller.ViewModels;
 
 /// <summary>
 /// ViewModel pour la page de monitoring d'installation
+/// Utilise l'injection de dépendances pour tous les services
 /// </summary>
 public partial class InstallationMonitorViewModel : ObservableObject, IDisposable
 {
-    private readonly InstallationMonitorService _monitorService;
+    private readonly IInstallationMonitorService _monitorService;
+    private readonly ILoggerService _logger;
     private bool _isDisposed;
 
-    public InstallationMonitorViewModel()
+    /// <summary>
+    /// Constructeur avec injection de dépendances (recommandé)
+    /// </summary>
+    public InstallationMonitorViewModel(
+        IInstallationMonitorService monitorService,
+        ILoggerService logger)
     {
-        _monitorService = new InstallationMonitorService();
-        _monitorService.RealTimeChangeDetected += OnRealTimeChangeDetected;
-        _monitorService.StatusChanged += OnStatusChanged;
+        _monitorService = monitorService ?? throw new ArgumentNullException(nameof(monitorService));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        
+        // Abonner aux événements si le service les supporte
+        if (_monitorService is InstallationMonitorService concreteService)
+        {
+            concreteService.RealTimeChangeDetected += OnRealTimeChangeDetected;
+            concreteService.StatusChanged += OnStatusChanged;
+        }
+        
+        _logger.Debug("InstallationMonitorViewModel initialisé");
     }
+
+    /// <summary>
+    /// Constructeur par défaut utilisant le ServiceContainer (pour compatibilité XAML)
+    /// </summary>
+    public InstallationMonitorViewModel() : this(
+        ServiceContainer.GetService<IInstallationMonitorService>(),
+        ServiceContainer.GetService<ILoggerService>())
+    { }
 
     #region Properties
 
@@ -151,6 +175,7 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
 
         IsBusy = true;
         RealTimeChanges.Clear();
+        _logger.Info($"Démarrage du monitoring pour: {InstallationName}");
 
         try
         {
@@ -163,13 +188,18 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
             var name = string.IsNullOrWhiteSpace(InstallationName) ? null : InstallationName;
             var path = string.IsNullOrWhiteSpace(InstallerPath) ? null : InstallerPath;
 
-            CurrentMonitoring = await _monitorService.StartMonitoringAsync(name, path, progress);
+            if (_monitorService is InstallationMonitorService concreteService)
+            {
+                CurrentMonitoring = await concreteService.StartMonitoringAsync(name, path, progress);
+            }
             
             StatusMessage = "🔴 Surveillance active - Lancez votre installation maintenant";
+            _logger.Info("Monitoring démarré avec succès");
         }
         catch (Exception ex)
         {
             StatusMessage = $"Erreur: {ex.Message}";
+            _logger.Error("Erreur lors du démarrage du monitoring", ex);
         }
         finally
         {
@@ -187,6 +217,7 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
         if (!CanStop) return;
 
         IsBusy = true;
+        _logger.Info("Arrêt du monitoring demandé");
 
         try
         {
@@ -196,12 +227,16 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
                 StatusMessage = p.StatusMessage;
             });
 
-            var result = await _monitorService.StopMonitoringAsync(progress);
-
-            if (result != null)
+            if (_monitorService is InstallationMonitorService concreteService)
             {
-                SavedInstallations.Insert(0, result);
-                StatusMessage = $"✅ Analyse terminée: {result.Statistics.TotalChanges} changements détectés";
+                var result = await concreteService.StopMonitoringAsync(progress);
+
+                if (result != null)
+                {
+                    SavedInstallations.Insert(0, result);
+                    StatusMessage = $"✅ Analyse terminée: {result.Statistics.TotalChanges} changements détectés";
+                    _logger.Info($"Monitoring terminé: {result.Statistics.TotalChanges} changements");
+                }
             }
 
             CurrentMonitoring = null;
@@ -209,6 +244,7 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
         catch (Exception ex)
         {
             StatusMessage = $"Erreur: {ex.Message}";
+            _logger.Error("Erreur lors de l'arrêt du monitoring", ex);
         }
         finally
         {
@@ -223,8 +259,12 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
     [RelayCommand(CanExecute = nameof(CanPause))]
     private void PauseMonitoring()
     {
-        _monitorService.PauseMonitoring();
+        if (_monitorService is InstallationMonitorService concreteService)
+        {
+            concreteService.PauseMonitoring();
+        }
         StatusMessage = "⏸️ Surveillance en pause";
+        _logger.Debug("Monitoring mis en pause");
         UpdateCommands();
     }
 
@@ -234,8 +274,12 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
     [RelayCommand(CanExecute = nameof(CanResume))]
     private void ResumeMonitoring()
     {
-        _monitorService.ResumeMonitoring();
+        if (_monitorService is InstallationMonitorService concreteService)
+        {
+            concreteService.ResumeMonitoring();
+        }
         StatusMessage = "🔴 Surveillance reprise";
+        _logger.Debug("Monitoring repris");
         UpdateCommands();
     }
 
@@ -245,10 +289,14 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
     [RelayCommand]
     private void CancelMonitoring()
     {
-        _monitorService.CancelMonitoring();
+        if (_monitorService is InstallationMonitorService concreteService)
+        {
+            concreteService.CancelMonitoring();
+        }
         CurrentMonitoring = null;
         RealTimeChanges.Clear();
         StatusMessage = "Monitoring annulé";
+        _logger.Info("Monitoring annulé par l'utilisateur");
         UpdateCommands();
     }
 
@@ -261,6 +309,7 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
         if (SelectedInstallation == null || !CanPerfectUninstall) return;
 
         IsBusy = true;
+        _logger.Info($"Désinstallation parfaite demandée pour: {SelectedInstallation.Name}");
 
         try
         {
@@ -270,17 +319,23 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
                 StatusMessage = p.StatusMessage;
             });
 
-            var result = await _monitorService.PerfectUninstallAsync(
-                SelectedInstallation,
-                removeSelectedOnly: true,
-                progress);
-
-            StatusMessage = $"✅ Désinstallation terminée: {result.DeletedCount} éléments supprimés, " +
-                           $"{FormatSize(result.SpaceFreed)} libérés";
-
-            if (result.FailedCount > 0)
+            if (_monitorService is InstallationMonitorService concreteService)
             {
-                StatusMessage += $" ({result.FailedCount} échecs)";
+                var result = await concreteService.PerfectUninstallAsync(
+                    SelectedInstallation,
+                    removeSelectedOnly: true,
+                    progress);
+
+                StatusMessage = $"✅ Désinstallation terminée: {result.DeletedCount} éléments supprimés, " +
+                               $"{FormatSize(result.SpaceFreed)} libérés";
+                
+                _logger.Info($"Désinstallation parfaite terminée: {result.DeletedCount} supprimés, {result.SpaceFreed} octets libérés");
+
+                if (result.FailedCount > 0)
+                {
+                    StatusMessage += $" ({result.FailedCount} échecs)";
+                    _logger.Warning($"{result.FailedCount} échecs lors de la désinstallation parfaite");
+                }
             }
 
             // Rafraîchir la liste
@@ -289,6 +344,7 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
         catch (Exception ex)
         {
             StatusMessage = $"Erreur: {ex.Message}";
+            _logger.Error("Erreur lors de la désinstallation parfaite", ex);
         }
         finally
         {
@@ -302,14 +358,21 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
     [RelayCommand]
     private async Task LoadSavedInstallationsAsync()
     {
+        _logger.Debug("Chargement des installations sauvegardées");
+        
         try
         {
-            var installations = await _monitorService.LoadAllMonitoredInstallationsAsync();
-            SavedInstallations = new ObservableCollection<MonitoredInstallation>(installations);
+            if (_monitorService is InstallationMonitorService concreteService)
+            {
+                var installations = await concreteService.LoadAllMonitoredInstallationsAsync();
+                SavedInstallations = new ObservableCollection<MonitoredInstallation>(installations);
+                _logger.Info($"{installations.Count} installations chargées");
+            }
         }
         catch (Exception ex)
         {
             StatusMessage = $"Erreur chargement: {ex.Message}";
+            _logger.Error("Erreur lors du chargement des installations", ex);
         }
     }
 
@@ -319,8 +382,12 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
     [RelayCommand]
     private void DeleteSavedInstallation(MonitoredInstallation installation)
     {
-        _monitorService.DeleteMonitoredInstallation(installation.Id);
+        if (_monitorService is InstallationMonitorService concreteService)
+        {
+            concreteService.DeleteMonitoredInstallation(installation.Id);
+        }
         SavedInstallations.Remove(installation);
+        _logger.Info($"Installation supprimée: {installation.Name}");
 
         if (SelectedInstallation == installation)
         {
@@ -436,10 +503,12 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
             }
 
             StatusMessage = $"Exporté vers {file.Name}";
+            _logger.Info($"Changements exportés vers: {file.Path}");
         }
         catch (Exception ex)
         {
             StatusMessage = $"Erreur export: {ex.Message}";
+            _logger.Error("Erreur lors de l'export des changements", ex);
         }
     }
 
@@ -543,6 +612,7 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
     /// </summary>
     public async Task InitializeAsync()
     {
+        _logger.Debug("Initialisation du InstallationMonitorViewModel");
         await LoadSavedInstallationsAsync();
     }
 
@@ -550,10 +620,15 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
     {
         if (_isDisposed) return;
 
-        _monitorService.RealTimeChangeDetected -= OnRealTimeChangeDetected;
-        _monitorService.StatusChanged -= OnStatusChanged;
-        _monitorService.Dispose();
+        if (_monitorService is InstallationMonitorService concreteService)
+        {
+            concreteService.RealTimeChangeDetected -= OnRealTimeChangeDetected;
+            concreteService.StatusChanged -= OnStatusChanged;
+            concreteService.Dispose();
+        }
+        
         _isDisposed = true;
+        _logger.Debug("InstallationMonitorViewModel disposé");
 
         GC.SuppressFinalize(this);
     }

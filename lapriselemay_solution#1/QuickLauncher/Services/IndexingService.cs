@@ -389,53 +389,8 @@ public sealed partial class IndexingService : IDisposable
     
     private static int CalculateScore(string query, SearchResult item)
     {
-        var name = item.Name.ToLowerInvariant();
-        int score;
-        
-        if (name.Equals(query)) 
-            score = Constants.SearchScores.ExactMatch;
-        else if (name.StartsWith(query)) 
-            score = Constants.SearchScores.StartsWith;
-        else if (name.Contains(query)) 
-            score = Constants.SearchScores.Contains;
-        else if (MatchesInitials(query, name)) 
-            score = Constants.SearchScores.InitialsMatch;
-        else if (FuzzyMatch(query, name)) 
-            score = Constants.SearchScores.FuzzyMatch;
-        else 
-            return 0;
-        
-        // Bonus par type
-        score += item.Type switch
-        {
-            ResultType.Application or ResultType.StoreApp => Constants.SearchScores.ApplicationBonus,
-            ResultType.Script => Constants.SearchScores.ScriptBonus,
-            ResultType.Folder => Constants.SearchScores.FolderBonus,
-            _ => 0
-        };
-        
-        // Bonus usage (max 50)
-        score += Math.Min(item.UseCount * Constants.SearchScores.UsageMultiplier, Constants.MaxScoreBonus);
-        
-        return score;
-    }
-
-    private static bool MatchesInitials(string query, string name)
-    {
-        var words = name.Split([' ', '-', '_', '.'], StringSplitOptions.RemoveEmptyEntries);
-        var initials = string.Concat(words.Where(w => w.Length > 0).Select(w => w[0]));
-        return initials.Contains(query, StringComparison.OrdinalIgnoreCase);
-    }
-    
-    private static bool FuzzyMatch(string query, string name)
-    {
-        var qi = 0;
-        foreach (var c in name)
-        {
-            if (qi < query.Length && char.ToLowerInvariant(c) == query[qi])
-                qi++;
-        }
-        return qi == query.Length;
+        // Utiliser le nouvel algorithme de fuzzy matching avec Levenshtein
+        return SearchAlgorithms.CalculateFuzzyScore(query, item.Name, item.UseCount);
     }
     
     [GeneratedRegex(@"^[\d\s\+\-\*\/\(\)\.\,\^]+$")]

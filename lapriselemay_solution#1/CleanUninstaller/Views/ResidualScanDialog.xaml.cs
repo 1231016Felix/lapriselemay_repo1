@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
 using CleanUninstaller.Models;
 using CleanUninstaller.Services;
+using CleanUninstaller.Services.Interfaces;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 
@@ -14,8 +15,8 @@ namespace CleanUninstaller.Views;
 /// </summary>
 public sealed partial class ResidualScanDialog : ContentDialog
 {
-    private readonly ResidualScannerService _residualScanner;
-    private readonly UninstallService _uninstallService;
+    private readonly IResidualScannerService _residualScanner;
+    private readonly IUninstallService _uninstallService;
     private readonly InstalledProgram _program;
     private ObservableCollection<ResidualItem> _residuals = [];
     private bool _isScanning;

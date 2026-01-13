@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using CleanUninstaller.Models;
 using CleanUninstaller.Services;
+using CleanUninstaller.Services.Interfaces;
 using System.Diagnostics;
 
 namespace CleanUninstaller.Views;
@@ -11,7 +12,7 @@ namespace CleanUninstaller.Views;
 /// </summary>
 public sealed partial class SettingsDialog : ContentDialog
 {
-    private readonly SettingsService _settingsService;
+    private readonly ISettingsService _settingsService;
     private readonly AppSettings _settings;
 
     public SettingsDialog()

@@ -15,6 +15,66 @@
 
 namespace DriverManager {
 
+    /// <summary>
+    /// RAII wrapper pour HDEVINFO - assure la libération automatique des ressources
+    /// </summary>
+    class DeviceInfoSetHandle {
+    public:
+        explicit DeviceInfoSetHandle(HDEVINFO handle = INVALID_HANDLE_VALUE) 
+            : m_handle(handle) {}
+        
+        ~DeviceInfoSetHandle() {
+            if (IsValid()) {
+                SetupDiDestroyDeviceInfoList(m_handle);
+            }
+        }
+        
+        // Non-copiable
+        DeviceInfoSetHandle(const DeviceInfoSetHandle&) = delete;
+        DeviceInfoSetHandle& operator=(const DeviceInfoSetHandle&) = delete;
+        
+        // Movable
+        DeviceInfoSetHandle(DeviceInfoSetHandle&& other) noexcept 
+            : m_handle(other.m_handle) {
+            other.m_handle = INVALID_HANDLE_VALUE;
+        }
+        
+        DeviceInfoSetHandle& operator=(DeviceInfoSetHandle&& other) noexcept {
+            if (this != &other) {
+                if (IsValid()) {
+                    SetupDiDestroyDeviceInfoList(m_handle);
+                }
+                m_handle = other.m_handle;
+                other.m_handle = INVALID_HANDLE_VALUE;
+            }
+            return *this;
+        }
+        
+        // Accessors
+        HDEVINFO Get() const { return m_handle; }
+        operator HDEVINFO() const { return m_handle; }
+        bool IsValid() const { return m_handle != INVALID_HANDLE_VALUE; }
+        explicit operator bool() const { return IsValid(); }
+        
+        // Release ownership
+        HDEVINFO Release() {
+            HDEVINFO tmp = m_handle;
+            m_handle = INVALID_HANDLE_VALUE;
+            return tmp;
+        }
+        
+        // Reset with new handle
+        void Reset(HDEVINFO handle = INVALID_HANDLE_VALUE) {
+            if (IsValid()) {
+                SetupDiDestroyDeviceInfoList(m_handle);
+            }
+            m_handle = handle;
+        }
+
+    private:
+        HDEVINFO m_handle;
+    };
+
     class DriverScanner {
     public:
         DriverScanner();

@@ -1,18 +1,36 @@
 using CleanUninstaller.Models;
 using CleanUninstaller.Helpers;
+using CleanUninstaller.Services.Interfaces;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Dispatching;
 
 namespace CleanUninstaller.Services;
 
 /// <summary>
 /// Service pour scanner et lister tous les programmes installés
 /// </summary>
-public class ProgramScannerService
+public class ProgramScannerService : IProgramScannerService
 {
-    private readonly RegistryService _registryService = new();
+    private readonly IRegistryService _registryService;
+    private readonly ILoggerService _logger;
+    private readonly DispatcherQueue? _dispatcherQueue;
+
+    public ProgramScannerService(IRegistryService registryService, ILoggerService logger)
+    {
+        _registryService = registryService;
+        _logger = logger;
+        // Capturer le DispatcherQueue du thread UI pour les opérations BitmapImage
+        _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+    }
+
+    // Constructeur sans paramètre pour compatibilité
+    public ProgramScannerService() : this(
+        ServiceContainer.GetService<IRegistryService>(),
+        ServiceContainer.GetService<ILoggerService>())
+    { }
 
     /// <summary>
     /// Scanne tous les programmes installés (Win32 + Windows Store)
@@ -82,45 +100,78 @@ public class ProgramScannerService
     {
         var apps = new List<InstalledProgram>();
 
-        await Task.Run(() =>
+        try
         {
-            GetWindowsAppsViaPowerShell(apps, cancellationToken);
-        }, cancellationToken);
+            var output = await GetWindowsAppsViaPowerShellAsync(cancellationToken);
+            if (!string.IsNullOrEmpty(output))
+            {
+                ParseWindowsAppsJson(output, apps, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // Propager l'annulation
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Erreur PowerShell apps: {ex.Message}");
+        }
 
         return apps;
     }
 
     /// <summary>
-    /// Récupère les apps via PowerShell avec les propriétés complètes
+    /// Récupère les apps via PowerShell avec timeout et support d'annulation
     /// </summary>
-    private void GetWindowsAppsViaPowerShell(List<InstalledProgram> apps, CancellationToken cancellationToken)
+    private static async Task<string> GetWindowsAppsViaPowerShellAsync(CancellationToken cancellationToken)
     {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = "-NoProfile -Command \"Get-AppxPackage | Select-Object Name, Publisher, PublisherDisplayName, Version, InstallLocation, IsFramework, IsBundle, NonRemovable | ConvertTo-Json -Compress\"",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        using var process = new Process { StartInfo = startInfo };
+        process.Start();
+
+        // Lire la sortie de manière asynchrone
+        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+
+        // Créer un token avec timeout de 30 secondes
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
+
         try
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                Arguments = "-NoProfile -Command \"Get-AppxPackage | Select-Object Name, Publisher, PublisherDisplayName, Version, InstallLocation, IsFramework, IsBundle, NonRemovable | ConvertTo-Json -Compress\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-
-            using var process = Process.Start(startInfo);
-            if (process == null) return;
-
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit();
-
-            if (string.IsNullOrEmpty(output)) return;
-
-            // Parser le JSON
-            ParseWindowsAppsJson(output, apps, cancellationToken);
+            await process.WaitForExitAsync(timeoutCts.Token);
+            return await outputTask;
         }
-        catch (Exception ex)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            Debug.WriteLine($"Erreur PowerShell apps: {ex.Message}");
+            // Timeout atteint - tuer le processus
+            try 
+            { 
+                process.Kill(entireProcessTree: true); 
+            } 
+            catch { }
+            
+            Debug.WriteLine("PowerShell timeout - processus terminé");
+            return string.Empty;
+        }
+        catch (OperationCanceledException)
+        {
+            // Annulation demandée par l'utilisateur
+            try 
+            { 
+                process.Kill(entireProcessTree: true); 
+            } 
+            catch { }
+            throw;
         }
     }
     
@@ -377,45 +428,57 @@ public class ProgramScannerService
     }
 
     /// <summary>
-    /// Extrait l'icône d'un programme
+    /// Extrait l'icône d'un programme (thread-safe pour UI)
     /// </summary>
     private async Task<BitmapImage?> ExtractIconAsync(InstalledProgram program)
     {
-        return await Task.Run(() =>
-        {
-            try
-            {
-                // Essayer depuis le chemin d'installation
-                if (!string.IsNullOrEmpty(program.InstallLocation))
-                {
-                    var exeFiles = Directory.GetFiles(program.InstallLocation, "*.exe", SearchOption.TopDirectoryOnly);
-                    foreach (var exe in exeFiles.Take(3)) // Limiter la recherche
-                    {
-                        var icon = ExtractIconFromFile(exe);
-                        if (icon != null) return icon;
-                    }
-                }
+        // Extraire les bytes de l'icône sur un thread pool
+        var iconBytes = await Task.Run(() => ExtractIconBytesFromProgram(program));
+        
+        if (iconBytes == null || iconBytes.Length == 0)
+            return null;
 
-                // Essayer depuis la commande de désinstallation
-                var uninstallPath = ExtractPathFromCommand(program.UninstallString);
-                if (!string.IsNullOrEmpty(uninstallPath) && File.Exists(uninstallPath))
-                {
-                    return ExtractIconFromFile(uninstallPath);
-                }
-
-                return null;
-            }
-            catch
-            {
-                return null;
-            }
-        });
+        // Créer le BitmapImage sur le UI thread
+        return await CreateBitmapImageOnUIThreadAsync(iconBytes);
     }
 
     /// <summary>
-    /// Extrait une icône depuis un fichier exe
+    /// Extrait les bytes de l'icône (peut être appelé sur n'importe quel thread)
     /// </summary>
-    private static BitmapImage? ExtractIconFromFile(string filePath)
+    private static byte[]? ExtractIconBytesFromProgram(InstalledProgram program)
+    {
+        try
+        {
+            // Essayer depuis le chemin d'installation
+            if (!string.IsNullOrEmpty(program.InstallLocation))
+            {
+                var exeFiles = Directory.GetFiles(program.InstallLocation, "*.exe", SearchOption.TopDirectoryOnly);
+                foreach (var exe in exeFiles.Take(3)) // Limiter la recherche
+                {
+                    var bytes = ExtractIconBytesFromFile(exe);
+                    if (bytes != null) return bytes;
+                }
+            }
+
+            // Essayer depuis la commande de désinstallation
+            var uninstallPath = ExtractPathFromCommand(program.UninstallString);
+            if (!string.IsNullOrEmpty(uninstallPath) && File.Exists(uninstallPath))
+            {
+                return ExtractIconBytesFromFile(uninstallPath);
+            }
+
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Extrait les bytes d'une icône depuis un fichier exe (thread-safe)
+    /// </summary>
+    private static byte[]? ExtractIconBytesFromFile(string filePath)
     {
         try
         {
@@ -425,8 +488,57 @@ public class ProgramScannerService
             using var bitmap = icon.ToBitmap();
             using var stream = new MemoryStream();
             bitmap.Save(stream, ImageFormat.Png);
-            stream.Position = 0;
+            return stream.ToArray();
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
+    /// <summary>
+    /// Crée un BitmapImage sur le UI thread de manière sûre
+    /// </summary>
+    private async Task<BitmapImage?> CreateBitmapImageOnUIThreadAsync(byte[] imageBytes)
+    {
+        // Si on a un DispatcherQueue et qu'on n'est pas sur le UI thread
+        if (_dispatcherQueue != null && !_dispatcherQueue.HasThreadAccess)
+        {
+            var tcs = new TaskCompletionSource<BitmapImage?>();
+            
+            var success = _dispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    var bitmap = CreateBitmapFromBytes(imageBytes);
+                    tcs.SetResult(bitmap);
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
+            });
+
+            if (!success)
+            {
+                return null;
+            }
+
+            return await tcs.Task;
+        }
+
+        // Déjà sur le UI thread ou pas de DispatcherQueue
+        return CreateBitmapFromBytes(imageBytes);
+    }
+
+    /// <summary>
+    /// Crée un BitmapImage à partir de bytes (doit être appelé sur UI thread)
+    /// </summary>
+    private static BitmapImage? CreateBitmapFromBytes(byte[] imageBytes)
+    {
+        try
+        {
+            using var stream = new MemoryStream(imageBytes);
             var bitmapImage = new BitmapImage();
             bitmapImage.SetSource(stream.AsRandomAccessStream());
             return bitmapImage;
@@ -460,7 +572,7 @@ public class ProgramScannerService
     }
 
     /// <summary>
-    /// Calcule les tailles réelles des programmes sans taille enregistrée
+    /// Calcule les tailles réelles des programmes sans taille enregistrée (PARALLÉLISÉ)
     /// </summary>
     private async Task CalculateRealSizesAsync(
         List<InstalledProgram> programs,
@@ -472,10 +584,15 @@ public class ProgramScannerService
 
         await Task.Run(() =>
         {
-            foreach (var program in programsWithoutSize)
+            // Utiliser Parallel.ForEach pour accélérer le calcul des tailles
+            var options = new ParallelOptions
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, 4), // Limiter à 4 threads I/O
+                CancellationToken = cancellationToken
+            };
 
+            Parallel.ForEach(programsWithoutSize, options, program =>
+            {
                 try
                 {
                     // Essayer de trouver le dossier d'installation
@@ -495,7 +612,7 @@ public class ProgramScannerService
                 {
                     Debug.WriteLine($"Erreur calcul taille {program.DisplayName}: {ex.Message}");
                 }
-            }
+            });
         }, cancellationToken);
     }
 

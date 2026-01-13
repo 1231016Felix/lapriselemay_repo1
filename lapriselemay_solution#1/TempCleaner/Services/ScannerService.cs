@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IO;
 using TempCleaner.Models;
 
@@ -11,44 +12,85 @@ public class ScannerService
         CancellationToken cancellationToken = default)
     {
         var result = new ScanResult();
-        var files = new List<TempFileInfo>();
         var startTime = DateTime.Now;
         var profileList = profiles.Where(p => p.IsEnabled).ToList();
-        int profileIndex = 0;
 
-        foreach (var profile in profileList)
+        if (profileList.Count == 0)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var percent = profileList.Count > 0 
-                ? (int)((double)profileIndex / profileList.Count * 100) 
-                : 0;
-            progress?.Report(($"Analyse: {profile.Name}...", percent));
-
-            var profileFiles = await ScanProfileAsync(profile, cancellationToken);
-            
-            profile.FileCount = profileFiles.Count;
-            profile.TotalSize = profileFiles.Sum(f => f.Size);
-
-            files.AddRange(profileFiles);
-
-            if (!result.CategoryStats.TryGetValue(profile.Name, out var stats))
-            {
-                stats = new CategoryStats { Name = profile.Name, Icon = profile.Icon };
-                result.CategoryStats[profile.Name] = stats;
-            }
-
-            stats.FileCount += profileFiles.Count;
-            stats.TotalSize += profileFiles.Sum(f => f.Size);
-
-            profileIndex++;
+            progress?.Report(("Aucun profil actif", 100));
+            return result;
         }
 
+        progress?.Report(("Démarrage de l'analyse parallèle...", 0));
+
+        // Utiliser ConcurrentBag pour collecter les résultats de manière thread-safe
+        var allFiles = new ConcurrentBag<TempFileInfo>();
+        var categoryStats = new ConcurrentDictionary<string, CategoryStats>();
+        var completedCount = 0;
+        var progressLock = new object();
+
+        // Limiter la concurrence pour éviter de surcharger le disque
+        using var semaphore = new SemaphoreSlim(Math.Min(Environment.ProcessorCount, 4));
+
+        var tasks = profileList.Select(async profile =>
+        {
+            await semaphore.WaitAsync(cancellationToken);
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var profileFiles = await ScanProfileAsync(profile, cancellationToken);
+
+                profile.FileCount = profileFiles.Count;
+                profile.TotalSize = profileFiles.Sum(f => f.Size);
+
+                // Ajouter les fichiers à la collection thread-safe
+                foreach (var file in profileFiles)
+                {
+                    allFiles.Add(file);
+                }
+
+                // Mettre à jour les stats de catégorie
+                var stats = categoryStats.GetOrAdd(profile.Name, _ => new CategoryStats 
+                { 
+                    Name = profile.Name, 
+                    Icon = profile.Icon 
+                });
+                
+                lock (stats)
+                {
+                    stats.FileCount += profileFiles.Count;
+                    stats.TotalSize += profileFiles.Sum(f => f.Size);
+                }
+
+                // Mise à jour de la progression
+                lock (progressLock)
+                {
+                    completedCount++;
+                    var percent = completedCount * 100 / profileList.Count;
+                    progress?.Report(($"Analysé: {profile.Name} ({completedCount}/{profileList.Count})", percent));
+                }
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        await Task.WhenAll(tasks);
+
+        // Construire le résultat final
+        var files = allFiles.ToList();
         result.Files = files;
         result.TotalSize = files.Sum(f => f.Size);
         result.TotalCount = files.Count;
         result.AccessDeniedCount = files.Count(f => !f.IsAccessible);
         result.ScanDuration = DateTime.Now - startTime;
+        
+        foreach (var kvp in categoryStats)
+        {
+            result.CategoryStats[kvp.Key] = kvp.Value;
+        }
 
         progress?.Report(("Analyse terminée", 100));
 

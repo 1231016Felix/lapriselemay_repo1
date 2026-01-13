@@ -3,19 +3,22 @@ using System.ComponentModel;
 using System.Windows.Input;
 using CleanUninstaller.Models;
 using CleanUninstaller.Services;
+using CleanUninstaller.Services.Interfaces;
 
 namespace CleanUninstaller.ViewModels;
 
 /// <summary>
 /// ViewModel pour le gestionnaire de programmes au démarrage
+/// Utilise l'injection de dépendances pour les services
 /// </summary>
 public class StartupManagerViewModel : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private readonly StartupManagerService _startupService;
-    private ObservableCollection<StartupProgram> _allPrograms = new();
-    private ObservableCollection<StartupProgram> _filteredPrograms = new();
+    private readonly ILoggerService _logger;
+    private ObservableCollection<StartupProgram> _allPrograms = [];
+    private ObservableCollection<StartupProgram> _filteredPrograms = [];
     private StartupProgram? _selectedProgram;
     private string _searchText = string.Empty;
     private bool _showDisabled = true;
@@ -30,10 +33,26 @@ public class StartupManagerViewModel : INotifyPropertyChanged
     private SortColumn _currentSortColumn = SortColumn.Impact;
     private bool _sortAscending = false;
 
-    public StartupManagerViewModel()
+    /// <summary>
+    /// Constructeur avec injection de dépendances
+    /// </summary>
+    public StartupManagerViewModel(ILoggerService logger)
     {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _startupService = new StartupManagerService();
 
+        InitializeCommands();
+        _logger.Debug("StartupManagerViewModel initialisé");
+    }
+
+    /// <summary>
+    /// Constructeur par défaut pour compatibilité XAML
+    /// </summary>
+    public StartupManagerViewModel() : this(ServiceContainer.GetService<ILoggerService>())
+    { }
+
+    private void InitializeCommands()
+    {
         // Initialiser les commandes
         RefreshCommand = new RelayCommand(async () => await ScanAsync());
         EnableSelectedCommand = new RelayCommand(async () => await SetSelectedEnabledAsync(true), () => SelectedProgram != null);
@@ -222,21 +241,21 @@ public class StartupManagerViewModel : INotifyPropertyChanged
 
     #region Commands
 
-    public ICommand RefreshCommand { get; }
-    public ICommand EnableSelectedCommand { get; }
-    public ICommand DisableSelectedCommand { get; }
-    public ICommand RemoveSelectedCommand { get; }
-    public ICommand EnableAllSelectedCommand { get; }
-    public ICommand DisableAllSelectedCommand { get; }
-    public ICommand SelectAllCommand { get; }
-    public ICommand DeselectAllCommand { get; }
-    public ICommand OpenFileLocationCommand { get; }
+    public ICommand RefreshCommand { get; private set; } = null!;
+    public ICommand EnableSelectedCommand { get; private set; } = null!;
+    public ICommand DisableSelectedCommand { get; private set; } = null!;
+    public ICommand RemoveSelectedCommand { get; private set; } = null!;
+    public ICommand EnableAllSelectedCommand { get; private set; } = null!;
+    public ICommand DisableAllSelectedCommand { get; private set; } = null!;
+    public ICommand SelectAllCommand { get; private set; } = null!;
+    public ICommand DeselectAllCommand { get; private set; } = null!;
+    public ICommand OpenFileLocationCommand { get; private set; } = null!;
     
     // Commandes de tri
-    public ICommand SortByNameCommand { get; }
-    public ICommand SortByStatusCommand { get; }
-    public ICommand SortByTypeCommand { get; }
-    public ICommand SortByImpactCommand { get; }
+    public ICommand SortByNameCommand { get; private set; } = null!;
+    public ICommand SortByStatusCommand { get; private set; } = null!;
+    public ICommand SortByTypeCommand { get; private set; } = null!;
+    public ICommand SortByImpactCommand { get; private set; } = null!;
 
     #endregion
 
@@ -249,6 +268,7 @@ public class StartupManagerViewModel : INotifyPropertyChanged
         IsBusy = true;
         StatusMessage = "Scan des programmes au démarrage...";
         Progress = 0;
+        _logger.Info("Démarrage du scan des programmes au démarrage");
 
         try
         {
@@ -264,11 +284,13 @@ public class StartupManagerViewModel : INotifyPropertyChanged
             ApplyFilters();
 
             StatusMessage = $"{programs.Count} programmes trouvés";
+            _logger.Info($"Scan terminé: {programs.Count} programmes au démarrage trouvés");
             UpdateStatistics();
         }
         catch (Exception ex)
         {
             StatusMessage = $"Erreur: {ex.Message}";
+            _logger.Error("Erreur lors du scan des programmes au démarrage", ex);
         }
         finally
         {
@@ -340,6 +362,7 @@ public class StartupManagerViewModel : INotifyPropertyChanged
 
         IsBusy = true;
         StatusMessage = enabled ? "Activation..." : "Désactivation...";
+        _logger.Info($"{(enabled ? "Activation" : "Désactivation")} de: {SelectedProgram.Name}");
 
         try
         {
@@ -347,12 +370,19 @@ public class StartupManagerViewModel : INotifyPropertyChanged
             if (success)
             {
                 StatusMessage = enabled ? "Programme activé" : "Programme désactivé";
+                _logger.Info($"Programme {(enabled ? "activé" : "désactivé")}: {SelectedProgram.Name}");
                 UpdateStatistics();
             }
             else
             {
                 StatusMessage = "Erreur: Droits administrateur requis ?";
+                _logger.Warning($"Échec de la modification de {SelectedProgram.Name} - Droits insuffisants ?");
             }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Erreur: {ex.Message}";
+            _logger.Error($"Erreur lors de la modification de {SelectedProgram.Name}", ex);
         }
         finally
         {
@@ -363,7 +393,7 @@ public class StartupManagerViewModel : INotifyPropertyChanged
     private async Task SetMultipleEnabledAsync(bool enabled)
     {
         var selected = _allPrograms.Where(p => p.IsSelected).ToList();
-        if (!selected.Any())
+        if (selected.Count == 0)
         {
             StatusMessage = "Aucun programme sélectionné";
             return;
@@ -371,17 +401,26 @@ public class StartupManagerViewModel : INotifyPropertyChanged
 
         IsBusy = true;
         var successCount = 0;
+        _logger.Info($"{(enabled ? "Activation" : "Désactivation")} de {selected.Count} programmes");
 
         foreach (var program in selected)
         {
             StatusMessage = $"{(enabled ? "Activation" : "Désactivation")} de {program.Name}...";
-            if (await _startupService.SetStartupEnabledAsync(program, enabled))
+            try
             {
-                successCount++;
+                if (await _startupService.SetStartupEnabledAsync(program, enabled))
+                {
+                    successCount++;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning($"Échec pour {program.Name}: {ex.Message}");
             }
         }
 
         StatusMessage = $"{successCount}/{selected.Count} programmes {(enabled ? "activés" : "désactivés")}";
+        _logger.Info($"Opération en lot terminée: {successCount}/{selected.Count} réussis");
         UpdateStatistics();
         IsBusy = false;
     }
@@ -392,21 +431,30 @@ public class StartupManagerViewModel : INotifyPropertyChanged
 
         IsBusy = true;
         StatusMessage = "Suppression...";
+        _logger.Info($"Suppression du programme au démarrage: {SelectedProgram.Name}");
 
         try
         {
             var success = await _startupService.RemoveFromStartupAsync(SelectedProgram);
             if (success)
             {
+                var programName = SelectedProgram.Name;
                 _allPrograms.Remove(SelectedProgram);
                 ApplyFilters();
                 StatusMessage = "Programme supprimé du démarrage";
+                _logger.Info($"Programme supprimé du démarrage: {programName}");
                 UpdateStatistics();
             }
             else
             {
                 StatusMessage = "Erreur lors de la suppression";
+                _logger.Warning($"Échec de la suppression de {SelectedProgram.Name}");
             }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Erreur: {ex.Message}";
+            _logger.Error($"Erreur lors de la suppression de {SelectedProgram.Name}", ex);
         }
         finally
         {
@@ -437,9 +485,13 @@ public class StartupManagerViewModel : INotifyPropertyChanged
                     Arguments = $"/select,\"{SelectedProgram.Command}\"",
                     UseShellExecute = true
                 });
+                _logger.Debug($"Ouverture de l'emplacement: {SelectedProgram.Command}");
             }
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Impossible d'ouvrir l'emplacement: {ex.Message}");
+        }
     }
 
     private void UpdateStatistics()
