@@ -1,5 +1,6 @@
 #include "DriverDownloader.h"
 #include "Utils.h"
+#include "Core/Constants.h"
 #include <ShlObj.h>
 #include <filesystem>
 #include <fstream>

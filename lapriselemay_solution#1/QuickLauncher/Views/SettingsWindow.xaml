@@ -280,6 +280,7 @@
                         <Slider x:Name="SearchDepthSlider" Minimum="1" Maximum="10" Value="5" Width="300" HorizontalAlignment="Left" ValueChanged="SearchDepthSlider_ValueChanged"/>
                         
                         <CheckBox x:Name="IndexHiddenFoldersCheck" Content="Indexer les dossiers cachés" Style="{StaticResource SettingsCheckBox}"/>
+                        <CheckBox x:Name="IndexBrowserBookmarksCheck" Content="Indexer les favoris des navigateurs (Chrome, Edge, Firefox, Brave)" Style="{StaticResource SettingsCheckBox}"/>
                         
                         <!-- Réindexation automatique -->
                         <TextBlock Text="Réindexation automatique" Style="{StaticResource SectionLabel}"/>
@@ -392,6 +393,338 @@
                                     <TextBlock Text=":quit" Foreground="#0078D4" FontFamily="Consolas"/>
                                     <TextBlock Grid.Column="1" Text="Quitter QuickLauncher" Foreground="#888"/>
                                 </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- ONGLET CONTRÔLE SYSTÈME -->
+            <TabItem Header="🎛️ Contrôle Système">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="Commandes de contrôle système" Style="{StaticResource SectionLabel}"/>
+                        <TextBlock Text="Personnalisez les préfixes et activez/désactivez les commandes de contrôle système. Tapez ':' suivi du préfixe dans la barre de recherche." Foreground="#888" TextWrapping="Wrap" Margin="0,0,0,15"/>
+                        
+                        <!-- Liste des commandes -->
+                        <ListBox x:Name="SystemCommandsList" 
+                                 Background="#2D2D2D" 
+                                 Foreground="White" 
+                                 BorderThickness="0"
+                                 MaxHeight="400"
+                                 SelectionChanged="SystemCommandsList_SelectionChanged">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#252525" CornerRadius="6" Padding="12" Margin="2">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="80"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            
+                                            <!-- Icône -->
+                                            <TextBlock Grid.Column="0" 
+                                                       Text="{Binding Icon}" 
+                                                       FontSize="20" 
+                                                       VerticalAlignment="Center" 
+                                                       Margin="0,0,12,0"/>
+                                            
+                                            <!-- Préfixe -->
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Prefix, StringFormat=:/{0}}" 
+                                                           Foreground="#0078D4" 
+                                                           FontFamily="Consolas"
+                                                           FontWeight="Bold"/>
+                                            </StackPanel>
+                                            
+                                            <!-- Nom et description -->
+                                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="10,0">
+                                                <TextBlock Text="{Binding Name}" 
+                                                           Foreground="White" 
+                                                           FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding Description}" 
+                                                           Foreground="#888" 
+                                                           FontSize="11"/>
+                                            </StackPanel>
+                                            
+                                            <!-- Toggle activé/désactivé -->
+                                            <CheckBox Grid.Column="3" 
+                                                      IsChecked="{Binding IsEnabled}" 
+                                                      VerticalAlignment="Center"
+                                                      ToolTip="Activer/Désactiver cette commande"/>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        
+                        <!-- Panneau d'édition -->
+                        <Border x:Name="CommandEditPanel" 
+                                Background="#2D2D2D" 
+                                CornerRadius="8" 
+                                Padding="15" 
+                                Margin="0,15,0,0"
+                                Visibility="Collapsed">
+                            <StackPanel>
+                                <TextBlock Text="Modifier la commande" Foreground="#0078D4" FontWeight="SemiBold" Margin="0,0,0,15"/>
+                                
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    
+                                    <!-- Préfixe -->
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Préfixe:" Foreground="White" VerticalAlignment="Center" Margin="0,0,15,10"/>
+                                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+                                        <TextBlock Text=":" Foreground="#0078D4" FontFamily="Consolas" FontSize="14" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="CommandPrefixBox" 
+                                                 Width="150" 
+                                                 Background="#1E1E1E" 
+                                                 Foreground="White" 
+                                                 BorderBrush="#3E3E3E"
+                                                 Padding="8,5"
+                                                 FontFamily="Consolas"/>
+                                    </StackPanel>
+                                    
+                                    <!-- Icône -->
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Icône:" Foreground="White" VerticalAlignment="Center" Margin="0,0,15,10"/>
+                                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
+                                        <TextBox x:Name="CommandIconBox" 
+                                                 Width="50" 
+                                                 Background="#1E1E1E" 
+                                                 Foreground="White" 
+                                                 BorderBrush="#3E3E3E"
+                                                 Padding="8,5"
+                                                 FontSize="16"
+                                                 TextAlignment="Center"/>
+                                        <TextBlock Text="(emoji)" Foreground="#666" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                    </StackPanel>
+                                    
+                                    <!-- Description -->
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Description:" Foreground="White" VerticalAlignment="Center" Margin="0,0,15,10"/>
+                                    <TextBox x:Name="CommandDescriptionBox" 
+                                             Grid.Row="2" Grid.Column="1"
+                                             Background="#1E1E1E" 
+                                             Foreground="White" 
+                                             BorderBrush="#3E3E3E"
+                                             Padding="8,5"
+                                             Margin="0,0,0,10"/>
+                                    
+                                    <!-- Boutons -->
+                                    <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                                        <Button Content="Annuler" 
+                                                Click="CancelCommandEdit_Click" 
+                                                Style="{StaticResource ActionButton}" 
+                                                Margin="0,0,10,0"/>
+                                        <Button Content="Appliquer" 
+                                                Click="ApplyCommandEdit_Click" 
+                                                Style="{StaticResource PrimaryButton}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Boutons d'action -->
+                        <StackPanel Orientation="Horizontal" Margin="0,15,0,0">
+                            <Button Content="✏️ Modifier" 
+                                    Click="EditSystemCommand_Click" 
+                                    Style="{StaticResource ActionButton}" 
+                                    Margin="0,0,10,0"/>
+                            <Button Content="🔄 Réinitialiser tout" 
+                                    Click="ResetSystemCommands_Click" 
+                                    Style="{StaticResource ActionButton}"/>
+                        </StackPanel>
+                        
+                        <!-- Aide -->
+                        <Border Background="#1E2A3E" CornerRadius="6" Padding="12" Margin="0,20,0,0">
+                            <StackPanel>
+                                <TextBlock Text="💡 Conseils" Foreground="#64B5F6" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                <TextBlock Text="• Utilisez des préfixes courts et mémorisables (ex: 'vol' au lieu de 'volume')" Foreground="#AAA" TextWrapping="Wrap"/>
+                                <TextBlock Text="• Désactivez les commandes que vous n'utilisez pas pour simplifier les suggestions" Foreground="#AAA" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                <TextBlock Text="• Les commandes désactivées ne seront plus suggérées dans la recherche" Foreground="#AAA" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- ONGLET GUIDE -->
+            <TabItem Header="📖 Guide">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                    <StackPanel>
+                        <!-- Introduction -->
+                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock Text="🚀 Bienvenue dans QuickLauncher" FontSize="18" FontWeight="Bold" Foreground="White" Margin="0,0,0,10"/>
+                                <TextBlock Text="Ce guide présente les fonctionnalités avancées pour vous aider à tirer le meilleur parti de votre lanceur d'applications." Foreground="#AAA" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Section: Menu contextuel -->
+                        <TextBlock Text="🖱️ Actions rapides (Clic droit)" Style="{StaticResource SectionLabel}" FontSize="15"/>
+                        <TextBlock Text="Faites un clic droit sur n'importe quel résultat de recherche pour accéder à des actions supplémentaires." Foreground="#888" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                        
+                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock Text="Actions sur les fichiers" Foreground="#0078D4" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="📂 Ouvrir l'emplacement" Foreground="White"/>
+                                    <TextBlock Grid.Column="1" Text="Ouvre l'Explorateur avec le fichier sélectionné" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="📋 Copier le chemin" Foreground="White"/>
+                                    <TextBlock Grid.Column="1" Text="Copie le chemin complet dans le presse-papiers" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="📝 Copier le nom" Foreground="White"/>
+                                    <TextBlock Grid.Column="1" Text="Copie uniquement le nom du fichier" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="✏️ Renommer..." Foreground="White"/>
+                                    <TextBlock Grid.Column="1" Text="Ouvre une boîte de dialogue pour renommer" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="📁 Déplacer vers..." Foreground="White"/>
+                                    <TextBlock Grid.Column="1" Text="Déplace le fichier vers un autre dossier" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="🗑️ Supprimer" Foreground="#FF6B6B"/>
+                                    <TextBlock Grid.Column="1" Text="Envoie le fichier à la corbeille" Foreground="#888"/>
+                                </Grid>
+                                
+                                <Separator Background="#3E3E3E" Margin="0,12"/>
+                                
+                                <TextBlock Text="Actions sur les applications" Foreground="#0078D4" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="🔑 Exécuter en admin" Foreground="White"/>
+                                    <TextBlock Grid.Column="1" Text="Lance l'application avec les droits administrateur" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="📎 Ouvrir avec..." Foreground="White"/>
+                                    <TextBlock Grid.Column="1" Text="Choisir une application pour ouvrir le fichier" Foreground="#888"/>
+                                </Grid>
+                                
+                                <Separator Background="#3E3E3E" Margin="0,12"/>
+                                
+                                <TextBlock Text="Actions Terminal" Foreground="#0078D4" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="💻 Terminal ici" Foreground="White"/>
+                                    <TextBlock Grid.Column="1" Text="Ouvre Windows Terminal dans le dossier" Foreground="#888"/>
+                                </Grid>
+                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="📟 PowerShell ici" Foreground="White"/>
+                                    <TextBlock Grid.Column="1" Text="Ouvre PowerShell dans le dossier" Foreground="#888"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Section: Commandes système -->
+                        <TextBlock Text="🎛️ Contrôle système rapide" Style="{StaticResource SectionLabel}" FontSize="15"/>
+                        <TextBlock Text="Contrôlez votre système directement depuis la barre de recherche en tapant des commandes commençant par ':'." Foreground="#888" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                        
+                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,0,0,15">
+                            <StackPanel>
+                                <!-- Liste dynamique des commandes système -->
+                                <ItemsControl x:Name="GuideSystemCommandsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,4">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="30"/>
+                                                    <ColumnDefinition Width="150"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Icon}" FontSize="14" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" 
+                                                           Text="{Binding Prefix, StringFormat=:{0}}" 
+                                                           Foreground="#0078D4" 
+                                                           FontFamily="Consolas"
+                                                           VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="2" 
+                                                           Text="{Binding Description}" 
+                                                           Foreground="#888"
+                                                           VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                
+                                <Border Background="#1E3A1E" CornerRadius="6" Padding="10" Margin="0,15,0,0">
+                                    <TextBlock Text="💡 Les préfixes sont personnalisables dans l'onglet 'Contrôle Système'" Foreground="#4CAF50" TextWrapping="Wrap"/>
+                                </Border>
+                                
+                                <Border Background="#1E2A3E" CornerRadius="6" Padding="10" Margin="0,10,0,0">
+                                    <TextBlock Text="📸 Les captures sont sauvegardées dans Images\Screenshots" Foreground="#64B5F6" TextWrapping="Wrap"/>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Section: Icônes natives -->
+                        <TextBlock Text="🖼️ Icônes natives" Style="{StaticResource SectionLabel}" FontSize="15"/>
+                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock Text="QuickLauncher affiche automatiquement les vraies icônes de vos applications au lieu des emojis génériques." Foreground="#AAA" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBlock Text="✅" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Applications (.exe)" Foreground="White"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBlock Text="✅" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Raccourcis (.lnk)" Foreground="White"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBlock Text="✅" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Fichiers (icône selon le type)" Foreground="White"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBlock Text="✅" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Dossiers" Foreground="White"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBlock Text="✅" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Applications du Microsoft Store" Foreground="White"/>
+                                </StackPanel>
+                                
+                                <Border Background="#1E2A3E" CornerRadius="6" Padding="10" Margin="0,15,0,0">
+                                    <TextBlock Text="💡 Les icônes sont mises en cache pour des performances optimales. Si une icône ne s'affiche pas, un emoji de fallback est utilisé." Foreground="#64B5F6" TextWrapping="Wrap"/>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Section: Astuces -->
+                        <TextBlock Text="💡 Astuces" Style="{StaticResource SectionLabel}" FontSize="15"/>
+                        <Border Background="#2D3D2D" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#4CAF50" BorderThickness="1">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBlock Text="•" Foreground="#4CAF50" FontWeight="Bold" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Tapez ':help' ou '?' pour voir toutes les commandes disponibles" Foreground="#AAA" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBlock Text="•" Foreground="#4CAF50" FontWeight="Bold" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Les résultats sont triés par fréquence d'utilisation" Foreground="#AAA" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBlock Text="•" Foreground="#4CAF50" FontWeight="Bold" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Utilisez 'g recherche' pour une recherche Google rapide" Foreground="#AAA" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBlock Text="•" Foreground="#4CAF50" FontWeight="Bold" Margin="0,0,10,0"/>
+                                    <TextBlock Text="La calculatrice intégrée fonctionne automatiquement (ex: '2+2*3')" Foreground="#AAA" TextWrapping="Wrap"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,5">
+                                    <TextBlock Text="•" Foreground="#4CAF50" FontWeight="Bold" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Déplacez la fenêtre en cliquant n'importe où (hors zone de texte)" Foreground="#AAA" TextWrapping="Wrap"/>
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </StackPanel>

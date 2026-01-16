@@ -1,4 +1,5 @@
 #include "DriverScanner.h"
+#include "Core/Logger.h"
 #include <shellapi.h>
 #include <sstream>
 #include <fstream>
@@ -19,10 +20,44 @@ namespace DriverManager {
         return buffer;
     }
 
-    // Hash map pour lookup O(1) des GUIDs par string (évite CLSIDFromString)
+    // RAII wrapper local pour HDEVINFO (compatible avec le code existant)
+    class DeviceInfoSetHandle {
+    public:
+        explicit DeviceInfoSetHandle(HDEVINFO handle = INVALID_HANDLE_VALUE) 
+            : m_handle(handle) {}
+        
+        ~DeviceInfoSetHandle() {
+            if (IsValid()) {
+                SetupDiDestroyDeviceInfoList(m_handle);
+            }
+        }
+        
+        DeviceInfoSetHandle(const DeviceInfoSetHandle&) = delete;
+        DeviceInfoSetHandle& operator=(const DeviceInfoSetHandle&) = delete;
+        
+        DeviceInfoSetHandle(DeviceInfoSetHandle&& other) noexcept 
+            : m_handle(other.m_handle) {
+            other.m_handle = INVALID_HANDLE_VALUE;
+        }
+        
+        HDEVINFO Get() const { return m_handle; }
+        operator HDEVINFO() const { return m_handle; }
+        bool IsValid() const { return m_handle != INVALID_HANDLE_VALUE; }
+        
+        void Reset(HDEVINFO handle = INVALID_HANDLE_VALUE) {
+            if (IsValid()) {
+                SetupDiDestroyDeviceInfoList(m_handle);
+            }
+            m_handle = handle;
+        }
+
+    private:
+        HDEVINFO m_handle;
+    };
+
+    // Hash map pour lookup O(1) des GUIDs par string
     static std::unordered_map<std::wstring, DriverType> CreateGuidLookupMap() {
         std::unordered_map<std::wstring, DriverType> map;
-        // Convertir les GUIDs connus en strings une seule fois au démarrage
         map[GuidToWString(GUID_DEVCLASS_DISPLAY)] = DriverType::Display;
         map[GuidToWString(GUID_DEVCLASS_MEDIA)] = DriverType::Audio;
         map[GuidToWString(GUID_DEVCLASS_NET)] = DriverType::Network;
@@ -40,10 +75,8 @@ namespace DriverManager {
         return map;
     }
 
-    // Map statique initialisée une seule fois
     static const std::unordered_map<std::wstring, DriverType> s_guidLookup = CreateGuidLookupMap();
 
-    // Known device class GUIDs (conservé pour ScanDeviceClass)
     const std::vector<std::pair<GUID, DriverType>> DriverScanner::s_classGuids = {
         { GUID_DEVCLASS_DISPLAY,        DriverType::Display },
         { GUID_DEVCLASS_MEDIA,          DriverType::Audio },
@@ -62,7 +95,7 @@ namespace DriverManager {
     };
 
     DriverScanner::DriverScanner() {
-        // Initialize categories
+        LOG_INFO(L"DriverScanner initialisé");
         m_categories.push_back({ L"Système", DriverType::System, {}, true });
         m_categories.push_back({ L"Affichage", DriverType::Display, {}, true });
         m_categories.push_back({ L"Audio", DriverType::Audio, {}, true });
@@ -77,6 +110,7 @@ namespace DriverManager {
 
     DriverScanner::~DriverScanner() {
         m_cancelRequested = true;
+        LOG_INFO(L"DriverScanner détruit");
     }
 
     void DriverScanner::ClearCategories() {
@@ -92,21 +126,25 @@ namespace DriverManager {
                 return cat;
             }
         }
-        return m_categories.back(); // Return "Other" category
+        return m_categories.back();
     }
 
     void DriverScanner::ScanAllDrivers() {
         if (m_isScanning) return;
         
+        LOG_INFO(L"Démarrage du scan des pilotes");
         m_isScanning = true;
         m_cancelRequested = false;
         ClearCategories();
 
-        int totalClasses = static_cast<int>(s_classGuids.size()) + 1; // +1 for "Other" scan
+        int totalClasses = static_cast<int>(s_classGuids.size()) + 1;
         int currentClass = 0;
 
         for (const auto& [guid, type] : s_classGuids) {
-            if (m_cancelRequested) break;
+            if (m_cancelRequested) {
+                LOG_INFO(L"Scan annulé par l'utilisateur");
+                break;
+            }
             
             if (m_progressCallback) {
                 m_progressCallback(currentClass, totalClasses, L"Scanning...");
@@ -116,18 +154,27 @@ namespace DriverManager {
             currentClass++;
         }
 
-        // Also scan all other devices
         if (m_progressCallback) {
-            m_progressCallback(currentClass, totalClasses, L"Scanning autres p\xc3\xa9riph\xc3\xa9riques...");
+            m_progressCallback(currentClass, totalClasses, L"Scanning autres périphériques...");
         }
         ScanDeviceClass(GUID_NULL, DriverType::Other);
         currentClass++;
         
-        // Final progress update
+        // Préparer les champs de recherche pour tous les drivers
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            for (auto& cat : m_categories) {
+                for (auto& driver : cat.drivers) {
+                    driver.PrepareSearchFields();
+                }
+            }
+        }
+        
         if (m_progressCallback) {
-            m_progressCallback(totalClasses, totalClasses, L"Termin\xc3\xa9");
+            m_progressCallback(totalClasses, totalClasses, L"Terminé");
         }
 
+        LOG_INFO(L"Scan terminé: " + std::to_wstring(GetTotalDriverCount()) + L" pilotes trouvés");
         m_isScanning = false;
     }
 
@@ -137,7 +184,6 @@ namespace DriverManager {
         m_isScanning = true;
         m_cancelRequested = false;
 
-        // Find the GUID for this type
         for (const auto& [guid, t] : s_classGuids) {
             if (t == type) {
                 ScanDeviceClass(guid, type);
@@ -149,7 +195,6 @@ namespace DriverManager {
     }
 
     void DriverScanner::ScanDeviceClass(const GUID& classGuid, DriverType type) {
-        // Utiliser le wrapper RAII pour garantir la libération des ressources
         DeviceInfoSetHandle deviceInfoSet;
         
         if (classGuid == GUID_NULL) {
@@ -161,10 +206,10 @@ namespace DriverManager {
         }
 
         if (!deviceInfoSet.IsValid()) {
+            LOG_WARN(L"SetupDiGetClassDevsW a échoué");
             return;
         }
 
-        // Collecter d'abord tous les drivers sans lock
         std::vector<DriverInfo> scannedDrivers;
         scannedDrivers.reserve(50);
 
@@ -176,7 +221,6 @@ namespace DriverManager {
 
             DriverInfo info = GetDriverInfo(deviceInfoSet, deviceInfoData);
             
-            // Determine type if scanning all classes
             if (classGuid == GUID_NULL) {
                 info.type = ClassifyDriverType(info.deviceClassGuid);
             } else {
@@ -192,11 +236,9 @@ namespace DriverManager {
             }
         }
 
-        // Un seul lock pour ajouter tous les drivers avec détection O(1) des doublons
         {
             std::lock_guard<std::mutex> lock(m_mutex);
             
-            // Construire un set des IDs existants pour lookup O(1)
             std::unordered_set<std::wstring> existingIds;
             for (const auto& cat : m_categories) {
                 for (const auto& driver : cat.drivers) {
@@ -205,22 +247,18 @@ namespace DriverManager {
             }
             
             for (auto& info : scannedDrivers) {
-                // O(1) au lieu de O(n) pour chaque driver
                 if (existingIds.find(info.deviceInstanceId) == existingIds.end()) {
                     auto& category = GetOrCreateCategory(info.type);
-                    existingIds.insert(info.deviceInstanceId); // Pour éviter doublons dans ce batch
+                    existingIds.insert(info.deviceInstanceId);
                     category.drivers.push_back(std::move(info));
                 }
             }
         }
-        
-        // Le wrapper RAII libère automatiquement deviceInfoSet ici
     }
 
     DriverInfo DriverScanner::GetDriverInfo(HDEVINFO deviceInfoSet, SP_DEVINFO_DATA& deviceInfoData) {
         DriverInfo info;
 
-        // Get device description (friendly name)
         info.deviceDescription = GetDeviceRegistryProperty(deviceInfoSet, deviceInfoData, SPDRP_DEVICEDESC);
         info.deviceName = GetDeviceRegistryProperty(deviceInfoSet, deviceInfoData, SPDRP_FRIENDLYNAME);
         
@@ -228,16 +266,10 @@ namespace DriverManager {
             info.deviceName = info.deviceDescription;
         }
 
-        // Get manufacturer
         info.manufacturer = GetDeviceRegistryProperty(deviceInfoSet, deviceInfoData, SPDRP_MFG);
-
-        // Get hardware ID
         info.hardwareId = GetDeviceRegistryProperty(deviceInfoSet, deviceInfoData, SPDRP_HARDWAREID);
-
-        // Get device class
         info.deviceClass = GetDeviceRegistryProperty(deviceInfoSet, deviceInfoData, SPDRP_CLASS);
         
-        // Get class GUID
         wchar_t guidStr[64] = {0};
         DWORD guidSize = sizeof(guidStr);
         if (SetupDiGetDeviceRegistryPropertyW(deviceInfoSet, &deviceInfoData, SPDRP_CLASSGUID,
@@ -245,14 +277,12 @@ namespace DriverManager {
             info.deviceClassGuid = guidStr;
         }
 
-        // Get device instance ID
         wchar_t instanceId[MAX_DEVICE_ID_LEN] = {0};
         if (SetupDiGetDeviceInstanceIdW(deviceInfoSet, &deviceInfoData, instanceId, 
             MAX_DEVICE_ID_LEN, nullptr)) {
             info.deviceInstanceId = instanceId;
         }
 
-        // Get driver info
         SP_DRVINFO_DATA_W driverInfoData;
         driverInfoData.cbSize = sizeof(SP_DRVINFO_DATA_W);
         
@@ -262,7 +292,6 @@ namespace DriverManager {
                 info.driverVersion = std::to_wstring(HIWORD(driverInfoData.DriverVersion)) + L"." +
                                     std::to_wstring(LOWORD(driverInfoData.DriverVersion));
                 
-                // Format driver date
                 SYSTEMTIME st;
                 FileTimeToSystemTime(&driverInfoData.DriverDate, &st);
                 wchar_t dateStr[32];
@@ -272,17 +301,14 @@ namespace DriverManager {
             SetupDiDestroyDriverInfoList(deviceInfoSet, &deviceInfoData, SPDIT_COMPATDRIVER);
         }
 
-        // Get driver status
         info.status = DetermineDriverStatus(deviceInfoSet, deviceInfoData);
 
-        // Check if device is enabled
         DWORD status = 0, problem = 0;
         if (CM_Get_DevNode_Status(&status, &problem, deviceInfoData.DevInst, 0) == CR_SUCCESS) {
             info.isEnabled = !(status & DN_DISABLEABLE && problem == CM_PROB_DISABLED);
             info.problemCode = problem;
         }
 
-        // Calculate driver age
         info.CalculateAge();
 
         return info;
@@ -300,7 +326,6 @@ namespace DriverManager {
         }
         
         if (problem != 0) {
-            // Device has a problem
             if (problem == CM_PROB_FAILED_START || 
                 problem == CM_PROB_FAILED_INSTALL ||
                 problem == CM_PROB_FAILED_ADD ||
@@ -318,13 +343,11 @@ namespace DriverManager {
     }
 
     DriverType DriverScanner::ClassifyDriverType(const std::wstring& classGuid) {
-        // Lookup O(1) dans la hash map au lieu de convertir le GUID
         auto it = s_guidLookup.find(classGuid);
         if (it != s_guidLookup.end()) {
             return it->second;
         }
 
-        // Essayer avec des variantes de casse (les GUIDs peuvent être en minuscules)
         std::wstring upperGuid = classGuid;
         std::transform(upperGuid.begin(), upperGuid.end(), upperGuid.begin(), ::towupper);
         
@@ -396,40 +419,44 @@ namespace DriverManager {
         return GetProblematicDrivers().size();
     }
 
-    bool DriverScanner::EnableDriver(const DriverInfo& driver) {
-        // Method 1: Try CM_Enable_DevNode first (requires admin)
+    VoidResult DriverScanner::EnableDriver(const DriverInfo& driver) {
+        LOG_INFO(L"Tentative d'activation du pilote: " + driver.deviceName);
+        
+        // Method 1: Try CM_Enable_DevNode first
         DEVINST devInst = 0;
         CONFIGRET cr = CM_Locate_DevNodeW(&devInst, 
             const_cast<DEVINSTID_W>(driver.deviceInstanceId.c_str()), 
             CM_LOCATE_DEVNODE_NORMAL);
         
-        if (cr == CR_SUCCESS) {
-            cr = CM_Enable_DevNode(devInst, 0);
-            if (cr == CR_SUCCESS) {
-                return true;
-            }
+        if (cr != CR_SUCCESS) {
+            LOG_ERROR(L"CM_Locate_DevNodeW a échoué: " + std::to_wstring(cr));
+            return Results::Fail(L"Impossible de localiser le périphérique (code " + std::to_wstring(cr) + L")", cr);
         }
         
-        // Method 2: Fallback to SetupDi approach avec RAII
+        cr = CM_Enable_DevNode(devInst, 0);
+        if (cr == CR_SUCCESS) {
+            LOG_INFO(L"Pilote activé avec succès via CM_Enable_DevNode");
+            return Results::Ok();
+        }
+        
+        LOG_WARN(L"CM_Enable_DevNode a échoué (code " + std::to_wstring(cr) + L"), tentative SetupDi...");
+        
+        // Method 2: Fallback to SetupDi approach
         DeviceInfoSetHandle deviceInfoSet(SetupDiGetClassDevsW(nullptr, nullptr, nullptr, 
             DIGCF_ALLCLASSES | DIGCF_PRESENT));
         
         if (!deviceInfoSet.IsValid()) {
-            return false;
+            return Results::FailureFromLastError(L"SetupDiGetClassDevsW a échoué");
         }
 
         SP_DEVINFO_DATA deviceInfoData;
         deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
         
-        bool success = false;
-        
-        // Find the device by instance ID
         for (DWORD i = 0; SetupDiEnumDeviceInfo(deviceInfoSet, i, &deviceInfoData); i++) {
             wchar_t instanceId[MAX_DEVICE_ID_LEN] = {0};
             if (SetupDiGetDeviceInstanceIdW(deviceInfoSet, &deviceInfoData, instanceId, 
                 MAX_DEVICE_ID_LEN, nullptr)) {
                 if (_wcsicmp(instanceId, driver.deviceInstanceId.c_str()) == 0) {
-                    // Found the device, try to enable it
                     SP_PROPCHANGE_PARAMS params;
                     params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
                     params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
@@ -439,61 +466,66 @@ namespace DriverManager {
 
                     if (SetupDiSetClassInstallParamsW(deviceInfoSet, &deviceInfoData, 
                         &params.ClassInstallHeader, sizeof(params))) {
-                        success = SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData);
+                        if (SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData)) {
+                            LOG_INFO(L"Pilote activé avec succès via SetupDi (global)");
+                            return Results::Ok();
+                        }
                         
-                        // Try config-specific if global failed
-                        if (!success) {
-                            params.Scope = DICS_FLAG_CONFIGSPECIFIC;
-                            if (SetupDiSetClassInstallParamsW(deviceInfoSet, &deviceInfoData, 
-                                &params.ClassInstallHeader, sizeof(params))) {
-                                success = SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData);
+                        // Try config-specific
+                        params.Scope = DICS_FLAG_CONFIGSPECIFIC;
+                        if (SetupDiSetClassInstallParamsW(deviceInfoSet, &deviceInfoData, 
+                            &params.ClassInstallHeader, sizeof(params))) {
+                            if (SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData)) {
+                                LOG_INFO(L"Pilote activé avec succès via SetupDi (config-specific)");
+                                return Results::Ok();
                             }
                         }
                     }
-                    break;
+                    
+                    return Results::FailureFromLastError(L"SetupDiCallClassInstaller a échoué");
                 }
             }
         }
 
-        // Le wrapper RAII libère automatiquement deviceInfoSet
-        return success;
+        return Results::Fail(L"Périphérique non trouvé dans la liste des périphériques");
     }
 
-    bool DriverScanner::DisableDriver(const DriverInfo& driver) {
-        // Method 1: Try CM_Disable_DevNode first (requires admin)
+    VoidResult DriverScanner::DisableDriver(const DriverInfo& driver) {
+        LOG_INFO(L"Tentative de désactivation du pilote: " + driver.deviceName);
+        
         DEVINST devInst = 0;
         CONFIGRET cr = CM_Locate_DevNodeW(&devInst, 
             const_cast<DEVINSTID_W>(driver.deviceInstanceId.c_str()), 
             CM_LOCATE_DEVNODE_NORMAL);
         
-        if (cr == CR_SUCCESS) {
-            // CM_DISABLE_UI_NOT_OK prevents UI prompts
-            cr = CM_Disable_DevNode(devInst, CM_DISABLE_UI_NOT_OK);
-            if (cr == CR_SUCCESS) {
-                return true;
-            }
+        if (cr != CR_SUCCESS) {
+            LOG_ERROR(L"CM_Locate_DevNodeW a échoué: " + std::to_wstring(cr));
+            return Results::Fail(L"Impossible de localiser le périphérique (code " + std::to_wstring(cr) + L")", cr);
         }
         
-        // Method 2: Fallback to SetupDi approach avec RAII
+        cr = CM_Disable_DevNode(devInst, CM_DISABLE_UI_NOT_OK);
+        if (cr == CR_SUCCESS) {
+            LOG_INFO(L"Pilote désactivé avec succès via CM_Disable_DevNode");
+            return Results::Ok();
+        }
+        
+        LOG_WARN(L"CM_Disable_DevNode a échoué (code " + std::to_wstring(cr) + L"), tentative SetupDi...");
+        
         DeviceInfoSetHandle deviceInfoSet(SetupDiGetClassDevsW(nullptr, nullptr, nullptr, 
             DIGCF_ALLCLASSES | DIGCF_PRESENT));
         
         if (!deviceInfoSet.IsValid()) {
-            return false;
+            return Results::FailureFromLastError(L"SetupDiGetClassDevsW a échoué");
         }
 
         SP_DEVINFO_DATA deviceInfoData;
         deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
         
-        bool success = false;
-        
-        // Find the device by instance ID
         for (DWORD i = 0; SetupDiEnumDeviceInfo(deviceInfoSet, i, &deviceInfoData); i++) {
             wchar_t instanceId[MAX_DEVICE_ID_LEN] = {0};
             if (SetupDiGetDeviceInstanceIdW(deviceInfoSet, &deviceInfoData, instanceId, 
                 MAX_DEVICE_ID_LEN, nullptr)) {
                 if (_wcsicmp(instanceId, driver.deviceInstanceId.c_str()) == 0) {
-                    // Found the device, try to disable it
                     SP_PROPCHANGE_PARAMS params;
                     params.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER);
                     params.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
@@ -503,45 +535,54 @@ namespace DriverManager {
 
                     if (SetupDiSetClassInstallParamsW(deviceInfoSet, &deviceInfoData, 
                         &params.ClassInstallHeader, sizeof(params))) {
-                        success = SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData);
+                        if (SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData)) {
+                            LOG_INFO(L"Pilote désactivé avec succès via SetupDi (global)");
+                            return Results::Ok();
+                        }
                         
-                        // Try config-specific if global failed
-                        if (!success) {
-                            params.Scope = DICS_FLAG_CONFIGSPECIFIC;
-                            if (SetupDiSetClassInstallParamsW(deviceInfoSet, &deviceInfoData, 
-                                &params.ClassInstallHeader, sizeof(params))) {
-                                success = SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData);
+                        params.Scope = DICS_FLAG_CONFIGSPECIFIC;
+                        if (SetupDiSetClassInstallParamsW(deviceInfoSet, &deviceInfoData, 
+                            &params.ClassInstallHeader, sizeof(params))) {
+                            if (SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, deviceInfoSet, &deviceInfoData)) {
+                                LOG_INFO(L"Pilote désactivé avec succès via SetupDi (config-specific)");
+                                return Results::Ok();
                             }
                         }
                     }
-                    break;
+                    
+                    return Results::FailureFromLastError(L"SetupDiCallClassInstaller a échoué");
                 }
             }
         }
 
-        // Le wrapper RAII libère automatiquement deviceInfoSet
-        return success;
+        return Results::Fail(L"Périphérique non trouvé dans la liste des périphériques");
     }
 
-    bool DriverScanner::UninstallDriver(const DriverInfo& driver) {
-        // Get device instance handle
+    VoidResult DriverScanner::UninstallDriver(const DriverInfo& driver) {
+        LOG_INFO(L"Tentative de désinstallation du pilote: " + driver.deviceName);
+        
         DEVINST devInst = 0;
         CONFIGRET cr = CM_Locate_DevNodeW(&devInst, 
             const_cast<DEVINSTID_W>(driver.deviceInstanceId.c_str()), 
             CM_LOCATE_DEVNODE_NORMAL);
         
         if (cr != CR_SUCCESS) {
-            return false;
+            LOG_ERROR(L"CM_Locate_DevNodeW a échoué: " + std::to_wstring(cr));
+            return Results::Fail(L"Impossible de localiser le périphérique (code " + std::to_wstring(cr) + L")", cr);
         }
         
-        // Uninstall the device
         cr = CM_Uninstall_DevNode(devInst, 0);
-        return (cr == CR_SUCCESS);
+        if (cr == CR_SUCCESS) {
+            LOG_INFO(L"Pilote désinstallé avec succès");
+            return Results::Ok();
+        }
+        
+        return Results::Fail(L"CM_Uninstall_DevNode a échoué (code " + std::to_wstring(cr) + L")", cr);
     }
 
-    bool DriverScanner::UpdateDriver(const DriverInfo& driver) {
-        // Open Device Manager for manual update
-        // Using ShellExecute to open device manager properties
+    VoidResult DriverScanner::UpdateDriver(const DriverInfo& driver) {
+        LOG_INFO(L"Ouverture du gestionnaire de périphériques pour mise à jour");
+        
         std::wstring command = L"devmgmt.msc";
         
         SHELLEXECUTEINFOW sei = { sizeof(sei) };
@@ -549,13 +590,19 @@ namespace DriverManager {
         sei.lpFile = command.c_str();
         sei.nShow = SW_SHOWNORMAL;
         
-        return ShellExecuteExW(&sei) != FALSE;
+        if (ShellExecuteExW(&sei)) {
+            return Results::Ok();
+        }
+        
+        return Results::FailureFromLastError(L"Impossible d'ouvrir le gestionnaire de périphériques");
     }
 
-    bool DriverScanner::ExportToFile(const std::wstring& filePath) const {
+    VoidResult DriverScanner::ExportToFile(const std::wstring& filePath) const {
+        LOG_INFO(L"Export vers: " + filePath);
+        
         std::wofstream file(filePath);
         if (!file.is_open()) {
-            return false;
+            return Results::Fail(L"Impossible d'ouvrir le fichier pour écriture: " + filePath);
         }
 
         file << L"Driver Manager - Export\n";
@@ -582,28 +629,39 @@ namespace DriverManager {
             }
         }
 
-        return true;
+        LOG_INFO(L"Export terminé avec succès");
+        return Results::Ok();
     }
 
-    bool DriverScanner::BackupDriver(const DriverInfo& driver, const std::wstring& backupPath) {
-        // Use DISM or pnputil to backup driver
-        // This is a simplified implementation
+    VoidResult DriverScanner::BackupDriver(const DriverInfo& driver, const std::wstring& backupPath) {
+        LOG_INFO(L"Backup du pilote vers: " + backupPath);
+        
+        if (driver.infPath.empty()) {
+            return Results::Fail(L"Chemin INF du pilote non disponible");
+        }
+        
         std::wstring command = L"pnputil /export-driver \"" + driver.infPath + L"\" \"" + backupPath + L"\"";
         
         STARTUPINFOW si = { sizeof(si) };
         PROCESS_INFORMATION pi;
         
-        if (CreateProcessW(nullptr, const_cast<wchar_t*>(command.c_str()), nullptr, nullptr, 
+        if (!CreateProcessW(nullptr, const_cast<wchar_t*>(command.c_str()), nullptr, nullptr, 
             FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-            WaitForSingleObject(pi.hProcess, INFINITE);
-            DWORD exitCode;
-            GetExitCodeProcess(pi.hProcess, &exitCode);
-            CloseHandle(pi.hProcess);
-            CloseHandle(pi.hThread);
-            return exitCode == 0;
+            return Results::FailureFromLastError(L"Impossible de lancer pnputil");
         }
         
-        return false;
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        DWORD exitCode;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+        
+        if (exitCode == 0) {
+            LOG_INFO(L"Backup terminé avec succès");
+            return Results::Ok();
+        }
+        
+        return Results::Fail(L"pnputil a retourné le code " + std::to_wstring(exitCode), exitCode);
     }
 
 } // namespace DriverManager

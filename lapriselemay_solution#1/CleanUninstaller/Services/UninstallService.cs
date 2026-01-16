@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using CleanUninstaller.Models;
 using CleanUninstaller.Services.Interfaces;
+using Shared.Logging;
 
 namespace CleanUninstaller.Services;
 
@@ -15,7 +16,7 @@ public partial class UninstallService : IUninstallService
 {
     private readonly IRegistryService _registryService;
     private readonly IResidualScannerService _residualScanner;
-    private readonly ILoggerService _logger;
+    private readonly Shared.Logging.ILoggerService _logger;
 
     // Patterns pour les arguments silencieux courants
     private static readonly Dictionary<string, string[]> SilentSwitches = new()
@@ -31,19 +32,12 @@ public partial class UninstallService : IUninstallService
         { "advanced", ["/SILENT", "/VERYSILENT"] }
     };
 
-    public UninstallService(IRegistryService registryService, IResidualScannerService residualScanner, ILoggerService logger)
+    public UninstallService(IRegistryService registryService, IResidualScannerService residualScanner, Shared.Logging.ILoggerService logger)
     {
-        _registryService = registryService;
-        _residualScanner = residualScanner;
-        _logger = logger;
+        _registryService = registryService ?? throw new ArgumentNullException(nameof(registryService));
+        _residualScanner = residualScanner ?? throw new ArgumentNullException(nameof(residualScanner));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
-
-    // Constructeur sans paramètre pour compatibilité
-    public UninstallService() : this(
-        ServiceContainer.GetService<IRegistryService>(),
-        ServiceContainer.GetService<IResidualScannerService>(),
-        ServiceContainer.GetService<ILoggerService>())
-    { }
 
     /// <summary>
     /// Désinstalle un programme de manière standard

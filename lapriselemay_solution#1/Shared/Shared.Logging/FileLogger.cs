@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Threading.Channels;
 
 namespace Shared.Logging;
@@ -6,8 +5,9 @@ namespace Shared.Logging;
 /// <summary>
 /// Logger asynchrone vers fichier utilisant Channel&lt;T&gt; pour des performances optimales.
 /// Les logs sont mis en queue et écrits par batch de manière asynchrone pour minimiser les I/O disque.
+/// Implémente ILoggerService pour compatibilité avec tous les projets.
 /// </summary>
-public sealed class FileLogger : IAsyncLogger, IDisposable
+public sealed class FileLogger : IAsyncLogger, ILoggerService, IDisposable
 {
     private readonly string _logPath;
     private readonly Channel<LogEntry> _logChannel;
@@ -117,7 +117,7 @@ public sealed class FileLogger : IAsyncLogger, IDisposable
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
                         // Ignorer les erreurs d'écriture silencieusement
-                        Debug.WriteLine($"FileLogger write error: {ex.Message}");
+                        System.Diagnostics.Debug.WriteLine($"FileLogger write error: {ex.Message}");
                     }
                     buffer.Clear();
                 }
@@ -174,7 +174,7 @@ public sealed class FileLogger : IAsyncLogger, IDisposable
         var entry = new LogEntry(DateTime.Now, level, message, exception);
         
         // Écrire aussi dans Debug output
-        Debug.WriteLine(FormatLogEntry(entry));
+        System.Diagnostics.Debug.WriteLine(FormatLogEntry(entry));
         
         // Envoyer au channel (non-bloquant)
         _logChannel.Writer.TryWrite(entry);

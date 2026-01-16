@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:QuickLauncher.ViewModels"
         xmlns:models="clr-namespace:QuickLauncher.Models"
+        xmlns:converters="clr-namespace:QuickLauncher.Converters"
         Title="QuickLauncher"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -20,6 +21,9 @@
     
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:IconToVisibilityConverter x:Key="IconToVis"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
+        <converters:ResultTypeToMenuVisibilityConverter x:Key="TypeToMenuVis"/>
         
         <!-- Style bouton clear discret -->
         <Style x:Key="ClearButtonStyle" TargetType="Button">
@@ -53,6 +57,78 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+        
+        <!-- Style menu contextuel sombre -->
+        <Style x:Key="DarkContextMenuStyle" TargetType="ContextMenu">
+            <Setter Property="Background" Value="#2D2D2D"/>
+            <Setter Property="BorderBrush" Value="#3E3E3E"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="2"/>
+        </Style>
+        
+        <Style x:Key="DarkMenuItemStyle" TargetType="MenuItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="8,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="#3E3E3E"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        
+        <!-- Menu contextuel pour les résultats -->
+        <ContextMenu x:Key="ResultContextMenu" Style="{StaticResource DarkContextMenuStyle}">
+            <MenuItem Header="📂 Ouvrir l'emplacement" 
+                      Click="ContextMenu_OpenLocation"
+                      Style="{StaticResource DarkMenuItemStyle}"
+                      Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=FileActions}"/>
+            <MenuItem Header="📋 Copier le chemin" 
+                      Click="ContextMenu_CopyPath"
+                      Style="{StaticResource DarkMenuItemStyle}"
+                      Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=FileActions}"/>
+            <MenuItem Header="📝 Copier le nom" 
+                      Click="ContextMenu_CopyName"
+                      Style="{StaticResource DarkMenuItemStyle}"
+                      Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=FileActions}"/>
+            <Separator Background="#3E3E3E" 
+                       Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=FileActions}"/>
+            <MenuItem Header="🔑 Exécuter en tant qu'admin" 
+                      Click="ContextMenu_RunAsAdmin"
+                      Style="{StaticResource DarkMenuItemStyle}"
+                      Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=RunAsAdmin}"/>
+            <MenuItem Header="📎 Ouvrir avec..." 
+                      Click="ContextMenu_OpenWith"
+                      Style="{StaticResource DarkMenuItemStyle}"
+                      Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=OpenWith}"/>
+            <Separator Background="#3E3E3E" 
+                       Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=Terminal}"/>
+            <MenuItem Header="💻 Terminal ici" 
+                      Click="ContextMenu_OpenTerminal"
+                      Style="{StaticResource DarkMenuItemStyle}"
+                      Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=Terminal}"/>
+            <MenuItem Header="📟 PowerShell ici" 
+                      Click="ContextMenu_OpenPowerShell"
+                      Style="{StaticResource DarkMenuItemStyle}"
+                      Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=Terminal}"/>
+            <Separator Background="#3E3E3E" 
+                       Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=FileActions}"/>
+            <MenuItem Header="✏️ Renommer..." 
+                      Click="ContextMenu_Rename"
+                      Style="{StaticResource DarkMenuItemStyle}"
+                      Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=FileActions}"/>
+            <MenuItem Header="📁 Déplacer vers..." 
+                      Click="ContextMenu_MoveTo"
+                      Style="{StaticResource DarkMenuItemStyle}"
+                      Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=FileActions}"/>
+            <MenuItem Header="🗑️ Supprimer" 
+                      Click="ContextMenu_Delete"
+                      Style="{StaticResource DarkMenuItemStyle}"
+                      Foreground="#FF6B6B"
+                      Visibility="{Binding Type, Converter={StaticResource TypeToMenuVis}, ConverterParameter=FileActions}"/>
+        </ContextMenu>
     </Window.Resources>
     
     <Border Background="#1E1E1E" 
@@ -137,6 +213,7 @@
                         <Setter Property="Margin" Value="4,2"/>
                         <Setter Property="Background" Value="Transparent"/>
                         <Setter Property="Foreground" Value="White"/>
+                        <Setter Property="ContextMenu" Value="{StaticResource ResultContextMenu}"/>
                         <Setter Property="Template">
                             <Setter.Value>
                                 <ControlTemplate TargetType="ListBoxItem">
@@ -169,11 +246,23 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             
+                            <!-- Icône native (si disponible) -->
+                            <Image Grid.Column="0"
+                                   Source="{Binding NativeIcon}"
+                                   Width="32"
+                                   Height="32"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,12,0"
+                                   RenderOptions.BitmapScalingMode="HighQuality"
+                                   Visibility="{Binding NativeIcon, Converter={StaticResource IconToVis}, ConverterParameter=Native}"/>
+                            
+                            <!-- Icône emoji (fallback) -->
                             <TextBlock Grid.Column="0"
                                        Text="{Binding DisplayIcon}"
                                        FontSize="24"
                                        VerticalAlignment="Center"
-                                       Margin="0,0,12,0"/>
+                                       Margin="0,0,12,0"
+                                       Visibility="{Binding NativeIcon, Converter={StaticResource IconToVis}, ConverterParameter=Emoji}"/>
                             
                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding Name}"
@@ -208,7 +297,7 @@
                        FontSize="11"
                        HorizontalAlignment="Center"
                        Margin="0,15,0,15"
-                       Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}, ConverterParameter=Inverse, FallbackValue=Collapsed}"/>
+                       Visibility="{Binding HasResults, Converter={StaticResource InverseBoolToVis}}"/>
         </Grid>
     </Border>
 </Window>

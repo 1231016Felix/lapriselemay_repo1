@@ -1,10 +1,13 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using Microsoft.Win32;
 using QuickLauncher.Models;
 using QuickLauncher.Services;
 using QuickLauncher.ViewModels;
 
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using MessageBox = System.Windows.MessageBox;
 
 namespace QuickLauncher.Views;
 
@@ -207,4 +210,168 @@ public partial class LauncherWindow : Window
                 break;
         }
     }
+
+    #region Context Menu Handlers
+
+    private SearchResult? GetContextItem(object sender)
+    {
+        if (sender is MenuItem menuItem && 
+            menuItem.Parent is ContextMenu contextMenu &&
+            contextMenu.PlacementTarget is ListBoxItem listBoxItem)
+        {
+            return listBoxItem.DataContext as SearchResult;
+        }
+        return null;
+    }
+
+    private void ContextMenu_OpenLocation(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null)
+        {
+            FileActionsService.OpenContainingFolder(item.Path);
+        }
+    }
+
+    private void ContextMenu_CopyPath(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null)
+        {
+            FileActionsService.CopyPath(item.Path);
+            HideWindow();
+        }
+    }
+
+    private void ContextMenu_CopyName(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null)
+        {
+            FileActionsService.CopyName(item.Path);
+            HideWindow();
+        }
+    }
+
+    private void ContextMenu_RunAsAdmin(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null)
+        {
+            FileActionsService.RunAsAdmin(item.Path);
+            HideWindow();
+        }
+    }
+
+    private void ContextMenu_OpenWith(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null)
+        {
+            FileActionsService.OpenWith(item.Path);
+            HideWindow();
+        }
+    }
+
+    private void ContextMenu_OpenTerminal(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null)
+        {
+            FileActionsService.OpenTerminalHere(item.Path);
+            HideWindow();
+        }
+    }
+
+    private void ContextMenu_OpenPowerShell(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null)
+        {
+            FileActionsService.OpenPowerShellHere(item.Path);
+            HideWindow();
+        }
+    }
+
+    private void ContextMenu_Rename(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item == null) return;
+
+        var dialog = new RenameDialog(item.Name)
+        {
+            Owner = this
+        };
+        
+        if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.NewName))
+        {
+            var success = FileActionsService.Rename(item.Path, dialog.NewName);
+            if (success)
+            {
+                // Demander une réindexation
+                RequestReindex?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                MessageBox.Show("Impossible de renommer le fichier.", "Erreur", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    private void ContextMenu_MoveTo(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item == null) return;
+
+        var dialog = new System.Windows.Forms.FolderBrowserDialog
+        {
+            Description = "Sélectionnez le dossier de destination",
+            ShowNewFolderButton = true
+        };
+        
+        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+        {
+            var success = FileActionsService.MoveTo(item.Path, dialog.SelectedPath);
+            if (success)
+            {
+                RequestReindex?.Invoke(this, EventArgs.Empty);
+                HideWindow();
+            }
+            else
+            {
+                MessageBox.Show("Impossible de déplacer le fichier.", "Erreur", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    private void ContextMenu_Delete(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item == null) return;
+
+        var result = MessageBox.Show(
+            $"Voulez-vous vraiment supprimer '{item.Name}' ?\n\nLe fichier sera envoyé à la corbeille.",
+            "Confirmer la suppression",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        
+        if (result == MessageBoxResult.Yes)
+        {
+            var success = FileActionsService.DeleteToRecycleBin(item.Path);
+            if (success)
+            {
+                RequestReindex?.Invoke(this, EventArgs.Empty);
+                HideWindow();
+            }
+            else
+            {
+                MessageBox.Show("Impossible de supprimer le fichier.", "Erreur", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    #endregion
 }

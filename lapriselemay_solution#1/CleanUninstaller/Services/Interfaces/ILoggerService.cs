@@ -1,12 +1,17 @@
+// Ce fichier est conservé pour rétrocompatibilité mais redirige vers Shared.Logging
+// À terme, supprimer ce fichier et utiliser directement Shared.Logging.ILoggerService
+
+// Utiliser: using Shared.Logging; au lieu de CleanUninstaller.Services.Interfaces;
+
 namespace CleanUninstaller.Services.Interfaces;
 
 /// <summary>
-/// Interface pour le service de logging
+/// Interface pour le service de logging.
+/// OBSOLÈTE: Utiliser Shared.Logging.ILoggerService à la place.
+/// Cette interface est conservée pour rétrocompatibilité et hérite de la version partagée.
 /// </summary>
-public interface ILoggerService
+[Obsolete("Utiliser Shared.Logging.ILoggerService à la place")]
+public interface ILoggerService : Shared.Logging.ILoggerService
 {
-    void Debug(string message);
-    void Info(string message);
-    void Warning(string message);
-    void Error(string message, Exception? exception = null);
+    // Hérite de toutes les méthodes de Shared.Logging.ILoggerService
 }

@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
-using CleanUninstaller.Services.Interfaces;
+using Shared.Logging;
 using CleanUninstaller.ViewModels;
 
 namespace CleanUninstaller.Services;
@@ -53,20 +53,21 @@ public static class ServiceContainer
         // ==========================================
         
         // Logger en premier - utilisé par tous les autres services
+        // Enregistré comme ILoggerService (de Shared.Logging) pour compatibilité
         services.AddSingleton<ILoggerService, LoggerService>();
         
         // Services de configuration
-        services.AddSingleton<ISettingsService, SettingsService>();
+        services.AddSingleton<Interfaces.ISettingsService, SettingsService>();
         
         // Services de registre et système
-        services.AddSingleton<IRegistryService, RegistryService>();
-        services.AddSingleton<IWindowsAppService, WindowsAppService>();
+        services.AddSingleton<Interfaces.IRegistryService, RegistryService>();
+        services.AddSingleton<Interfaces.IWindowsAppService, WindowsAppService>();
         
         // Moniteur d'installation (conserve l'état)
-        services.AddSingleton<IInstallationMonitorService, InstallationMonitorService>();
+        services.AddSingleton<Interfaces.IInstallationMonitorService, InstallationMonitorService>();
         
         // Service de dialogues (singleton car utilise le même XamlRoot)
-        services.AddSingleton<IDialogService>(sp => 
+        services.AddSingleton<Interfaces.IDialogService>(sp => 
             new DialogService(_xamlRootProvider ?? (() => null)));
 
         // ==========================================
@@ -74,12 +75,12 @@ public static class ServiceContainer
         // ==========================================
         
         // Scanners - peuvent être utilisés en parallèle
-        services.AddTransient<IProgramScannerService, ProgramScannerService>();
-        services.AddTransient<IResidualScannerService, ResidualScannerService>();
-        services.AddTransient<IAdvancedDetectionService, AdvancedDetectionService>();
+        services.AddTransient<Interfaces.IProgramScannerService, ProgramScannerService>();
+        services.AddTransient<Interfaces.IResidualScannerService, ResidualScannerService>();
+        services.AddTransient<Interfaces.IAdvancedDetectionService, AdvancedDetectionService>();
         
         // Service de désinstallation
-        services.AddTransient<IUninstallService, UninstallService>();
+        services.AddTransient<Interfaces.IUninstallService, UninstallService>();
 
         // ==========================================
         // ViewModels

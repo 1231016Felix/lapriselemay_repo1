@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using CleanUninstaller.Models;
 using CleanUninstaller.Services;
 using CleanUninstaller.Services.Interfaces;
+using Shared.Logging;
 using System.Collections.ObjectModel;
 
 namespace CleanUninstaller.ViewModels;
@@ -16,14 +17,14 @@ public partial class EnhancedInstallationMonitorViewModel : ObservableObject, ID
 {
     private readonly EnhancedInstallationMonitorService _monitorService;
     private readonly BackupService _backupService;
-    private readonly ILoggerService _logger;
+    private readonly Shared.Logging.ILoggerService _logger;
     private bool _isDisposed;
     private System.Timers.Timer? _durationTimer;
 
     /// <summary>
     /// Constructeur avec injection de dépendances
     /// </summary>
-    public EnhancedInstallationMonitorViewModel(ILoggerService logger)
+    public EnhancedInstallationMonitorViewModel(Shared.Logging.ILoggerService logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _monitorService = new EnhancedInstallationMonitorService();
@@ -41,7 +42,7 @@ public partial class EnhancedInstallationMonitorViewModel : ObservableObject, ID
     /// <summary>
     /// Constructeur par défaut pour compatibilité XAML
     /// </summary>
-    public EnhancedInstallationMonitorViewModel() : this(ServiceContainer.GetService<ILoggerService>())
+    public EnhancedInstallationMonitorViewModel() : this(ServiceContainer.GetService<Shared.Logging.ILoggerService>())
     { }
 
     #region Observable Properties

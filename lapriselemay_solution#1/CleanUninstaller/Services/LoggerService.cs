@@ -1,12 +1,11 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.IO;
-using CleanUninstaller.Services.Interfaces;
+using Shared.Logging;
 
 namespace CleanUninstaller.Services;
 
 /// <summary>
-/// Service de logging thread-safe avec rotation des fichiers
+/// Service de logging thread-safe avec rotation des fichiers.
+/// Implémente ILoggerService de Shared.Logging pour compatibilité cross-projet.
 /// </summary>
 public sealed class LoggerService : ILoggerService, IDisposable
 {
@@ -15,16 +14,20 @@ public sealed class LoggerService : ILoggerService, IDisposable
     private readonly ConcurrentQueue<LogEntry> _logQueue = new();
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly Timer _flushTimer;
-    private readonly LogLevel _minLevel;
     private bool _disposed;
 
     private const int MaxLogFileSizeMB = 10;
     private const int MaxLogFiles = 5;
     private const int FlushIntervalMs = 1000;
 
+    /// <summary>
+    /// Niveau de log minimum (par défaut: Info)
+    /// </summary>
+    public LogLevel MinimumLevel { get; set; } = LogLevel.Info;
+
     public LoggerService(string logLevel = "Info")
     {
-        _minLevel = Enum.TryParse<LogLevel>(logLevel, true, out var level) ? level : LogLevel.Info;
+        MinimumLevel = Enum.TryParse<LogLevel>(logLevel, true, out var level) ? level : LogLevel.Info;
         
         _logDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -44,17 +47,19 @@ public sealed class LoggerService : ILoggerService, IDisposable
     public void Info(string message) => Log(LogLevel.Info, message);
     public void Warning(string message) => Log(LogLevel.Warning, message);
     public void Error(string message, Exception? exception = null) => 
-        Log(LogLevel.Error, exception != null ? $"{message}\n{exception}" : message);
+        Log(LogLevel.Error, message, exception);
 
-    private void Log(LogLevel level, string message)
+    public void Log(LogLevel level, string message, Exception? exception = null)
     {
-        if (level < _minLevel) return;
+        if (level < MinimumLevel) return;
 
+        var fullMessage = exception != null ? $"{message}\n{exception}" : message;
+        
         var entry = new LogEntry
         {
             Timestamp = DateTime.Now,
             Level = level,
-            Message = message,
+            Message = fullMessage,
             ThreadId = Environment.CurrentManagedThreadId
         };
 
@@ -160,14 +165,6 @@ public sealed class LoggerService : ILoggerService, IDisposable
         _writeLock.Dispose();
     }
 
-    private enum LogLevel
-    {
-        Debug = 0,
-        Info = 1,
-        Warning = 2,
-        Error = 3
-    }
-
     private class LogEntry
     {
         public DateTime Timestamp { get; set; }
@@ -175,7 +172,17 @@ public sealed class LoggerService : ILoggerService, IDisposable
         public string Message { get; set; } = string.Empty;
         public int ThreadId { get; set; }
 
-        public override string ToString() =>
-            $"[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Level,-7}] [T{ThreadId:D3}] {Message}";
+        public override string ToString()
+        {
+            var levelStr = Level switch
+            {
+                LogLevel.Debug => "DEBUG  ",
+                LogLevel.Info => "INFO   ",
+                LogLevel.Warning => "WARNING",
+                LogLevel.Error => "ERROR  ",
+                _ => "????   "
+            };
+            return $"[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{levelStr}] [T{ThreadId:D3}] {Message}";
+        }
     }
 }

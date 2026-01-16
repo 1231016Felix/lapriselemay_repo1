@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using CleanUninstaller.Services;
 using CleanUninstaller.Services.Interfaces;
 using CleanUninstaller.Views;
+using Shared.Logging;
 
 namespace CleanUninstaller;
 
@@ -12,7 +13,7 @@ namespace CleanUninstaller;
 public partial class App : Application
 {
     private Window? _mainWindow;
-    private readonly ILoggerService _logger;
+    private readonly Shared.Logging.ILoggerService _logger;
 
     /// <summary>
     /// Indique si l'application est complètement initialisée
@@ -71,7 +72,7 @@ public partial class App : Application
     /// <summary>
     /// Service de logging
     /// </summary>
-    public static ILoggerService Logger => ServiceContainer.GetService<ILoggerService>();
+    public static Shared.Logging.ILoggerService Logger => ServiceContainer.GetService<Shared.Logging.ILoggerService>();
     #endregion
 
     public App()
@@ -82,7 +83,7 @@ public partial class App : Application
         InitializeComponent();
         
         // Initialiser le logger en premier
-        _logger = ServiceContainer.GetService<ILoggerService>();
+        _logger = ServiceContainer.GetService<Shared.Logging.ILoggerService>();
         _logger.Info("Application démarrée");
         
         // Gestionnaires d'exceptions globaux

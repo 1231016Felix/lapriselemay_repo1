@@ -1,10 +1,14 @@
 using System.Collections.Concurrent;
 using System.IO;
 using TempCleaner.Models;
+using TempCleaner.Services.Interfaces;
 
 namespace TempCleaner.Services;
 
-public class ScannerService
+/// <summary>
+/// Service de scan des fichiers temporaires avec support du parallélisme.
+/// </summary>
+public sealed class ScannerService : IScannerService
 {
     public async Task<ScanResult> ScanAsync(
         IEnumerable<CleanerProfile> profiles,

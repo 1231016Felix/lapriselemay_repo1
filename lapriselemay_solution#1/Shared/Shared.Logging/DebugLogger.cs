@@ -3,9 +3,10 @@ using System.Diagnostics;
 namespace Shared.Logging;
 
 /// <summary>
-/// Logger qui écrit uniquement dans Debug.WriteLine (pour le développement)
+/// Logger qui écrit uniquement dans Debug.WriteLine (pour le développement).
+/// Implémente ILoggerService pour compatibilité avec tous les projets.
 /// </summary>
-public sealed class DebugLogger : ILogger
+public sealed class DebugLogger : ILogger, ILoggerService
 {
     public LogLevel MinimumLevel { get; set; } = LogLevel.Debug;
 
@@ -26,7 +27,7 @@ public sealed class DebugLogger : ILogger
             ? $"[{levelStr}] {message}: {exception}"
             : $"[{levelStr}] {message}";
         
-        Debug.WriteLine(fullMessage);
+        System.Diagnostics.Debug.WriteLine(fullMessage);
     }
 
     public void Debug(string message) => Log(LogLevel.Debug, message);
@@ -36,9 +37,10 @@ public sealed class DebugLogger : ILogger
 }
 
 /// <summary>
-/// Logger qui ne fait rien (pattern Null Object)
+/// Logger qui ne fait rien (pattern Null Object).
+/// Implémente ILoggerService pour compatibilité avec tous les projets.
 /// </summary>
-public sealed class NullLogger : ILogger
+public sealed class NullLogger : ILogger, ILoggerService
 {
     public static readonly NullLogger Instance = new();
     
@@ -52,9 +54,10 @@ public sealed class NullLogger : ILogger
 }
 
 /// <summary>
-/// Logger composite qui écrit dans plusieurs loggers à la fois
+/// Logger composite qui écrit dans plusieurs loggers à la fois.
+/// Implémente ILoggerService pour compatibilité avec tous les projets.
 /// </summary>
-public sealed class CompositeLogger : ILogger
+public sealed class CompositeLogger : ILogger, ILoggerService
 {
     private readonly ILogger[] _loggers;
 

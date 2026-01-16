@@ -4,6 +4,7 @@ using System.Windows.Input;
 using CleanUninstaller.Models;
 using CleanUninstaller.Services;
 using CleanUninstaller.Services.Interfaces;
+using Shared.Logging;
 
 namespace CleanUninstaller.ViewModels;
 
@@ -16,7 +17,7 @@ public class StartupManagerViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     private readonly StartupManagerService _startupService;
-    private readonly ILoggerService _logger;
+    private readonly Shared.Logging.ILoggerService _logger;
     private ObservableCollection<StartupProgram> _allPrograms = [];
     private ObservableCollection<StartupProgram> _filteredPrograms = [];
     private StartupProgram? _selectedProgram;
@@ -36,7 +37,7 @@ public class StartupManagerViewModel : INotifyPropertyChanged
     /// <summary>
     /// Constructeur avec injection de dépendances
     /// </summary>
-    public StartupManagerViewModel(ILoggerService logger)
+    public StartupManagerViewModel(Shared.Logging.ILoggerService logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _startupService = new StartupManagerService();
@@ -48,7 +49,7 @@ public class StartupManagerViewModel : INotifyPropertyChanged
     /// <summary>
     /// Constructeur par défaut pour compatibilité XAML
     /// </summary>
-    public StartupManagerViewModel() : this(ServiceContainer.GetService<ILoggerService>())
+    public StartupManagerViewModel() : this(ServiceContainer.GetService<Shared.Logging.ILoggerService>())
     { }
 
     private void InitializeCommands()

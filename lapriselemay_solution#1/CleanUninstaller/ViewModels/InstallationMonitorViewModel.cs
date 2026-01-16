@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using CleanUninstaller.Models;
 using CleanUninstaller.Services;
 using CleanUninstaller.Services.Interfaces;
+using Shared.Logging;
 using System.Collections.ObjectModel;
 
 namespace CleanUninstaller.ViewModels;
@@ -14,7 +15,7 @@ namespace CleanUninstaller.ViewModels;
 public partial class InstallationMonitorViewModel : ObservableObject, IDisposable
 {
     private readonly IInstallationMonitorService _monitorService;
-    private readonly ILoggerService _logger;
+    private readonly Shared.Logging.ILoggerService _logger;
     private bool _isDisposed;
 
     /// <summary>
@@ -22,7 +23,7 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
     /// </summary>
     public InstallationMonitorViewModel(
         IInstallationMonitorService monitorService,
-        ILoggerService logger)
+        Shared.Logging.ILoggerService logger)
     {
         _monitorService = monitorService ?? throw new ArgumentNullException(nameof(monitorService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -42,7 +43,7 @@ public partial class InstallationMonitorViewModel : ObservableObject, IDisposabl
     /// </summary>
     public InstallationMonitorViewModel() : this(
         ServiceContainer.GetService<IInstallationMonitorService>(),
-        ServiceContainer.GetService<ILoggerService>())
+        ServiceContainer.GetService<Shared.Logging.ILoggerService>())
     { }
 
     #region Properties

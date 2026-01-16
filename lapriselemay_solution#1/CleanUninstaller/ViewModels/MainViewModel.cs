@@ -4,6 +4,7 @@ using CleanUninstaller.Models;
 using CleanUninstaller.Services;
 using CleanUninstaller.Services.Interfaces;
 using CleanUninstaller.Helpers;
+using Shared.Logging;
 using System.Collections.ObjectModel;
 using Shared.Core.Extensions;
 using Shared.Core.Helpers;
@@ -31,7 +32,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IResidualScannerService _residualScanner;
     private readonly ISettingsService _settingsService;
     private readonly IDialogService _dialogService;
-    private readonly ILoggerService _logger;
+    private readonly Shared.Logging.ILoggerService _logger;
     
     #endregion
 
@@ -51,7 +52,7 @@ public partial class MainViewModel : ObservableObject
         IResidualScannerService residualScanner,
         ISettingsService settingsService,
         IDialogService dialogService,
-        ILoggerService logger)
+        Shared.Logging.ILoggerService logger)
     {
         _programScanner = programScanner ?? throw new ArgumentNullException(nameof(programScanner));
         _uninstallService = uninstallService ?? throw new ArgumentNullException(nameof(uninstallService));

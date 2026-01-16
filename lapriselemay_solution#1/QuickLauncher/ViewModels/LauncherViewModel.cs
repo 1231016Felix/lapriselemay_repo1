@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickLauncher.Models;
@@ -15,9 +16,10 @@ public sealed partial class LauncherViewModel : ObservableObject
     private readonly IndexingService _indexingService;
     private AppSettings _settings;
     
-    private static readonly FrozenDictionary<string, SystemCommand> SystemCommands = 
-        new Dictionary<string, SystemCommand>(StringComparer.OrdinalIgnoreCase)
+    private static readonly FrozenDictionary<string, AppSystemCommand> AppCommands = 
+        new Dictionary<string, AppSystemCommand>(StringComparer.OrdinalIgnoreCase)
         {
+            // Commandes de navigation
             [":settings"] = new("⚙️", "Paramètres", "Ouvrir les paramètres", SystemAction.OpenSettings),
             ["settings"] = new("⚙️", "Paramètres", "Ouvrir les paramètres", SystemAction.OpenSettings),
             [":quit"] = new("🚪", "Quitter", "Fermer QuickLauncher", SystemAction.Quit),
@@ -63,6 +65,7 @@ public sealed partial class LauncherViewModel : ObservableObject
     private void UpdateResults()
     {
         Results.Clear();
+        _settings = AppSettings.Load();
         
         if (string.IsNullOrWhiteSpace(SearchText))
         {
@@ -71,12 +74,21 @@ public sealed partial class LauncherViewModel : ObservableObject
         }
         
         var query = SearchText.Trim();
+        var queryLower = query.ToLowerInvariant();
         
-        // Commandes système correspondantes
-        AddMatchingSystemCommands(query);
+        // Vérifier d'abord les commandes de contrôle système personnalisables
+        if (IsSystemControlCommand(queryLower))
+        {
+            AddSystemControlSuggestions(queryLower);
+            FinalizeResults();
+            return;
+        }
+        
+        // Commandes système correspondantes (settings, quit, etc.)
+        AddMatchingAppCommands(query);
         
         // Si exactement une commande système, pas besoin d'autres résultats
-        if (SystemCommands.ContainsKey(query))
+        if (AppCommands.ContainsKey(query))
         {
             FinalizeResults();
             return;
@@ -89,11 +101,216 @@ public sealed partial class LauncherViewModel : ObservableObject
         
         FinalizeResults();
     }
+
+    /// <summary>
+    /// Vérifie si la requête correspond à une commande de contrôle système.
+    /// </summary>
+    private bool IsSystemControlCommand(string query)
+    {
+        // Obtenir les préfixes actifs depuis les paramètres
+        var enabledCommands = _settings.SystemCommands.Where(c => c.IsEnabled).ToList();
+        
+        foreach (var cmd in enabledCommands)
+        {
+            var prefix = $":{cmd.Prefix}";
+            if (query.StartsWith(prefix) || prefix.StartsWith(query))
+                return true;
+        }
+        
+        return false;
+    }
+
+    /// <summary>
+    /// Ajoute les suggestions de commandes de contrôle système basées sur les paramètres.
+    /// </summary>
+    private void AddSystemControlSuggestions(string query)
+    {
+        var enabledCommands = _settings.SystemCommands.Where(c => c.IsEnabled).ToList();
+        
+        // Ajouter les suggestions correspondantes
+        foreach (var cmd in enabledCommands)
+        {
+            var prefix = $":{cmd.Prefix}";
+            var displayName = cmd.RequiresArgument 
+                ? $":{cmd.Prefix} {cmd.ArgumentHint}" 
+                : $":{cmd.Prefix}";
+            
+            if (prefix.StartsWith(query) || displayName.Contains(query, StringComparison.OrdinalIgnoreCase))
+            {
+                Results.Add(new SearchResult
+                {
+                    Name = displayName,
+                    Description = cmd.Description,
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = cmd.Icon,
+                    Path = prefix
+                });
+            }
+        }
+
+        // Traitement des commandes avec arguments
+        var parts = query.Split(' ', 2);
+        if (parts.Length >= 1)
+        {
+            var cmdPrefix = parts[0].TrimStart(':');
+            var arg = parts.Length > 1 ? parts[1] : null;
+            
+            var matchedCmd = enabledCommands.FirstOrDefault(c => 
+                c.Prefix.Equals(cmdPrefix, StringComparison.OrdinalIgnoreCase));
+            
+            if (matchedCmd != null)
+            {
+                AddExecutableResult(matchedCmd, arg, query);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Ajoute un résultat exécutable pour une commande avec argument.
+    /// </summary>
+    private void AddExecutableResult(SystemControlCommand cmd, string? arg, string fullQuery)
+    {
+        switch (cmd.Type)
+        {
+            case SystemControlType.Volume:
+                var currentVol = SystemControlService.GetVolume();
+                if (string.IsNullOrEmpty(arg))
+                {
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = $"Volume actuel: {currentVol}%",
+                        Description = "Appuyez sur Entrée pour voir le volume",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = cmd.Icon,
+                        Path = fullQuery
+                    });
+                }
+                else if (int.TryParse(arg, out var volLevel))
+                {
+                    var clampedVol = Math.Clamp(volLevel, 0, 100);
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = $"Régler le volume à {clampedVol}%",
+                        Description = $"Volume actuel: {currentVol}%",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = clampedVol > 50 ? "🔊" : clampedVol > 0 ? "🔉" : "🔇",
+                        Path = fullQuery
+                    });
+                }
+                else if (arg is "up" or "down" or "+" or "-")
+                {
+                    var direction = arg is "up" or "+" ? "Augmenter" : "Diminuer";
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = $"{direction} le volume de 10%",
+                        Description = $"Volume actuel: {currentVol}%",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = cmd.Icon,
+                        Path = fullQuery
+                    });
+                }
+                break;
+                
+            case SystemControlType.Brightness:
+                if (!string.IsNullOrEmpty(arg) && int.TryParse(arg, out var brightLevel))
+                {
+                    var clampedBright = Math.Clamp(brightLevel, 0, 100);
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = $"Régler la luminosité à {clampedBright}%",
+                        Description = "Appuyez sur Entrée pour appliquer",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = clampedBright > 50 ? "☀️" : "🌙",
+                        Path = fullQuery
+                    });
+                }
+                break;
+                
+            case SystemControlType.Wifi:
+                if (arg == "on")
+                {
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = "Activer le WiFi",
+                        Description = "Appuyez sur Entrée pour activer",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = "📶",
+                        Path = fullQuery
+                    });
+                }
+                else if (arg == "off")
+                {
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = "Désactiver le WiFi",
+                        Description = "Appuyez sur Entrée pour désactiver",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = "📵",
+                        Path = fullQuery
+                    });
+                }
+                else if (arg == "status")
+                {
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = "Afficher l'état du WiFi",
+                        Description = "Appuyez sur Entrée pour voir le statut",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = cmd.Icon,
+                        Path = fullQuery
+                    });
+                }
+                break;
+                
+            case SystemControlType.Screenshot:
+                if (arg is "snip" or "region" or "select")
+                {
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = "Capture de région",
+                        Description = "Ouvrir l'outil de capture Windows",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = "✂️",
+                        Path = fullQuery
+                    });
+                }
+                else if (arg is "primary" or "main")
+                {
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = "Capture écran principal",
+                        Description = "Capturer uniquement l'écran principal",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = cmd.Icon,
+                        Path = fullQuery
+                    });
+                }
+                else
+                {
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = "Prendre une capture d'écran",
+                        Description = "Sauvegarde dans Images/Screenshots",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = cmd.Icon,
+                        Path = fullQuery
+                    });
+                }
+                break;
+                
+            case SystemControlType.Lock:
+            case SystemControlType.Sleep:
+            case SystemControlType.Hibernate:
+            case SystemControlType.Shutdown:
+            case SystemControlType.Restart:
+            case SystemControlType.Mute:
+                // Ces commandes n'ont pas d'arguments, le résultat est déjà ajouté
+                break;
+        }
+    }
     
     private void ShowRecentHistory()
     {
-        _settings = AppSettings.Load();
-        
         if (!_settings.EnableSearchHistory || _settings.SearchHistory.Count == 0)
         {
             FinalizeResults();
@@ -114,9 +331,9 @@ public sealed partial class LauncherViewModel : ObservableObject
         FinalizeResults();
     }
     
-    private void AddMatchingSystemCommands(string query)
+    private void AddMatchingAppCommands(string query)
     {
-        var matchingCommands = SystemCommands
+        var matchingCommands = AppCommands
             .Where(kv => kv.Key.StartsWith(query, StringComparison.OrdinalIgnoreCase))
             .Select(kv => new SearchResult
             {
@@ -150,7 +367,11 @@ public sealed partial class LauncherViewModel : ObservableObject
         switch (item.Type)
         {
             case ResultType.SystemCommand:
-                ExecuteSystemCommand(item.Path);
+                ExecuteAppCommand(item.Path);
+                break;
+            
+            case ResultType.SystemControl:
+                ExecuteSystemControl(item.Path);
                 break;
                 
             case ResultType.SearchHistory:
@@ -167,7 +388,6 @@ public sealed partial class LauncherViewModel : ObservableObject
     {
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
-            _settings = AppSettings.Load();
             if (_settings.EnableSearchHistory)
             {
                 _settings.AddToSearchHistory(SearchText);
@@ -180,9 +400,9 @@ public sealed partial class LauncherViewModel : ObservableObject
         RequestHide?.Invoke(this, EventArgs.Empty);
     }
     
-    private void ExecuteSystemCommand(string? command)
+    private void ExecuteAppCommand(string? command)
     {
-        if (string.IsNullOrEmpty(command) || !SystemCommands.TryGetValue(command, out var sysCmd))
+        if (string.IsNullOrEmpty(command) || !AppCommands.TryGetValue(command, out var sysCmd))
             return;
         
         switch (sysCmd.Action)
@@ -214,11 +434,90 @@ public sealed partial class LauncherViewModel : ObservableObject
                 break;
         }
     }
+
+    private void ExecuteSystemControl(string? command)
+    {
+        if (string.IsNullOrEmpty(command))
+            return;
+
+        // Convertir le préfixe personnalisé vers le format attendu par SystemControlService
+        var normalizedCommand = NormalizeSystemCommand(command);
+        var result = SystemControlService.ExecuteCommand(normalizedCommand);
+        
+        if (result != null)
+        {
+            Results.Clear();
+            Results.Add(new SearchResult
+            {
+                Name = result.Message,
+                Description = result.Success ? "Commande exécutée" : "Erreur",
+                Type = ResultType.SystemControl,
+                DisplayIcon = result.Success ? "✅" : "❌"
+            });
+
+            if (result.Success && !string.IsNullOrEmpty(result.FilePath))
+            {
+                Results.Add(new SearchResult
+                {
+                    Name = "Ouvrir la capture",
+                    Description = result.FilePath,
+                    Type = ResultType.File,
+                    Path = result.FilePath,
+                    DisplayIcon = "📂"
+                });
+            }
+
+            FinalizeResults();
+
+            // Pour certaines commandes, fermer après exécution
+            var commandLower = normalizedCommand.ToLowerInvariant();
+            if (result.Success && (commandLower.Contains("sleep") || commandLower.Contains("lock") ||
+                commandLower.Contains("shutdown") || commandLower.Contains("restart") || 
+                commandLower.Contains("hibernate")))
+            {
+                RequestHide?.Invoke(this, EventArgs.Empty);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Convertit une commande avec préfixe personnalisé vers le format standard.
+    /// </summary>
+    private string NormalizeSystemCommand(string command)
+    {
+        var parts = command.TrimStart(':').Split(' ', 2);
+        var prefix = parts[0];
+        var arg = parts.Length > 1 ? parts[1] : null;
+        
+        // Trouver la commande correspondante dans les paramètres
+        var matchedCmd = _settings.SystemCommands.FirstOrDefault(c => 
+            c.IsEnabled && c.Prefix.Equals(prefix, StringComparison.OrdinalIgnoreCase));
+        
+        if (matchedCmd == null)
+            return command; // Retourner tel quel si non trouvé
+        
+        // Convertir vers le nom de commande standard utilisé par SystemControlService
+        var standardCmd = matchedCmd.Type switch
+        {
+            SystemControlType.Volume => "volume",
+            SystemControlType.Mute => "mute",
+            SystemControlType.Brightness => "brightness",
+            SystemControlType.Wifi => "wifi",
+            SystemControlType.Lock => "lock",
+            SystemControlType.Sleep => "sleep",
+            SystemControlType.Hibernate => "hibernate",
+            SystemControlType.Shutdown => "shutdown",
+            SystemControlType.Restart => "restart",
+            SystemControlType.Screenshot => "screenshot",
+            _ => prefix
+        };
+        
+        return string.IsNullOrEmpty(arg) ? $":{standardCmd}" : $":{standardCmd} {arg}";
+    }
     
     private void ShowSearchHistory()
     {
         Results.Clear();
-        _settings = AppSettings.Load();
         
         if (_settings.SearchHistory.Count == 0)
         {
@@ -249,7 +548,6 @@ public sealed partial class LauncherViewModel : ObservableObject
     
     private void ClearHistory()
     {
-        _settings = AppSettings.Load();
         _settings.ClearSearchHistory();
         _settings.Save();
         SearchText = string.Empty;
@@ -260,6 +558,7 @@ public sealed partial class LauncherViewModel : ObservableObject
     {
         Results.Clear();
         
+        // Commandes de base de l'application
         Results.Add(new SearchResult 
         { 
             Name = ":settings", 
@@ -300,20 +599,34 @@ public sealed partial class LauncherViewModel : ObservableObject
             DisplayIcon = "🚪", 
             Path = ":quit" 
         });
-        Results.Add(new SearchResult 
-        { 
-            Name = "g [recherche]", 
-            Description = "Recherche Google", 
-            Type = ResultType.SystemCommand, 
-            DisplayIcon = "🌐" 
-        });
-        Results.Add(new SearchResult 
-        { 
-            Name = "yt [recherche]", 
-            Description = "Recherche YouTube", 
-            Type = ResultType.SystemCommand, 
-            DisplayIcon = "📺" 
-        });
+        
+        // Commandes de contrôle système personnalisables (depuis les paramètres)
+        foreach (var cmd in _settings.SystemCommands.Where(c => c.IsEnabled))
+        {
+            var displayName = cmd.RequiresArgument 
+                ? $":{cmd.Prefix} {cmd.ArgumentHint}" 
+                : $":{cmd.Prefix}";
+            
+            Results.Add(new SearchResult 
+            { 
+                Name = displayName, 
+                Description = cmd.Description, 
+                Type = ResultType.SystemControl, 
+                DisplayIcon = cmd.Icon
+            });
+        }
+        
+        // Recherche web
+        foreach (var engine in _settings.SearchEngines.Take(4))
+        {
+            Results.Add(new SearchResult 
+            { 
+                Name = $"{engine.Prefix} [recherche]", 
+                Description = $"Recherche {engine.Name}", 
+                Type = ResultType.SystemCommand, 
+                DisplayIcon = "🌐" 
+            });
+        }
         
         FinalizeResults();
     }
@@ -342,7 +655,7 @@ public sealed partial class LauncherViewModel : ObservableObject
 }
 
 /// <summary>
-/// Actions système disponibles via commandes.
+/// Actions système disponibles via commandes de l'application.
 /// </summary>
 public enum SystemAction
 {
@@ -355,9 +668,9 @@ public enum SystemAction
 }
 
 /// <summary>
-/// Définition d'une commande système.
+/// Définition d'une commande système de l'application.
 /// </summary>
-public readonly record struct SystemCommand(
+public readonly record struct AppSystemCommand(
     string Icon, 
     string Name, 
     string Description, 

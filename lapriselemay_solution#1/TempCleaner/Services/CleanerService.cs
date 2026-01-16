@@ -7,10 +7,51 @@ using TempCleaner.Models;
 namespace TempCleaner.Services;
 
 /// <summary>
+/// Interface pour le service de nettoyage des fichiers temporaires.
+/// </summary>
+public interface ICleanerService
+{
+    /// <summary>
+    /// Nettoie les fichiers sélectionnés de manière asynchrone.
+    /// </summary>
+    Task<CleanResult> CleanAsync(
+        IEnumerable<TempFileInfo> files,
+        IProgress<(string message, int percent, long freedBytes)>? progress = null,
+        CancellationToken cancellationToken = default);
+    
+    /// <summary>
+    /// Réinitialise le circuit breaker.
+    /// </summary>
+    void ResetCircuitBreaker();
+    
+    /// <summary>
+    /// Nombre de fichiers actuellement bloqués par le circuit breaker.
+    /// </summary>
+    int BlockedFilesCount { get; }
+}
+
+/// <summary>
+/// Interface pour abstraire le temps (permet les tests unitaires).
+/// </summary>
+public interface ITimeProvider
+{
+    DateTime UtcNow { get; }
+}
+
+/// <summary>
+/// Implémentation par défaut du time provider.
+/// </summary>
+public sealed class SystemTimeProvider : ITimeProvider
+{
+    public static readonly SystemTimeProvider Instance = new();
+    public DateTime UtcNow => DateTime.UtcNow;
+}
+
+/// <summary>
 /// Service de nettoyage des fichiers temporaires avec circuit breaker intégré.
 /// Le circuit breaker évite les tentatives répétées sur des fichiers bloqués.
 /// </summary>
-public class CleanerService
+public sealed class CleanerService : ICleanerService
 {
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     private static extern bool DeleteFile(string lpFileName);
@@ -26,31 +67,50 @@ public class CleanerService
     private const int MaxFailedAttempts = 3;
     
     /// <summary>
-    /// Cache des fichiers qui ont échoué (circuit breaker)
-    /// Clé: chemin du fichier, Valeur: nombre d'échecs
-    /// </summary>
-    private static readonly ConcurrentDictionary<string, int> _failedAttempts = new(StringComparer.OrdinalIgnoreCase);
-    
-    /// <summary>
     /// Durée pendant laquelle un fichier bloqué est ignoré
     /// </summary>
-    private static readonly TimeSpan _circuitBreakerTimeout = TimeSpan.FromMinutes(30);
+    private readonly TimeSpan _circuitBreakerTimeout = TimeSpan.FromMinutes(30);
+    
+    /// <summary>
+    /// Cache des fichiers qui ont échoué (circuit breaker) - par instance
+    /// </summary>
+    private readonly ConcurrentDictionary<string, int> _failedAttempts = new(StringComparer.OrdinalIgnoreCase);
+    
+    /// <summary>
+    /// Provider de temps (injectable pour les tests)
+    /// </summary>
+    private readonly ITimeProvider _timeProvider;
     
     /// <summary>
     /// Timestamp de la dernière réinitialisation du circuit breaker
     /// </summary>
-    private static DateTime _lastCircuitBreakerReset = DateTime.UtcNow;
+    private DateTime _lastCircuitBreakerReset;
+
+    /// <summary>
+    /// Crée une nouvelle instance du CleanerService.
+    /// </summary>
+    /// <param name="timeProvider">Provider de temps (null pour utiliser le temps système)</param>
+    public CleanerService(ITimeProvider? timeProvider = null)
+    {
+        _timeProvider = timeProvider ?? SystemTimeProvider.Instance;
+        _lastCircuitBreakerReset = _timeProvider.UtcNow;
+    }
+
+    /// <summary>
+    /// Nombre de fichiers actuellement bloqués par le circuit breaker.
+    /// </summary>
+    public int BlockedFilesCount => _failedAttempts.Count(kvp => kvp.Value >= MaxFailedAttempts);
 
     /// <summary>
     /// Réinitialise le circuit breaker (à appeler lors d'un nouveau scan)
     /// </summary>
-    public static void ResetCircuitBreaker()
+    public void ResetCircuitBreaker()
     {
         // Réinitialiser seulement si le timeout est dépassé
-        if (DateTime.UtcNow - _lastCircuitBreakerReset > _circuitBreakerTimeout)
+        if (_timeProvider.UtcNow - _lastCircuitBreakerReset > _circuitBreakerTimeout)
         {
             _failedAttempts.Clear();
-            _lastCircuitBreakerReset = DateTime.UtcNow;
+            _lastCircuitBreakerReset = _timeProvider.UtcNow;
         }
     }
 
@@ -121,7 +181,7 @@ public class CleanerService
     /// <summary>
     /// Vérifie si le circuit breaker est ouvert pour un fichier (trop d'échecs)
     /// </summary>
-    private static bool IsCircuitOpen(string filePath)
+    private bool IsCircuitOpen(string filePath)
     {
         return _failedAttempts.TryGetValue(filePath, out var attempts) && attempts >= MaxFailedAttempts;
     }
@@ -129,7 +189,7 @@ public class CleanerService
     /// <summary>
     /// Enregistre un échec pour un fichier
     /// </summary>
-    private static void RecordFailure(string filePath)
+    private void RecordFailure(string filePath)
     {
         _failedAttempts.AddOrUpdate(filePath, 1, (_, count) => count + 1);
     }

@@ -5,6 +5,9 @@
 #include <vector>
 #include <chrono>
 #include <ctime>
+#include <algorithm>
+
+#include "StringUtils.h"  // Utiliser les fonctions centralisées
 
 namespace DriverManager {
 
@@ -82,6 +85,10 @@ namespace DriverManager {
         // For UI selection
         bool selected = false;
         
+        // Pré-calculé pour recherche rapide (lowercase)
+        std::string searchNameLower;
+        std::string searchManufacturerLower;
+        
         // Helper to parse driver date and calculate age
         void CalculateAge() {
             if (driverDate.empty()) {
@@ -120,6 +127,23 @@ namespace DriverManager {
                 }
             }
         }
+        
+        // Pré-calcule les champs de recherche (appeler après le scan)
+        void PrepareSearchFields() {
+            searchNameLower = WideToUtf8(deviceName);
+            searchManufacturerLower = WideToUtf8(manufacturer);
+            std::transform(searchNameLower.begin(), searchNameLower.end(), 
+                          searchNameLower.begin(), ::tolower);
+            std::transform(searchManufacturerLower.begin(), searchManufacturerLower.end(), 
+                          searchManufacturerLower.begin(), ::tolower);
+        }
+        
+        // Vérifie si le driver correspond au filtre de recherche
+        bool MatchesFilter(const std::string& filterLower) const {
+            if (filterLower.empty()) return true;
+            return searchNameLower.find(filterLower) != std::string::npos ||
+                   searchManufacturerLower.find(filterLower) != std::string::npos;
+        }
     };
 
     struct DriverCategory {
@@ -129,42 +153,13 @@ namespace DriverManager {
         bool expanded = true;
     };
 
-    // Convert wide string to UTF-8 for ImGui
-    inline std::string WideToUtf8(const std::wstring& wide) {
-        if (wide.empty()) return "";
-        int size = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), (int)wide.size(), nullptr, 0, nullptr, nullptr);
-        std::string result(size, 0);
-        WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), (int)wide.size(), result.data(), size, nullptr, nullptr);
-        return result;
-    }
-
-    // Convert UTF-8 to wide string
-    inline std::wstring Utf8ToWide(const std::string& utf8) {
-        if (utf8.empty()) return L"";
-        int size = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), (int)utf8.size(), nullptr, 0);
-        std::wstring result(size, 0);
-        MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), (int)utf8.size(), result.data(), size);
-        return result;
-    }
-
-    // Get status color for ImGui
-    inline uint32_t GetStatusColor(DriverStatus status) {
-        switch (status) {
-            case DriverStatus::OK:       return 0xFF00FF00; // Green
-            case DriverStatus::Warning:  return 0xFF00FFFF; // Yellow
-            case DriverStatus::Error:    return 0xFF0000FF; // Red
-            case DriverStatus::Disabled: return 0xFF808080; // Gray
-            default:                     return 0xFFFFFFFF; // White
-        }
-    }
-
     // Get status text
     inline const char* GetStatusText(DriverStatus status) {
         switch (status) {
             case DriverStatus::OK:       return "OK";
             case DriverStatus::Warning:  return "Avertissement";
             case DriverStatus::Error:    return "Erreur";
-            case DriverStatus::Disabled: return "Désactivé";
+            case DriverStatus::Disabled: return "D\xc3\xa9sactiv\xc3\xa9";
             default:                     return "Inconnu";
         }
     }
@@ -192,16 +187,6 @@ namespace DriverManager {
             case DriverAge::Old:      return "1-2 ans";
             case DriverAge::VeryOld:  return "> 2 ans";
             default:                  return "Inconnu";
-        }
-    }
-    
-    // Get age color (ABGR format for ImGui)
-    inline uint32_t GetAgeColor(DriverAge age) {
-        switch (age) {
-            case DriverAge::Current:  return 0xFF00CC00; // Green
-            case DriverAge::Old:      return 0xFF00CCCC; // Yellow
-            case DriverAge::VeryOld:  return 0xFF0066FF; // Orange
-            default:                  return 0xFF808080; // Gray
         }
     }
     

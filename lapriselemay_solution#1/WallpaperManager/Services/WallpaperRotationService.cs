@@ -8,12 +8,13 @@ public sealed class WallpaperRotationService : IDisposable
 {
     private readonly System.Timers.Timer _timer;
     private readonly Random _random = Random.Shared;
-    private readonly Lock _lock = new();
+    private readonly Lock _playlistLock = new();
+    private readonly Lock _stateLock = new();
     
     private List<Wallpaper> _playlist = [];
     private int _currentIndex = -1;
-    private volatile bool _isPaused;
-    private volatile bool _disposed;
+    private bool _isPaused;
+    private bool _disposed;
     
     // Pour préserver le temps restant lors de pause/resume
     private DateTime _lastTickTime;
@@ -28,7 +29,7 @@ public sealed class WallpaperRotationService : IDisposable
     {
         get
         {
-            lock (_lock)
+            lock (_playlistLock)
             {
                 if (_currentIndex < 0 || _currentIndex >= _playlist.Count)
                     return null;
@@ -49,83 +50,101 @@ public sealed class WallpaperRotationService : IDisposable
     
     public void Start()
     {
-        if (_disposed) return;
-        
-        LoadPlaylist();
-        
-        int playlistCount;
-        lock (_lock)
+        lock (_stateLock)
         {
-            playlistCount = _playlist.Count;
+            if (_disposed) return;
+            
+            LoadPlaylist();
+            
+            int playlistCount;
+            lock (_playlistLock)
+            {
+                playlistCount = _playlist.Count;
+            }
+            
+            if (playlistCount == 0)
+                return;
+            
+            var intervalMs = Math.Max(SettingsService.Current.RotationIntervalMinutes, 1) * 60 * 1000;
+            _timer.Interval = intervalMs;
+            _remainingTimeMs = 0; // Réinitialiser le temps restant
+            _lastTickTime = DateTime.UtcNow;
+            _timer.Start();
+            _isPaused = false;
         }
-        
-        if (playlistCount == 0)
-            return;
-        
-        var intervalMs = Math.Max(SettingsService.Current.RotationIntervalMinutes, 1) * 60 * 1000;
-        _timer.Interval = intervalMs;
-        _remainingTimeMs = 0; // Réinitialiser le temps restant
-        _lastTickTime = DateTime.UtcNow;
-        _timer.Start();
-        _isPaused = false;
         
         RotationStateChanged?.Invoke(this, true);
     }
     
     public void Stop()
     {
-        _timer.Stop();
-        _isPaused = false;
+        lock (_stateLock)
+        {
+            _timer.Stop();
+            _isPaused = false;
+        }
+        
         RotationStateChanged?.Invoke(this, false);
     }
     
     public void Pause()
     {
-        if (_isPaused || !_timer.Enabled) return;
+        lock (_stateLock)
+        {
+            if (_isPaused || !_timer.Enabled) return;
+            
+            // Calculer le temps restant avant le prochain changement
+            var elapsed = (DateTime.UtcNow - _lastTickTime).TotalMilliseconds;
+            _remainingTimeMs = Math.Max(_timer.Interval - elapsed, 1000); // Minimum 1 seconde
+            
+            _timer.Stop();
+            _isPaused = true;
+            
+            System.Diagnostics.Debug.WriteLine($"Rotation en pause - Temps restant: {_remainingTimeMs / 1000:F0}s");
+        }
         
-        // Calculer le temps restant avant le prochain changement
-        var elapsed = (DateTime.UtcNow - _lastTickTime).TotalMilliseconds;
-        _remainingTimeMs = Math.Max(_timer.Interval - elapsed, 1000); // Minimum 1 seconde
-        
-        _timer.Stop();
-        _isPaused = true;
-        
-        System.Diagnostics.Debug.WriteLine($"Rotation en pause - Temps restant: {_remainingTimeMs / 1000:F0}s");
         RotationStateChanged?.Invoke(this, false);
     }
     
     public void Resume()
     {
-        if (!_isPaused || _disposed) return;
-        
-        int playlistCount;
-        lock (_lock)
+        lock (_stateLock)
         {
-            playlistCount = _playlist.Count;
+            if (!_isPaused || _disposed) return;
+            
+            int playlistCount;
+            lock (_playlistLock)
+            {
+                playlistCount = _playlist.Count;
+            }
+            
+            if (playlistCount == 0) return;
+            
+            _isPaused = false;
+            
+            // Reprendre avec le temps restant s'il y en avait
+            if (_remainingTimeMs > 0)
+            {
+                System.Diagnostics.Debug.WriteLine($"Rotation reprise - Temps restant: {_remainingTimeMs / 1000:F0}s");
+                _timer.Interval = _remainingTimeMs;
+                _remainingTimeMs = 0;
+            }
+            
+            _lastTickTime = DateTime.UtcNow;
+            _timer.Start();
         }
         
-        if (playlistCount == 0) return;
-        
-        _isPaused = false;
-        
-        // Reprendre avec le temps restant s'il y en avait
-        if (_remainingTimeMs > 0)
-        {
-            System.Diagnostics.Debug.WriteLine($"Rotation reprise - Temps restant: {_remainingTimeMs / 1000:F0}s");
-            _timer.Interval = _remainingTimeMs;
-            _remainingTimeMs = 0;
-        }
-        
-        _lastTickTime = DateTime.UtcNow;
-        _timer.Start();
         RotationStateChanged?.Invoke(this, true);
     }
     
     public void Next()
     {
-        if (_disposed) return;
+        lock (_stateLock)
+        {
+            if (_disposed) return;
+        }
         
-        lock (_lock)
+        lock (_playlistLock)
         {
             var count = _playlist.Count;
             if (count == 0)
@@ -150,9 +169,12 @@ public sealed class WallpaperRotationService : IDisposable
     
     public void Previous()
     {
-        if (_disposed) return;
+        lock (_stateLock)
+        {
+            if (_disposed) return;
+        }
         
-        lock (_lock)
+        lock (_playlistLock)
         {
             var count = _playlist.Count;
             if (count == 0)
@@ -197,7 +219,7 @@ public sealed class WallpaperRotationService : IDisposable
     
     private void LoadPlaylist()
     {
-        lock (_lock)
+        lock (_playlistLock)
         {
             var collectionId = SettingsService.Current.ActiveCollectionId;
             var wallpapers = SettingsService.Wallpapers;
@@ -241,18 +263,24 @@ public sealed class WallpaperRotationService : IDisposable
     
     private void OnTimerElapsed(object? sender, ElapsedEventArgs e)
     {
-        if (_disposed) return;
+        bool shouldProceed;
         
-        // Remettre l'intervalle normal après une reprise avec temps restant
-        var normalInterval = Math.Max(SettingsService.Current.RotationIntervalMinutes, 1) * 60 * 1000;
-        if (Math.Abs(_timer.Interval - normalInterval) > 1000)
+        lock (_stateLock)
         {
-            _timer.Interval = normalInterval;
+            if (_disposed) return;
+            
+            // Remettre l'intervalle normal après une reprise avec temps restant
+            var normalInterval = Math.Max(SettingsService.Current.RotationIntervalMinutes, 1) * 60 * 1000;
+            if (Math.Abs(_timer.Interval - normalInterval) > 1000)
+            {
+                _timer.Interval = normalInterval;
+            }
+            
+            _lastTickTime = DateTime.UtcNow;
+            shouldProceed = !_isPaused;
         }
         
-        _lastTickTime = DateTime.UtcNow;
-        
-        if (!_isPaused)
+        if (shouldProceed)
         {
             Next();
         }
@@ -271,10 +299,14 @@ public sealed class WallpaperRotationService : IDisposable
     
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        lock (_stateLock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            
+            _timer.Stop();
+        }
         
-        _timer.Stop();
         _timer.Elapsed -= OnTimerElapsed;
         _timer.Dispose();
     }

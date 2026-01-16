@@ -6,6 +6,7 @@ using Microsoft.Win32;
 using CleanUninstaller.Models;
 using CleanUninstaller.Helpers;
 using CleanUninstaller.Services.Interfaces;
+using Shared.Logging;
 
 namespace CleanUninstaller.Services;
 
@@ -14,7 +15,7 @@ namespace CleanUninstaller.Services;
 /// Détecte les fichiers, dossiers, clés de registre, services et tâches planifiées orphelins
 /// SÉCURISÉ: Protège les fichiers système, SDK, et outils de développement
 /// </summary>
-public partial class ResidualScannerService : IResidualScannerService
+public sealed partial class ResidualScannerService : IResidualScannerService, IDisposable
 {
     #region Constants
     
@@ -44,16 +45,31 @@ public partial class ResidualScannerService : IResidualScannerService
     
     #endregion
     
-    private readonly ILoggerService _logger;
+    private readonly Shared.Logging.ILoggerService _logger;
+    private static int _instanceCount;
+    private bool _disposed;
 
-    public ResidualScannerService(ILoggerService logger)
+    public ResidualScannerService(Shared.Logging.ILoggerService logger)
     {
-        _logger = logger;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        Interlocked.Increment(ref _instanceCount);
     }
 
-    // Constructeur sans paramètre pour compatibilité
-    public ResidualScannerService() : this(ServiceContainer.GetService<ILoggerService>())
-    { }
+    /// <summary>
+    /// Libère les ressources. Les caches statiques sont vidés uniquement
+    /// lorsque la dernière instance est disposée.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        
+        // Libérer les caches seulement si c'est la dernière instance
+        if (Interlocked.Decrement(ref _instanceCount) == 0)
+        {
+            ClearCaches();
+        }
+    }
 
     // Cache pour les vérifications de chemins protégés (optimisation performance)
     // Utilise MemoryCache avec expiration pour éviter les fuites mémoire

@@ -1,5 +1,6 @@
 using CleanUninstaller.Models;
 using CleanUninstaller.Services.Interfaces;
+using Shared.Logging;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -11,16 +12,12 @@ namespace CleanUninstaller.Services;
 /// </summary>
 public class WindowsAppService : IWindowsAppService
 {
-    private readonly ILoggerService _logger;
+    private readonly Shared.Logging.ILoggerService _logger;
 
-    public WindowsAppService(ILoggerService logger)
+    public WindowsAppService(Shared.Logging.ILoggerService logger)
     {
-        _logger = logger;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
-
-    // Constructeur sans paramètre pour compatibilité
-    public WindowsAppService() : this(ServiceContainer.GetService<ILoggerService>())
-    { }
 
     /// <summary>
     /// Implémente IWindowsAppService.GetStoreAppsAsync

@@ -1,6 +1,7 @@
 using CleanUninstaller.Models;
 using CleanUninstaller.Helpers;
 using CleanUninstaller.Services.Interfaces;
+using Shared.Logging;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -15,22 +16,16 @@ namespace CleanUninstaller.Services;
 public class ProgramScannerService : IProgramScannerService
 {
     private readonly IRegistryService _registryService;
-    private readonly ILoggerService _logger;
+    private readonly Shared.Logging.ILoggerService _logger;
     private readonly DispatcherQueue? _dispatcherQueue;
 
-    public ProgramScannerService(IRegistryService registryService, ILoggerService logger)
+    public ProgramScannerService(IRegistryService registryService, Shared.Logging.ILoggerService logger)
     {
-        _registryService = registryService;
-        _logger = logger;
+        _registryService = registryService ?? throw new ArgumentNullException(nameof(registryService));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         // Capturer le DispatcherQueue du thread UI pour les opérations BitmapImage
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
     }
-
-    // Constructeur sans paramètre pour compatibilité
-    public ProgramScannerService() : this(
-        ServiceContainer.GetService<IRegistryService>(),
-        ServiceContainer.GetService<ILoggerService>())
-    { }
 
     /// <summary>
     /// Scanne tous les programmes installés (Win32 + Windows Store)

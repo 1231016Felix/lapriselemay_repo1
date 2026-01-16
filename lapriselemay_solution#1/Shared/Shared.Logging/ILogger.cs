@@ -12,7 +12,8 @@ public enum LogLevel
 }
 
 /// <summary>
-/// Interface de logging standardisée pour tous les projets
+/// Interface de logging standardisée pour tous les projets.
+/// Cette interface doit être utilisée partout dans la solution.
 /// </summary>
 public interface ILogger
 {
@@ -48,7 +49,8 @@ public interface ILogger
 }
 
 /// <summary>
-/// Interface pour les loggers asynchrones avec support IAsyncDisposable
+/// Interface pour les loggers asynchrones avec support IAsyncDisposable.
+/// Utiliser cette interface pour les loggers qui écrivent sur disque ou réseau.
 /// </summary>
 public interface IAsyncLogger : ILogger, IAsyncDisposable
 {
@@ -56,4 +58,14 @@ public interface IAsyncLogger : ILogger, IAsyncDisposable
     /// Force l'écriture de tous les logs en attente
     /// </summary>
     Task FlushAsync();
+}
+
+/// <summary>
+/// Alias pour compatibilité avec CleanUninstaller et autres projets.
+/// Préférer ILogger pour les nouvelles implémentations.
+/// </summary>
+public interface ILoggerService : ILogger
+{
+    // Hérite de toutes les méthodes de ILogger
+    // Permet la migration progressive du code existant
 }

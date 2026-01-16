@@ -1,5 +1,6 @@
 #include "UpdateChecker.h"
 #include "Utils.h"
+#include "Core/Constants.h"
 #include <sstream>
 #include <algorithm>
 #include <regex>

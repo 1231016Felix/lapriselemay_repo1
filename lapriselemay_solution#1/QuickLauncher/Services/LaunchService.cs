@@ -35,6 +35,7 @@ public static class LaunchService
                     break;
                     
                 case ResultType.WebSearch:
+                case ResultType.Bookmark:
                     StartProcess(item.Path);
                     break;
                     

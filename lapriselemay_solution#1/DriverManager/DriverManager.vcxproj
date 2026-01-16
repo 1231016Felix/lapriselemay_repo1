@@ -168,9 +168,13 @@
     <ClCompile Include="imgui\imgui_widgets.cpp" />
     <ClCompile Include="imgui\imgui_impl_win32.cpp" />
     <ClCompile Include="imgui\imgui_impl_dx11.cpp" />
+    <ClCompile Include="src\UI\UIWidgets.cpp" />
+    <ClCompile Include="src\UI\ToolWindows.cpp" />
+    <ClCompile Include="src\UI\DriverListWidget.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\DriverInfo.h" />
+    <ClInclude Include="src\UI\UIWidgets.h" />
     <ClInclude Include="src\DriverScanner.h" />
     <ClInclude Include="src\DriverStoreCleanup.h" />
     <ClInclude Include="src\ManufacturerLinks.h" />

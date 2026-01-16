@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <Windows.h>
 #include <shellapi.h>
+#include "StringUtils.h"
 
 namespace DriverManager {
 
@@ -69,13 +70,6 @@ namespace DriverManager {
         {L"lg", L"https://www.lg.com/us/support"},
         {L"benq", L"https://www.benq.com/en-us/support/downloads-faq.html"},
     };
-
-    // Helper to convert string to lowercase
-    inline std::wstring ToLowerW(const std::wstring& str) {
-        std::wstring result = str;
-        std::transform(result.begin(), result.end(), result.begin(), ::towlower);
-        return result;
-    }
 
     // Find manufacturer URL by searching for known names in the manufacturer string
     inline std::wstring FindManufacturerUrl(const std::wstring& manufacturer) {

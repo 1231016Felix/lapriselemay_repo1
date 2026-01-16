@@ -8,4 +8,9 @@
     <Description>Bibliothèque d'utilitaires partagés pour les projets Laprise-Lemay</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- JSON pour la configuration -->
+    <PackageReference Include="System.Text.Json" />
+  </ItemGroup>
+
 </Project>

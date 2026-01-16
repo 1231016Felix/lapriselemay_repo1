@@ -2,9 +2,9 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
-using System.Threading.Channels;
 using Microsoft.Data.Sqlite;
 using QuickLauncher.Models;
+using Shared.Logging;
 
 namespace QuickLauncher.Services;
 
@@ -32,7 +32,7 @@ public sealed partial class IndexingService : IDisposable
 
     public IndexingService(ILogger? logger = null)
     {
-        _logger = logger ?? new FileLogger();
+        _logger = logger ?? new FileLogger(Constants.AppName, Constants.LogFileName);
         
         var appData = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -135,13 +135,25 @@ public sealed partial class IndexingService : IDisposable
                 _logger.Info($"Apps Store: {storeApps.Count} trouvées");
             }, token);
             
+            // Indexer les favoris des navigateurs en parallèle
+            var bookmarksTask = Task.Run(() =>
+            {
+                if (_settings.IndexBrowserBookmarks)
+                {
+                    var bookmarks = BookmarkService.GetAllBookmarks();
+                    foreach (var bookmark in bookmarks)
+                        items.Add(bookmark);
+                    _logger.Info($"Favoris navigateurs: {bookmarks.Count} trouvés");
+                }
+            }, token);
+            
             // Indexer les dossiers en parallèle
             var folderTasks = _settings.IndexedFolders
                 .Where(Directory.Exists)
                 .Select(folder => Task.Run(() => IndexFolder(folder, items, token), token))
                 .ToArray();
             
-            await Task.WhenAll([storeTask, ..folderTasks]);
+            await Task.WhenAll([storeTask, bookmarksTask, ..folderTasks]);
 
             // Ajouter les scripts personnalisés
             foreach (var script in _settings.Scripts)
@@ -376,11 +388,19 @@ public sealed partial class IndexingService : IDisposable
             ];
         }
 
-        // Recherche avec scoring parallèle
-        return _cache.Values
-            .AsParallel()
-            .Select(item => (Item: item, Score: CalculateScore(normalizedQuery, item)))
-            .Where(x => x.Score > 0)
+        // Recherche avec scoring - parallélisme conditionnel selon la taille du cache
+        const int ParallelThreshold = 500;
+        
+        var scored = _cache.Count > ParallelThreshold
+            ? _cache.Values
+                .AsParallel()
+                .Select(item => (Item: item, Score: CalculateScore(normalizedQuery, item)))
+                .Where(x => x.Score > 0)
+            : _cache.Values
+                .Select(item => (Item: item, Score: CalculateScore(normalizedQuery, item)))
+                .Where(x => x.Score > 0);
+        
+        return scored
             .OrderByDescending(x => x.Score)
             .ThenByDescending(x => x.Item.UseCount)
             .Take(_settings.MaxResults)
@@ -466,109 +486,4 @@ public sealed partial class IndexingService : IDisposable
     }
 }
 
-/// <summary>
-/// Interface de logging simple.
-/// </summary>
-public interface ILogger
-{
-    void Info(string message);
-    void Warning(string message);
-    void Error(string message, Exception? ex = null);
-}
-
-/// <summary>
-/// Logger asynchrone vers fichier utilisant Channel&lt;T&gt; pour des performances optimales.
-/// Les logs sont mis en queue et écrits de manière asynchrone pour ne pas bloquer le thread appelant.
-/// </summary>
-public sealed class FileLogger : ILogger, IAsyncDisposable, IDisposable
-{
-    private readonly string _logPath;
-    private readonly Channel<string> _logChannel;
-    private readonly Task _writerTask;
-    private readonly CancellationTokenSource _cts = new();
-    private bool _disposed;
-    
-    public FileLogger()
-    {
-        var appData = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            Constants.AppName);
-        Directory.CreateDirectory(appData);
-        _logPath = Path.Combine(appData, Constants.LogFileName);
-        
-        // Channel borné pour éviter une consommation mémoire excessive
-        _logChannel = Channel.CreateBounded<string>(new BoundedChannelOptions(1000)
-        {
-            FullMode = BoundedChannelFullMode.DropOldest,
-            SingleReader = true,
-            SingleWriter = false
-        });
-        
-        // Démarrer le writer en background
-        _writerTask = Task.Run(ProcessLogsAsync);
-    }
-    
-    private async Task ProcessLogsAsync()
-    {
-        try
-        {
-            await foreach (var line in _logChannel.Reader.ReadAllAsync(_cts.Token))
-            {
-                try
-                {
-                    await File.AppendAllTextAsync(_logPath, line + Environment.NewLine, _cts.Token);
-                }
-                catch (OperationCanceledException) { break; }
-                catch { /* Ignorer les erreurs d'écriture */ }
-            }
-        }
-        catch (OperationCanceledException) { /* Normal lors de la fermeture */ }
-    }
-    
-    private void Log(string level, string message)
-    {
-        var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{level}] {message}";
-        Debug.WriteLine(line);
-        
-        // Envoyer au channel (non-bloquant)
-        _logChannel.Writer.TryWrite(line);
-    }
-    
-    public void Info(string message) => Log("INFO", message);
-    public void Warning(string message) => Log("WARN", message);
-    public void Error(string message, Exception? ex = null) => 
-        Log("ERROR", ex != null ? $"{message}: {ex}" : message);
-    
-    public async ValueTask DisposeAsync()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        
-        _logChannel.Writer.Complete();
-        
-        try
-        {
-            await _writerTask.WaitAsync(TimeSpan.FromSeconds(2));
-        }
-        catch (TimeoutException)
-        {
-            await _cts.CancelAsync();
-        }
-        
-        _cts.Dispose();
-    }
-    
-    public void Dispose()
-    {
-        if (_disposed) return;
-        _disposed = true;
-        
-        _logChannel.Writer.Complete();
-        _cts.Cancel();
-        
-        try { _writerTask.Wait(TimeSpan.FromSeconds(1)); }
-        catch { }
-        
-        _cts.Dispose();
-    }
-}
+// Les interfaces ILogger et FileLogger sont maintenant dans Shared.Logging

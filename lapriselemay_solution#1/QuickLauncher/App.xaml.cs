@@ -7,6 +7,7 @@ using H.NotifyIcon;
 using QuickLauncher.Models;
 using QuickLauncher.Services;
 using QuickLauncher.Views;
+using Shared.Logging;
 
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
@@ -21,7 +22,7 @@ public partial class App : Application
     private IndexingService? _indexingService;
     private DispatcherTimer? _autoReindexTimer;
     private AppSettings _settings = null!;
-    private readonly ILogger _logger = new FileLogger();
+    private readonly ILogger _logger = new FileLogger(appName: Constants.AppName);
 
     protected override async void OnStartup(StartupEventArgs e)
     {

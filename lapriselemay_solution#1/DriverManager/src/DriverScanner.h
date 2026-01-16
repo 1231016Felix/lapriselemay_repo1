@@ -1,6 +1,8 @@
 #pragma once
 
 #include "DriverInfo.h"
+#include "Result.h"
+#include "Utils.h"  // Utiliser UniqueDevInfo de Utils.h
 #include <Windows.h>
 #include <SetupAPI.h>
 #include <devguid.h>
@@ -14,66 +16,6 @@
 #pragma comment(lib, "cfgmgr32.lib")
 
 namespace DriverManager {
-
-    /// <summary>
-    /// RAII wrapper pour HDEVINFO - assure la libération automatique des ressources
-    /// </summary>
-    class DeviceInfoSetHandle {
-    public:
-        explicit DeviceInfoSetHandle(HDEVINFO handle = INVALID_HANDLE_VALUE) 
-            : m_handle(handle) {}
-        
-        ~DeviceInfoSetHandle() {
-            if (IsValid()) {
-                SetupDiDestroyDeviceInfoList(m_handle);
-            }
-        }
-        
-        // Non-copiable
-        DeviceInfoSetHandle(const DeviceInfoSetHandle&) = delete;
-        DeviceInfoSetHandle& operator=(const DeviceInfoSetHandle&) = delete;
-        
-        // Movable
-        DeviceInfoSetHandle(DeviceInfoSetHandle&& other) noexcept 
-            : m_handle(other.m_handle) {
-            other.m_handle = INVALID_HANDLE_VALUE;
-        }
-        
-        DeviceInfoSetHandle& operator=(DeviceInfoSetHandle&& other) noexcept {
-            if (this != &other) {
-                if (IsValid()) {
-                    SetupDiDestroyDeviceInfoList(m_handle);
-                }
-                m_handle = other.m_handle;
-                other.m_handle = INVALID_HANDLE_VALUE;
-            }
-            return *this;
-        }
-        
-        // Accessors
-        HDEVINFO Get() const { return m_handle; }
-        operator HDEVINFO() const { return m_handle; }
-        bool IsValid() const { return m_handle != INVALID_HANDLE_VALUE; }
-        explicit operator bool() const { return IsValid(); }
-        
-        // Release ownership
-        HDEVINFO Release() {
-            HDEVINFO tmp = m_handle;
-            m_handle = INVALID_HANDLE_VALUE;
-            return tmp;
-        }
-        
-        // Reset with new handle
-        void Reset(HDEVINFO handle = INVALID_HANDLE_VALUE) {
-            if (IsValid()) {
-                SetupDiDestroyDeviceInfoList(m_handle);
-            }
-            m_handle = handle;
-        }
-
-    private:
-        HDEVINFO m_handle;
-    };
 
     class DriverScanner {
     public:
@@ -99,17 +41,43 @@ namespace DriverManager {
         size_t GetTotalDriverCount() const;
         size_t GetProblematicDriverCount() const;
         
-        // Driver operations
-        bool EnableDriver(const DriverInfo& driver);
-        bool DisableDriver(const DriverInfo& driver);
-        bool UninstallDriver(const DriverInfo& driver);
-        bool UpdateDriver(const DriverInfo& driver);
+        // ========== Driver operations (utilisant Result<T>) ==========
+        
+        /// <summary>
+        /// Active un pilote désactivé
+        /// </summary>
+        /// <returns>VoidResult avec message d'erreur détaillé si échec</returns>
+        VoidResult EnableDriver(const DriverInfo& driver);
+        
+        /// <summary>
+        /// Désactive un pilote
+        /// </summary>
+        /// <returns>VoidResult avec message d'erreur détaillé si échec</returns>
+        VoidResult DisableDriver(const DriverInfo& driver);
+        
+        /// <summary>
+        /// Désinstalle un pilote
+        /// </summary>
+        /// <returns>VoidResult avec message d'erreur détaillé si échec</returns>
+        VoidResult UninstallDriver(const DriverInfo& driver);
+        
+        /// <summary>
+        /// Ouvre le gestionnaire de périphériques pour mettre à jour le pilote
+        /// </summary>
+        VoidResult UpdateDriver(const DriverInfo& driver);
+        
+        // ========== Anciennes méthodes (compatibilité - à déprécier) ==========
+        [[deprecated("Utiliser EnableDriver retournant VoidResult")]]
+        bool EnableDriverLegacy(const DriverInfo& driver) { return EnableDriver(driver).IsSuccess(); }
+        
+        [[deprecated("Utiliser DisableDriver retournant VoidResult")]]
+        bool DisableDriverLegacy(const DriverInfo& driver) { return DisableDriver(driver).IsSuccess(); }
         
         // Export driver info
-        bool ExportToFile(const std::wstring& filePath) const;
+        VoidResult ExportToFile(const std::wstring& filePath) const;
         
         // Backup driver
-        bool BackupDriver(const DriverInfo& driver, const std::wstring& backupPath);
+        VoidResult BackupDriver(const DriverInfo& driver, const std::wstring& backupPath);
         
         // Progress callback
         using ProgressCallback = std::function<void(int current, int total, const std::wstring& currentDevice)>;

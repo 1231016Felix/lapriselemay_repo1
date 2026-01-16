@@ -1,5 +1,6 @@
 using CleanUninstaller.Models;
 using CleanUninstaller.Services.Interfaces;
+using Shared.Logging;
 using System.Diagnostics;
 using System.Text.Json;
 
@@ -18,21 +19,21 @@ public class SettingsService : ISettingsService
     private static readonly string BackupsFolder = Path.Combine(SettingsFolder, "Backups");
 
     private AppSettings _settings = new();
-    private readonly ILoggerService _logger;
+    private readonly Shared.Logging.ILoggerService _logger;
 
     /// <summary>
     /// Paramètres actuels
     /// </summary>
     public AppSettings Settings => _settings;
 
-    public SettingsService(ILoggerService logger)
+    public SettingsService(Shared.Logging.ILoggerService logger)
     {
         _logger = logger;
         Load();
     }
 
     // Constructeur sans paramètre pour compatibilité
-    public SettingsService() : this(ServiceContainer.TryGetService<ILoggerService>() ?? new LoggerService())
+    public SettingsService() : this(ServiceContainer.TryGetService<Shared.Logging.ILoggerService>() ?? new LoggerService())
     { }
 
     /// <summary>

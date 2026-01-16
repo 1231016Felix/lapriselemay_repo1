@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using CleanUninstaller.Models;
 using CleanUninstaller.Services.Interfaces;
+using Shared.Logging;
 
 namespace CleanUninstaller.Services;
 
@@ -13,16 +14,12 @@ namespace CleanUninstaller.Services;
 /// </summary>
 public partial class AdvancedDetectionService : IAdvancedDetectionService
 {
-    private readonly ILoggerService _logger;
+    private readonly Shared.Logging.ILoggerService _logger;
 
-    public AdvancedDetectionService(ILoggerService logger)
+    public AdvancedDetectionService(Shared.Logging.ILoggerService logger)
     {
-        _logger = logger;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
-
-    // Constructeur sans paramètre pour compatibilité
-    public AdvancedDetectionService() : this(ServiceContainer.GetService<ILoggerService>())
-    { }
 
     /// <summary>
     /// Implémente IAdvancedDetectionService.DeepScanAsync

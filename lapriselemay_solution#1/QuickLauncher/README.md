@@ -11,10 +11,13 @@
 3. [Raccourcis clavier](#raccourcis-clavier)
 4. [Commandes système](#commandes-système)
 5. [Recherche web](#recherche-web)
-6. [Accéder aux paramètres](#accéder-aux-paramètres)
-7. [Configuration des paramètres](#configuration-des-paramètres)
-8. [Conseils et astuces](#conseils-et-astuces)
-9. [Dépannage](#dépannage)
+6. [Actions rapides (Menu contextuel)](#actions-rapides-menu-contextuel)
+7. [Contrôle système rapide](#contrôle-système-rapide)
+8. [Icônes natives](#icônes-natives)
+9. [Accéder aux paramètres](#accéder-aux-paramètres)
+10. [Configuration des paramètres](#configuration-des-paramètres)
+11. [Conseils et astuces](#conseils-et-astuces)
+12. [Dépannage](#dépannage)
 
 ---
 
@@ -139,6 +142,102 @@ g météo Montréal        → Recherche Google "météo Montréal"
 yt learn javascript     → Recherche YouTube "learn javascript"
 gh dotnet wpf           → Recherche GitHub "dotnet wpf"
 ```
+
+---
+
+## Actions rapides (Menu contextuel)
+
+Faites un **clic droit** sur n'importe quel résultat de recherche pour accéder à des actions supplémentaires.
+
+### Actions sur les fichiers
+
+| Action | Description |
+|--------|-------------|
+| 📂 Ouvrir l'emplacement | Ouvre l'Explorateur avec le fichier sélectionné |
+| 📋 Copier le chemin | Copie le chemin complet dans le presse-papiers |
+| 📝 Copier le nom | Copie uniquement le nom du fichier |
+| ✏️ Renommer... | Ouvre une boîte de dialogue pour renommer |
+| 📁 Déplacer vers... | Déplace le fichier vers un autre dossier |
+| 🗑️ Supprimer | Envoie le fichier à la corbeille |
+
+### Actions sur les applications
+
+| Action | Description |
+|--------|-------------|
+| 🔑 Exécuter en admin | Lance l'application avec les droits administrateur |
+| 📎 Ouvrir avec... | Choisir une application pour ouvrir le fichier |
+
+### Actions Terminal
+
+| Action | Description |
+|--------|-------------|
+| 💻 Terminal ici | Ouvre Windows Terminal dans le dossier du fichier |
+| 📟 PowerShell ici | Ouvre PowerShell dans le dossier du fichier |
+
+---
+
+## Contrôle système rapide
+
+Contrôlez votre système directement depuis la barre de recherche en tapant des commandes commençant par `:`.
+
+### 🔊 Audio
+
+| Commande | Description |
+|----------|-------------|
+| `:volume 50` | Règle le volume à 50% |
+| `:volume up` | Augmente le volume de 10% |
+| `:volume down` | Diminue le volume de 10% |
+| `:mute` | Bascule le mode muet |
+
+### ☀️ Écran
+
+| Commande | Description |
+|----------|-------------|
+| `:brightness 80` | Règle la luminosité à 80% (laptops uniquement) |
+
+### 📶 Réseau
+
+| Commande | Description |
+|----------|-------------|
+| `:wifi on` | Active le WiFi |
+| `:wifi off` | Désactive le WiFi |
+| `:wifi status` | Affiche l'état du WiFi |
+
+### 🔒 Système
+
+| Commande | Description |
+|----------|-------------|
+| `:lock` | Verrouille la session Windows |
+| `:sleep` | Met l'ordinateur en veille |
+| `:hibernate` | Met en hibernation |
+| `:shutdown` | Éteint l'ordinateur |
+| `:restart` | Redémarre l'ordinateur |
+
+### 📸 Capture d'écran
+
+| Commande | Description |
+|----------|-------------|
+| `:screenshot` | Capture tous les écrans |
+| `:screenshot snip` | Ouvre l'outil de capture Windows |
+| `:ss primary` | Capture l'écran principal uniquement |
+
+> 💡 Les captures sont sauvegardées dans `Images\Screenshots`
+
+---
+
+## Icônes natives
+
+QuickLauncher affiche automatiquement les **vraies icônes** de vos applications au lieu des emojis génériques.
+
+### Types supportés
+
+- ✅ Applications (.exe)
+- ✅ Raccourcis (.lnk)
+- ✅ Fichiers (icône selon le type)
+- ✅ Dossiers
+- ✅ Applications du Microsoft Store
+
+> 💡 Les icônes sont mises en cache pour des performances optimales. Si une icône ne s'affiche pas, un emoji de fallback est utilisé.
 
 ---
 
@@ -374,6 +473,8 @@ Cliquez et maintenez n'importe où sur la fenêtre (hors champ de texte et liste
 
 ## Résumé des commandes
 
+### Commandes de base
+
 | Commande | Action |
 |----------|--------|
 | `:settings` | Paramètres |
@@ -382,10 +483,29 @@ Cliquez et maintenez n'importe où sur la fenêtre (hors champ de texte et liste
 | `:clear` | Effacer historique |
 | `:help` / `?` | Aide |
 | `:quit` | Quitter |
+
+### Recherche web
+
+| Commande | Action |
+|----------|--------|
 | `g [texte]` | Google |
 | `yt [texte]` | YouTube |
 | `gh [texte]` | GitHub |
 | `so [texte]` | Stack Overflow |
+
+### Contrôle système
+
+| Commande | Action |
+|----------|--------|
+| `:volume [0-100]` | Régler le volume |
+| `:mute` | Basculer muet |
+| `:brightness [0-100]` | Régler luminosité |
+| `:wifi [on/off]` | WiFi on/off |
+| `:lock` | Verrouiller PC |
+| `:sleep` | Mise en veille |
+| `:screenshot` | Capture d'écran |
+| `:shutdown` | Éteindre |
+| `:restart` | Redémarrer |
 
 ---
 

@@ -35,6 +35,9 @@ public sealed class AppSettings
     // === Scripts et recherche ===
     public List<CustomScript> Scripts { get; set; } = [];
     public List<WebSearchEngine> SearchEngines { get; set; } = GetDefaultSearchEngines();
+    
+    // === Commandes de contrôle système ===
+    public List<SystemControlCommand> SystemCommands { get; set; } = GetDefaultSystemCommands();
 
     // === Paramètres généraux ===
     public int MaxResults { get; set; } = Constants.DefaultMaxResults;
@@ -65,6 +68,7 @@ public sealed class AppSettings
     // === Indexation ===
     public int SearchDepth { get; set; } = Constants.DefaultSearchDepth;
     public bool IndexHiddenFolders { get; set; }
+    public bool IndexBrowserBookmarks { get; set; } = true;
     
     // === Réindexation automatique ===
     public bool AutoReindexEnabled { get; set; }
@@ -90,6 +94,35 @@ public sealed class AppSettings
         new() { Prefix = "gh", Name = "GitHub", UrlTemplate = "https://github.com/search?q={query}" },
         new() { Prefix = "so", Name = "Stack Overflow", UrlTemplate = "https://stackoverflow.com/search?q={query}" }
     ];
+    
+    private static List<SystemControlCommand> GetDefaultSystemCommands() =>
+    [
+        new() { Type = SystemControlType.Volume, Name = "Volume", Prefix = "volume", Icon = "🔊", 
+                Description = "Régler le volume (0-100, up, down)", RequiresArgument = true, ArgumentHint = "[0-100|up|down]" },
+        new() { Type = SystemControlType.Mute, Name = "Muet", Prefix = "mute", Icon = "🔇", 
+                Description = "Basculer le mode muet" },
+        new() { Type = SystemControlType.Brightness, Name = "Luminosité", Prefix = "brightness", Icon = "☀️", 
+                Description = "Régler la luminosité (0-100)", RequiresArgument = true, ArgumentHint = "[0-100]" },
+        new() { Type = SystemControlType.Wifi, Name = "WiFi", Prefix = "wifi", Icon = "📶", 
+                Description = "Contrôler le WiFi", RequiresArgument = true, ArgumentHint = "[on|off|status]" },
+        new() { Type = SystemControlType.Lock, Name = "Verrouiller", Prefix = "lock", Icon = "🔒", 
+                Description = "Verrouiller la session" },
+        new() { Type = SystemControlType.Sleep, Name = "Veille", Prefix = "sleep", Icon = "😴", 
+                Description = "Mettre en veille" },
+        new() { Type = SystemControlType.Hibernate, Name = "Hibernation", Prefix = "hibernate", Icon = "💤", 
+                Description = "Mettre en hibernation" },
+        new() { Type = SystemControlType.Shutdown, Name = "Éteindre", Prefix = "shutdown", Icon = "🔌", 
+                Description = "Éteindre l'ordinateur" },
+        new() { Type = SystemControlType.Restart, Name = "Redémarrer", Prefix = "restart", Icon = "🔄", 
+                Description = "Redémarrer l'ordinateur" },
+        new() { Type = SystemControlType.Screenshot, Name = "Capture", Prefix = "screenshot", Icon = "📸", 
+                Description = "Prendre une capture d'écran", ArgumentHint = "[snip|primary]" }
+    ];
+    
+    /// <summary>
+    /// Réinitialise les commandes système aux valeurs par défaut.
+    /// </summary>
+    public void ResetSystemCommands() => SystemCommands = GetDefaultSystemCommands();
 
     public static AppSettings Load()
     {
@@ -188,4 +221,51 @@ public sealed class WebSearchEngine
     public string Prefix { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string UrlTemplate { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Types d'actions de contrôle système.
+/// </summary>
+public enum SystemControlType
+{
+    Volume,
+    Mute,
+    Brightness,
+    Wifi,
+    Lock,
+    Sleep,
+    Hibernate,
+    Shutdown,
+    Restart,
+    Screenshot
+}
+
+/// <summary>
+/// Configuration d'une commande de contrôle système personnalisable.
+/// </summary>
+public sealed class SystemControlCommand
+{
+    public SystemControlType Type { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Prefix { get; set; } = string.Empty;
+    public string Icon { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public bool IsEnabled { get; set; } = true;
+    public bool RequiresArgument { get; set; }
+    public string ArgumentHint { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Crée une copie de la commande.
+    /// </summary>
+    public SystemControlCommand Clone() => new()
+    {
+        Type = Type,
+        Name = Name,
+        Prefix = Prefix,
+        Icon = Icon,
+        Description = Description,
+        IsEnabled = IsEnabled,
+        RequiresArgument = RequiresArgument,
+        ArgumentHint = ArgumentHint
+    };
 }

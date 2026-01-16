@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using CleanUninstaller.Models;
 using CleanUninstaller.Services.Interfaces;
+using Shared.Logging;
 
 namespace CleanUninstaller.Services;
 
@@ -14,7 +15,7 @@ namespace CleanUninstaller.Services;
 public class InstallationMonitorService : IInstallationMonitorService, IDisposable
 {
     private readonly SnapshotService _snapshotService;
-    private readonly ILoggerService _logger;
+    private readonly Shared.Logging.ILoggerService _logger;
     private readonly List<FileSystemWatcher> _fileWatchers = [];
     private readonly ConcurrentDictionary<string, SystemChange> _realTimeChanges = new();
     private readonly string _dataFolder;
@@ -107,9 +108,9 @@ public class InstallationMonitorService : IInstallationMonitorService, IDisposab
     /// </summary>
     public int RealTimeChangeCount => _realTimeChanges.Count;
 
-    public InstallationMonitorService(ILoggerService logger)
+    public InstallationMonitorService(Shared.Logging.ILoggerService logger)
     {
-        _logger = logger;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _snapshotService = new SnapshotService();
         _dataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -118,10 +119,6 @@ public class InstallationMonitorService : IInstallationMonitorService, IDisposab
 
         Directory.CreateDirectory(_dataFolder);
     }
-
-    // Constructeur sans paramètre pour compatibilité
-    public InstallationMonitorService() : this(ServiceContainer.GetService<ILoggerService>())
-    { }
 
     /// <summary>
     /// Démarre le monitoring d'une nouvelle installation

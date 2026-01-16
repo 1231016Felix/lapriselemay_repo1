@@ -3,6 +3,7 @@ using QuickLauncher.Models;
 using QuickLauncher.Services;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -73,6 +74,7 @@ public partial class SettingsWindow : Window
         SearchDepthSlider.Value = _settings.SearchDepth;
         SearchDepthValue.Text = _settings.SearchDepth.ToString();
         IndexHiddenFoldersCheck.IsChecked = _settings.IndexHiddenFolders;
+        IndexBrowserBookmarksCheck.IsChecked = _settings.IndexBrowserBookmarks;
         
         // Réindexation automatique
         AutoReindexEnabledCheck.IsChecked = _settings.AutoReindexEnabled;
@@ -84,6 +86,12 @@ public partial class SettingsWindow : Window
         
         // Recherche Web
         SearchEnginesList.ItemsSource = _settings.SearchEngines;
+        
+        // Commandes système
+        LoadSystemCommands();
+        
+        // Guide - liste dynamique des commandes
+        GuideSystemCommandsList.ItemsSource = _settings.SystemCommands.Where(c => c.IsEnabled).ToList();
         
         // À propos
         DataPathText.Text = AppSettings.GetSettingsPath();
@@ -272,6 +280,104 @@ public partial class SettingsWindow : Window
         IndexedFoldersList.ItemsSource = _settings.IndexedFolders;
     }
 
+    // === Gestionnaires d'événements - Commandes Système ===
+    
+    private SystemControlCommand? _selectedSystemCommand;
+    
+    private void LoadSystemCommands()
+    {
+        SystemCommandsList.ItemsSource = null;
+        SystemCommandsList.ItemsSource = _settings.SystemCommands;
+    }
+    
+    private void SystemCommandsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        _selectedSystemCommand = SystemCommandsList.SelectedItem as SystemControlCommand;
+        
+        if (_selectedSystemCommand != null)
+        {
+            CommandPrefixBox.Text = _selectedSystemCommand.Prefix;
+            CommandIconBox.Text = _selectedSystemCommand.Icon;
+            CommandDescriptionBox.Text = _selectedSystemCommand.Description;
+        }
+    }
+    
+    private void EditSystemCommand_Click(object sender, RoutedEventArgs e)
+    {
+        if (SystemCommandsList.SelectedItem is not SystemControlCommand cmd)
+        {
+            MessageBox.Show("Sélectionnez une commande à modifier.", "Information",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        
+        _selectedSystemCommand = cmd;
+        CommandPrefixBox.Text = cmd.Prefix;
+        CommandIconBox.Text = cmd.Icon;
+        CommandDescriptionBox.Text = cmd.Description;
+        CommandEditPanel.Visibility = Visibility.Visible;
+    }
+    
+    private void CancelCommandEdit_Click(object sender, RoutedEventArgs e)
+    {
+        CommandEditPanel.Visibility = Visibility.Collapsed;
+        _selectedSystemCommand = null;
+    }
+    
+    private void ApplyCommandEdit_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedSystemCommand == null)
+            return;
+        
+        var newPrefix = CommandPrefixBox.Text.Trim().ToLowerInvariant();
+        var newIcon = CommandIconBox.Text.Trim();
+        var newDescription = CommandDescriptionBox.Text.Trim();
+        
+        // Validation
+        if (string.IsNullOrWhiteSpace(newPrefix))
+        {
+            MessageBox.Show("Le préfixe ne peut pas être vide.", "Erreur",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        
+        // Vérifier les doublons
+        var duplicate = _settings.SystemCommands.FirstOrDefault(c => 
+            c != _selectedSystemCommand && 
+            c.Prefix.Equals(newPrefix, StringComparison.OrdinalIgnoreCase));
+        
+        if (duplicate != null)
+        {
+            MessageBox.Show($"Le préfixe '{newPrefix}' est déjà utilisé par '{duplicate.Name}'.", "Erreur",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        
+        // Appliquer les modifications
+        _selectedSystemCommand.Prefix = newPrefix;
+        _selectedSystemCommand.Icon = string.IsNullOrWhiteSpace(newIcon) ? "⚡" : newIcon;
+        _selectedSystemCommand.Description = newDescription;
+        
+        // Rafraîchir la liste
+        LoadSystemCommands();
+        CommandEditPanel.Visibility = Visibility.Collapsed;
+        
+        MessageBox.Show("Commande modifiée! N'oubliez pas de sauvegarder.", "Succès",
+            MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+    
+    private void ResetSystemCommands_Click(object sender, RoutedEventArgs e)
+    {
+        if (MessageBox.Show("Réinitialiser toutes les commandes système aux valeurs par défaut?", 
+            "Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+        {
+            _settings.ResetSystemCommands();
+            LoadSystemCommands();
+            MessageBox.Show("Commandes réinitialisées! N'oubliez pas de sauvegarder.", "Succès",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
     // === Gestionnaires d'événements - Réindexation auto ===
     
     private void AutoReindexEnabled_Changed(object sender, RoutedEventArgs e) => UpdateAutoReindexOptionsVisibility();
@@ -378,6 +484,7 @@ public partial class SettingsWindow : Window
         // Indexation
         _settings.SearchDepth = (int)SearchDepthSlider.Value;
         _settings.IndexHiddenFolders = IndexHiddenFoldersCheck.IsChecked == true;
+        _settings.IndexBrowserBookmarks = IndexBrowserBookmarksCheck.IsChecked == true;
         
         // Réindexation automatique
         _settings.AutoReindexEnabled = AutoReindexEnabledCheck.IsChecked == true;

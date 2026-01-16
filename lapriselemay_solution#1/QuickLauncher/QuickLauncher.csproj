@@ -13,6 +13,7 @@
     <StartupObject>QuickLauncher.App</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -24,6 +25,14 @@
     
     <!-- System Tray (version centralisée) -->
     <PackageReference Include="H.NotifyIcon.Wpf" />
+    
+    <!-- Audio - Contrôle du volume système -->
+    <PackageReference Include="NAudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Référence au projet de logging partagé -->
+    <ProjectReference Include="..\Shared\Shared.Logging\Shared.Logging.csproj" />
   </ItemGroup>
 
   <ItemGroup>
