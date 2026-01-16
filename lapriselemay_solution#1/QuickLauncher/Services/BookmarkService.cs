@@ -5,7 +5,18 @@ using QuickLauncher.Models;
 namespace QuickLauncher.Services;
 
 /// <summary>
-/// Service pour indexer les favoris des navigateurs (Chrome, Edge, Firefox).
+/// Information sur un navigateur supporté.
+/// </summary>
+public class BrowserInfo
+{
+    public string Name { get; init; } = string.Empty;
+    public string Icon { get; init; } = string.Empty;
+    public bool IsInstalled { get; init; }
+    public int BookmarkCount { get; set; }
+}
+
+/// <summary>
+/// Service pour indexer les favoris des navigateurs (Chrome, Edge, Firefox, Brave, Vivaldi, Opera).
 /// </summary>
 public static class BookmarkService
 {
@@ -14,25 +25,153 @@ public static class BookmarkService
     private static readonly string LocalAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
     private static readonly string RoamingAppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
     
-    // Chrome
-    private static readonly string ChromeBookmarksPath = Path.Combine(
-        LocalAppData, "Google", "Chrome", "User Data", "Default", "Bookmarks");
-    
-    // Edge
-    private static readonly string EdgeBookmarksPath = Path.Combine(
-        LocalAppData, "Microsoft", "Edge", "User Data", "Default", "Bookmarks");
+    // Dossiers "User Data" des navigateurs Chromium
+    private static readonly string ChromeUserDataPath = Path.Combine(LocalAppData, "Google", "Chrome", "User Data");
+    private static readonly string EdgeUserDataPath = Path.Combine(LocalAppData, "Microsoft", "Edge", "User Data");
+    private static readonly string BraveUserDataPath = Path.Combine(LocalAppData, "BraveSoftware", "Brave-Browser", "User Data");
+    private static readonly string VivaldiUserDataPath = Path.Combine(LocalAppData, "Vivaldi", "User Data");
+    private static readonly string OperaUserDataPath = Path.Combine(RoamingAppData, "Opera Software", "Opera Stable");
+    private static readonly string OperaGXUserDataPath = Path.Combine(RoamingAppData, "Opera Software", "Opera GX Stable");
     
     // Firefox (utilise un profil avec nom aléatoire)
-    private static readonly string FirefoxProfilesPath = Path.Combine(
-        RoamingAppData, "Mozilla", "Firefox", "Profiles");
+    private static readonly string FirefoxProfilesPath = Path.Combine(RoamingAppData, "Mozilla", "Firefox", "Profiles");
     
-    // Brave
-    private static readonly string BraveBookmarksPath = Path.Combine(
-        LocalAppData, "BraveSoftware", "Brave-Browser", "User Data", "Default", "Bookmarks");
+    #endregion
     
-    // Vivaldi
-    private static readonly string VivaldiBookmarksPath = Path.Combine(
-        LocalAppData, "Vivaldi", "User Data", "Default", "Bookmarks");
+    #region Browser Detection
+    
+    /// <summary>
+    /// Trouve tous les fichiers Bookmarks dans un dossier User Data de navigateur Chromium.
+    /// Cherche dans Default, Profile 1, Profile 2, etc.
+    /// </summary>
+    private static List<string> FindChromiumBookmarkFiles(string userDataPath)
+    {
+        var bookmarkFiles = new List<string>();
+        
+        if (!Directory.Exists(userDataPath))
+            return bookmarkFiles;
+        
+        try
+        {
+            // Profils à chercher: Default, Profile 1, Profile 2, etc.
+            var profileDirs = Directory.GetDirectories(userDataPath)
+                .Where(d =>
+                {
+                    var name = Path.GetFileName(d);
+                    return name == "Default" || name.StartsWith("Profile ");
+                });
+            
+            foreach (var profileDir in profileDirs)
+            {
+                var bookmarksPath = Path.Combine(profileDir, "Bookmarks");
+                if (File.Exists(bookmarksPath))
+                    bookmarkFiles.Add(bookmarksPath);
+            }
+        }
+        catch { }
+        
+        return bookmarkFiles;
+    }
+    
+    /// <summary>
+    /// Vérifie si un navigateur Chromium a des favoris dans au moins un profil.
+    /// </summary>
+    private static bool HasChromiumBookmarks(string userDataPath)
+    {
+        return FindChromiumBookmarkFiles(userDataPath).Count > 0;
+    }
+    
+    /// <summary>
+    /// Récupère tous les favoris de tous les profils d'un navigateur Chromium.
+    /// </summary>
+    private static List<SearchResult> GetAllChromiumBookmarks(string userDataPath, string browserName)
+    {
+        var bookmarks = new List<SearchResult>();
+        
+        foreach (var bookmarkFile in FindChromiumBookmarkFiles(userDataPath))
+        {
+            bookmarks.AddRange(GetChromiumBookmarks(bookmarkFile, browserName));
+        }
+        
+        return bookmarks;
+    }
+    
+    /// <summary>
+    /// Retourne la liste des navigateurs supportés avec leur statut d'installation.
+    /// </summary>
+    public static List<BrowserInfo> GetSupportedBrowsers()
+    {
+        return
+        [
+            new BrowserInfo 
+            { 
+                Name = "Chrome", 
+                Icon = "🌐", 
+                IsInstalled = HasChromiumBookmarks(ChromeUserDataPath),
+                BookmarkCount = GetAllChromiumBookmarks(ChromeUserDataPath, "Chrome").Count
+            },
+            new BrowserInfo 
+            { 
+                Name = "Edge", 
+                Icon = "🔷", 
+                IsInstalled = HasChromiumBookmarks(EdgeUserDataPath),
+                BookmarkCount = GetAllChromiumBookmarks(EdgeUserDataPath, "Edge").Count
+            },
+            new BrowserInfo 
+            { 
+                Name = "Firefox", 
+                Icon = "🦊", 
+                IsInstalled = Directory.Exists(FirefoxProfilesPath) && Directory.GetDirectories(FirefoxProfilesPath).Length > 0,
+                BookmarkCount = GetFirefoxBookmarks().Count
+            },
+            new BrowserInfo 
+            { 
+                Name = "Brave", 
+                Icon = "🦁", 
+                IsInstalled = HasChromiumBookmarks(BraveUserDataPath),
+                BookmarkCount = GetAllChromiumBookmarks(BraveUserDataPath, "Brave").Count
+            },
+            new BrowserInfo 
+            { 
+                Name = "Vivaldi", 
+                Icon = "🎵", 
+                IsInstalled = HasChromiumBookmarks(VivaldiUserDataPath),
+                BookmarkCount = GetAllChromiumBookmarks(VivaldiUserDataPath, "Vivaldi").Count
+            },
+            new BrowserInfo 
+            { 
+                Name = "Opera", 
+                Icon = "🔴", 
+                IsInstalled = HasChromiumBookmarks(OperaUserDataPath),
+                BookmarkCount = GetAllChromiumBookmarks(OperaUserDataPath, "Opera").Count
+            },
+            new BrowserInfo 
+            { 
+                Name = "Opera GX", 
+                Icon = "🎮", 
+                IsInstalled = HasChromiumBookmarks(OperaGXUserDataPath),
+                BookmarkCount = GetAllChromiumBookmarks(OperaGXUserDataPath, "Opera GX").Count
+            }
+        ];
+    }
+    
+    /// <summary>
+    /// Importe les favoris d'un navigateur spécifique.
+    /// </summary>
+    public static List<SearchResult> GetBookmarksForBrowser(string browserName)
+    {
+        return browserName switch
+        {
+            "Chrome" => GetAllChromiumBookmarks(ChromeUserDataPath, "Chrome"),
+            "Edge" => GetAllChromiumBookmarks(EdgeUserDataPath, "Edge"),
+            "Firefox" => GetFirefoxBookmarks(),
+            "Brave" => GetAllChromiumBookmarks(BraveUserDataPath, "Brave"),
+            "Vivaldi" => GetAllChromiumBookmarks(VivaldiUserDataPath, "Vivaldi"),
+            "Opera" => GetAllChromiumBookmarks(OperaUserDataPath, "Opera"),
+            "Opera GX" => GetAllChromiumBookmarks(OperaGXUserDataPath, "Opera GX"),
+            _ => []
+        };
+    }
     
     #endregion
     
@@ -44,16 +183,22 @@ public static class BookmarkService
         var bookmarks = new List<SearchResult>();
         
         // Chrome
-        bookmarks.AddRange(GetChromiumBookmarks(ChromeBookmarksPath, "Chrome"));
+        bookmarks.AddRange(GetAllChromiumBookmarks(ChromeUserDataPath, "Chrome"));
         
         // Edge
-        bookmarks.AddRange(GetChromiumBookmarks(EdgeBookmarksPath, "Edge"));
+        bookmarks.AddRange(GetAllChromiumBookmarks(EdgeUserDataPath, "Edge"));
         
         // Brave
-        bookmarks.AddRange(GetChromiumBookmarks(BraveBookmarksPath, "Brave"));
+        bookmarks.AddRange(GetAllChromiumBookmarks(BraveUserDataPath, "Brave"));
         
         // Vivaldi
-        bookmarks.AddRange(GetChromiumBookmarks(VivaldiBookmarksPath, "Vivaldi"));
+        bookmarks.AddRange(GetAllChromiumBookmarks(VivaldiUserDataPath, "Vivaldi"));
+        
+        // Opera
+        bookmarks.AddRange(GetAllChromiumBookmarks(OperaUserDataPath, "Opera"));
+        
+        // Opera GX
+        bookmarks.AddRange(GetAllChromiumBookmarks(OperaGXUserDataPath, "Opera GX"));
         
         // Firefox
         bookmarks.AddRange(GetFirefoxBookmarks());

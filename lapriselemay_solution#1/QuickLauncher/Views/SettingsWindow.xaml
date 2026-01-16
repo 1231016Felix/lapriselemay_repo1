@@ -280,7 +280,120 @@
                         <Slider x:Name="SearchDepthSlider" Minimum="1" Maximum="10" Value="5" Width="300" HorizontalAlignment="Left" ValueChanged="SearchDepthSlider_ValueChanged"/>
                         
                         <CheckBox x:Name="IndexHiddenFoldersCheck" Content="Indexer les dossiers cachés" Style="{StaticResource SettingsCheckBox}"/>
-                        <CheckBox x:Name="IndexBrowserBookmarksCheck" Content="Indexer les favoris des navigateurs (Chrome, Edge, Firefox, Brave)" Style="{StaticResource SettingsCheckBox}"/>
+                        
+                        <!-- Liste des navigateurs -->
+                        <TextBlock Text="Navigateurs détectés" Style="{StaticResource SectionLabel}"/>
+                        <TextBlock Text="Importez les favoris de vos navigateurs individuellement." Foreground="#888" Margin="0,0,0,10"/>
+                        
+                        <ItemsControl x:Name="BrowsersList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Background="#2D2D2D" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="40"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            
+                                            <!-- Icône -->
+                                            <TextBlock Grid.Column="0" 
+                                                       Text="{Binding Icon}" 
+                                                       FontSize="22" 
+                                                       VerticalAlignment="Center"/>
+                                            
+                                            <!-- Nom et statut -->
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="5,0">
+                                                <TextBlock Text="{Binding Name}" 
+                                                           Foreground="White" 
+                                                           FontWeight="SemiBold"
+                                                           FontSize="13"/>
+                                                <TextBlock Foreground="#888" FontSize="11">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="{Binding BookmarkCount, StringFormat='{}{0} favoris disponibles'}"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsInstalled}" Value="False">
+                                                                    <Setter Property="Text" Value="Non installé"/>
+                                                                    <Setter Property="Foreground" Value="#666"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
+                                            
+                                            <!-- Badge statut -->
+                                            <Border Grid.Column="2" 
+                                                    CornerRadius="4" 
+                                                    Padding="8,4" 
+                                                    VerticalAlignment="Center"
+                                                    Margin="0,0,10,0">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#1E3A1E"/>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsInstalled}" Value="False">
+                                                                <Setter Property="Background" Value="#3A2020"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock FontSize="10" FontWeight="SemiBold">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="✓ Installé"/>
+                                                            <Setter Property="Foreground" Value="#4CAF50"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsInstalled}" Value="False">
+                                                                    <Setter Property="Text" Value="✗ Non trouvé"/>
+                                                                    <Setter Property="Foreground" Value="#E57373"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Border>
+                                            
+                                            <!-- Bouton Importer -->
+                                            <Button Grid.Column="3" 
+                                                    Content="📥 Importer" 
+                                                    Tag="{Binding Name}"
+                                                    Click="ImportBrowserBookmarks_Click"
+                                                    Padding="12,6"
+                                                    Background="#0078D4"
+                                                    Foreground="White"
+                                                    BorderThickness="0"
+                                                    Cursor="Hand"
+                                                    VerticalAlignment="Center">
+                                                <Button.Style>
+                                                    <Style TargetType="Button">
+                                                        <Setter Property="IsEnabled" Value="True"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsInstalled}" Value="False">
+                                                                <Setter Property="IsEnabled" Value="False"/>
+                                                                <Setter Property="Opacity" Value="0.5"/>
+                                                            </DataTrigger>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="#1084D8"/>
+                                                            </Trigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        
+                        <Button Content="📥 Importer tous les favoris" 
+                                Click="ImportAllBrowserBookmarks_Click" 
+                                Style="{StaticResource PrimaryButton}" 
+                                HorizontalAlignment="Left" 
+                                Margin="0,10,0,0"/>
                         
                         <!-- Réindexation automatique -->
                         <TextBlock Text="Réindexation automatique" Style="{StaticResource SectionLabel}"/>

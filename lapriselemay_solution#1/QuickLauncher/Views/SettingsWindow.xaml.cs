@@ -74,7 +74,9 @@ public partial class SettingsWindow : Window
         SearchDepthSlider.Value = _settings.SearchDepth;
         SearchDepthValue.Text = _settings.SearchDepth.ToString();
         IndexHiddenFoldersCheck.IsChecked = _settings.IndexHiddenFolders;
-        IndexBrowserBookmarksCheck.IsChecked = _settings.IndexBrowserBookmarks;
+        
+        // Charger la liste des navigateurs
+        LoadBrowsersList();
         
         // Réindexation automatique
         AutoReindexEnabledCheck.IsChecked = _settings.AutoReindexEnabled;
@@ -278,6 +280,89 @@ public partial class SettingsWindow : Window
     {
         IndexedFoldersList.ItemsSource = null;
         IndexedFoldersList.ItemsSource = _settings.IndexedFolders;
+    }
+
+    // === Gestionnaires d'événements - Navigateurs ===
+    
+    private void LoadBrowsersList()
+    {
+        BrowsersList.ItemsSource = BookmarkService.GetSupportedBrowsers();
+    }
+    
+    private async void ImportBrowserBookmarks_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button { Tag: string browserName }) return;
+        
+        try
+        {
+            var bookmarks = BookmarkService.GetBookmarksForBrowser(browserName);
+            
+            if (bookmarks.Count == 0)
+            {
+                MessageBox.Show($"Aucun favori trouvé pour {browserName}.", "Information",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            
+            if (_indexingService == null)
+            {
+                MessageBox.Show("Service d'indexation non disponible.", "Erreur",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+            
+            // Réindexer pour inclure les nouveaux favoris
+            await _indexingService.ReindexAsync();
+            LoadBrowsersList(); // Rafraîchir les compteurs
+            LoadStatistics();
+            
+            MessageBox.Show($"✅ {bookmarks.Count} favoris de {browserName} importés avec succès!", 
+                "Import réussi", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erreur lors de l'import: {ex.Message}", "Erreur",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+    
+    private async void ImportAllBrowserBookmarks_Click(object sender, RoutedEventArgs e)
+    {
+        if (_indexingService == null)
+        {
+            MessageBox.Show("Service d'indexation non disponible.", "Erreur",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+        
+        try
+        {
+            var bookmarks = BookmarkService.GetAllBookmarks();
+            
+            if (bookmarks.Count == 0)
+            {
+                MessageBox.Show("Aucun favori trouvé dans les navigateurs installés.", "Information",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            
+            // S'assurer que l'option est activée
+            _settings.IndexBrowserBookmarks = true;
+            _settings.Save();
+            
+            // Réindexer
+            await _indexingService.ReindexAsync();
+            LoadBrowsersList(); // Rafraîchir les compteurs
+            LoadStatistics();
+            
+            MessageBox.Show($"✅ {bookmarks.Count} favoris importés depuis tous les navigateurs!", 
+                "Import réussi", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erreur lors de l'import: {ex.Message}", "Erreur",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     // === Gestionnaires d'événements - Commandes Système ===
@@ -484,7 +569,6 @@ public partial class SettingsWindow : Window
         // Indexation
         _settings.SearchDepth = (int)SearchDepthSlider.Value;
         _settings.IndexHiddenFolders = IndexHiddenFoldersCheck.IsChecked == true;
-        _settings.IndexBrowserBookmarks = IndexBrowserBookmarksCheck.IsChecked == true;
         
         // Réindexation automatique
         _settings.AutoReindexEnabled = AutoReindexEnabledCheck.IsChecked == true;
