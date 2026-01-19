@@ -259,6 +259,7 @@
                             <!-- Icône emoji (fallback) -->
                             <TextBlock Grid.Column="0"
                                        Text="{Binding DisplayIcon}"
+                                       FontFamily="Segoe UI Emoji"
                                        FontSize="24"
                                        VerticalAlignment="Center"
                                        Margin="0,0,12,0"

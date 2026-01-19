@@ -13,14 +13,14 @@ public class IconToVisibilityConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        var hasNativeIcon = value is ImageSource;
+        var hasNativeIcon = value is ImageSource imageSource && imageSource != null;
         var isNativeIconParam = parameter as string == "Native";
         
         if (isNativeIconParam)
         {
             return hasNativeIcon ? Visibility.Visible : Visibility.Collapsed;
         }
-        else
+        else // "Emoji" parameter - fallback
         {
             return hasNativeIcon ? Visibility.Collapsed : Visibility.Visible;
         }
@@ -59,7 +59,7 @@ public class NativeIconVisibilityConverter : IMultiValueConverter
 {
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        if (values.Length >= 1 && values[0] is ImageSource)
+        if (values.Length >= 1 && values[0] is ImageSource imageSource && imageSource != null)
         {
             return Visibility.Visible;
         }

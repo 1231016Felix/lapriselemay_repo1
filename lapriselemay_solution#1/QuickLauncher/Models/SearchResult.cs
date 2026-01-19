@@ -1,3 +1,6 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Windows.Media;
 
 namespace QuickLauncher.Models;
@@ -23,9 +26,17 @@ public enum ResultType
 
 /// <summary>
 /// Résultat de recherche avec scoring et métadonnées.
+/// Implémente INotifyPropertyChanged pour notifier l'UI des changements d'icône.
 /// </summary>
-public sealed class SearchResult
+public sealed class SearchResult : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+    
+    private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+    
     public string Name { get; set; } = string.Empty;
     public string Path { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
@@ -40,6 +51,7 @@ public sealed class SearchResult
     
     /// <summary>
     /// Icône native extraite du fichier (ImageSource).
+    /// Chargement paresseux avec notification.
     /// </summary>
     public ImageSource? NativeIcon
     {
@@ -48,7 +60,8 @@ public sealed class SearchResult
             if (!_nativeIconLoaded && ShouldLoadNativeIcon())
             {
                 _nativeIconLoaded = true;
-                _nativeIcon = Services.IconExtractorService.GetIcon(Path);
+                // Charger de manière asynchrone et notifier
+                _ = LoadIconInternalAsync();
             }
             return _nativeIcon;
         }
@@ -56,13 +69,49 @@ public sealed class SearchResult
         {
             _nativeIcon = value;
             _nativeIconLoaded = true;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasNativeIcon));
+        }
+    }
+    
+    private async Task LoadIconInternalAsync()
+    {
+        try
+        {
+            var path = Path;
+            var name = Name;
+            System.Diagnostics.Debug.WriteLine($"[SearchResult] Starting icon load for '{name}' path='{path}' type={Type}");
+            
+            var icon = await Task.Run(() => Services.IconExtractorService.GetIcon(path));
+            
+            System.Diagnostics.Debug.WriteLine($"[SearchResult] Icon loaded for '{name}': {(icon != null ? "OK" : "NULL")}");
+            
+            var app = System.Windows.Application.Current;
+            if (app != null)
+            {
+                await app.Dispatcher.InvokeAsync(() =>
+                {
+                    _nativeIcon = icon;
+                    System.Diagnostics.Debug.WriteLine($"[SearchResult] PropertyChanged fired for '{name}'");
+                    OnPropertyChanged(nameof(NativeIcon));
+                    OnPropertyChanged(nameof(HasNativeIcon));
+                });
+            }
+            else
+            {
+                _nativeIcon = icon;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SearchResult] Icon error for '{Name}': {ex.Message}");
         }
     }
     
     /// <summary>
-    /// Indique si une icône native est disponible.
+    /// Indique si une icône native valide est disponible.
     /// </summary>
-    public bool HasNativeIcon => NativeIcon != null;
+    public bool HasNativeIcon => _nativeIcon != null;
     
     /// <summary>
     /// Icône emoji de fallback.
