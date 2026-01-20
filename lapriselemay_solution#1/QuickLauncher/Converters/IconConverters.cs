@@ -81,7 +81,6 @@ public class ResultTypeToMenuVisibilityConverter : IValueConverter
     {
         if (value is ResultType type)
         {
-            // Masquer certaines options pour certains types
             var menuItem = parameter as string;
             
             return menuItem switch
@@ -99,10 +98,88 @@ public class ResultTypeToMenuVisibilityConverter : IValueConverter
                                  ResultType.Folder or ResultType.Script or ResultType.StoreApp
                     ? Visibility.Visible 
                     : Visibility.Collapsed,
+                "Bookmark" => type is ResultType.Bookmark or ResultType.WebSearch
+                    ? Visibility.Visible
+                    : Visibility.Collapsed,
                 _ => Visibility.Visible
             };
         }
         return Visibility.Visible;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Convertisseur pour afficher/masquer selon si la valeur est null.
+/// </summary>
+public class NullToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var isNull = value == null || (value is string s && string.IsNullOrEmpty(s));
+        var inverse = parameter as string == "Inverse";
+        
+        if (inverse)
+            return isNull ? Visibility.Visible : Visibility.Collapsed;
+        
+        return isNull ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Convertisseur pour afficher/masquer selon le type de prévisualisation.
+/// </summary>
+public class PreviewTypeToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is FilePreviewType previewType && parameter is string expectedType)
+        {
+            var matches = expectedType switch
+            {
+                "Image" => previewType == FilePreviewType.Image,
+                "Text" => previewType == FilePreviewType.Text,
+                "Folder" => previewType == FilePreviewType.Folder,
+                "Application" => previewType == FilePreviewType.Application,
+                "Audio" => previewType == FilePreviewType.Audio,
+                "Video" => previewType == FilePreviewType.Video,
+                "Archive" => previewType == FilePreviewType.Archive,
+                "Document" => previewType == FilePreviewType.Document,
+                "None" => previewType == FilePreviewType.None,
+                _ => false
+            };
+            
+            return matches ? Visibility.Visible : Visibility.Collapsed;
+        }
+        
+        return Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+/// <summary>
+/// Convertisseur booléen vers icône de recherche.
+/// </summary>
+public class BoolToSearchIconConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool isSearching && isSearching)
+            return "⏳";
+        return "🔍";
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

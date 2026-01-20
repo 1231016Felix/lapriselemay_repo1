@@ -35,6 +35,14 @@ public partial class App : Application
             
             _settings = AppSettings.Load();
             
+            _logger.Info("Initialisation du cache d'icônes persistant...");
+            IconExtractorService.InitializePersistentCache();
+            
+            _logger.Info("Initialisation du thème...");
+            ThemeService.Initialize();
+            ThemeService.ApplyTheme(_settings.Theme);
+            ThemeService.ApplyAccentColor(_settings.AccentColor);
+            
             _logger.Info("Synchronisation registre démarrage...");
             SettingsWindow.SyncStartupRegistry();
             
@@ -195,6 +203,10 @@ public partial class App : Application
             // Recharger les paramètres
             _settings = AppSettings.Load();
             
+            // Réappliquer le thème et la couleur d'accent
+            ThemeService.ApplyTheme(_settings.Theme);
+            ThemeService.ApplyAccentColor(_settings.AccentColor);
+            
             if (_trayIcon != null)
                 _trayIcon.ToolTipText = $"{Constants.AppName} - {_settings.Hotkey.DisplayText} pour ouvrir";
         }
@@ -320,5 +332,6 @@ public partial class App : Application
         _hotkeyService?.Dispose();
         _indexingService?.Dispose();
         _trayIcon?.Dispose();
+        ThemeService.Shutdown();
     }
 }

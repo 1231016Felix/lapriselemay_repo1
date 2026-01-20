@@ -43,6 +43,9 @@
     
     <!-- Audio (QuickLauncher - Contrôle système) -->
     <PackageVersion Include="NAudio" Version="2.2.1" />
+    
+    <!-- OleDb (Windows Search API) -->
+    <PackageVersion Include="System.Data.OleDb" Version="9.0.0" />
   </ItemGroup>
 
 </Project>

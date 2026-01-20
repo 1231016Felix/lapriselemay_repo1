@@ -94,7 +94,18 @@ public static class IconExtractorService
     #region Cache
     private static readonly ConcurrentDictionary<string, ImageSource?> _iconCache = new();
     private const int MaxCacheSize = 500;
+    private static bool _persistentCacheInitialized;
     #endregion
+
+    /// <summary>
+    /// Initialise le cache persistant. Doit être appelé au démarrage.
+    /// </summary>
+    public static void InitializePersistentCache()
+    {
+        if (_persistentCacheInitialized) return;
+        _persistentCacheInitialized = true;
+        IconCacheService.Initialize();
+    }
 
     public static ImageSource? GetIcon(string path, bool largeIcon = true)
     {
@@ -103,10 +114,19 @@ public static class IconExtractorService
 
         var cacheKey = $"{path}_{(largeIcon ? "L" : "S")}";
         
+        // 1. Cache mémoire rapide
         if (_iconCache.TryGetValue(cacheKey, out var cachedIcon))
         {
-            Debug.WriteLine($"[IconExtractor] Cache hit for: {path}");
+            Debug.WriteLine($"[IconExtractor] Memory cache hit for: {path}");
             return cachedIcon;
+        }
+        
+        // 2. Cache persistant sur disque
+        var persistentIcon = IconCacheService.TryGetFromCache(path, largeIcon);
+        if (persistentIcon != null)
+        {
+            _iconCache.TryAdd(cacheKey, persistentIcon);
+            return persistentIcon;
         }
 
         if (_iconCache.Count > MaxCacheSize)
@@ -206,6 +226,13 @@ public static class IconExtractorService
         }
 
         _iconCache.TryAdd(cacheKey, icon);
+        
+        // 3. Sauvegarder dans le cache persistant pour les prochains démarrages
+        if (icon != null)
+        {
+            IconCacheService.SaveToCache(path, icon, largeIcon);
+        }
+        
         return icon;
     }
 

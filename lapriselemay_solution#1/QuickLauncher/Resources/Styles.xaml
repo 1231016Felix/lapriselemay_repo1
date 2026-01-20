@@ -1,29 +1,193 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     
-    <!-- Couleurs du thème sombre -->
-    <Color x:Key="BackgroundColor">#1E1E1E</Color>
-    <Color x:Key="SurfaceColor">#2D2D2D</Color>
-    <Color x:Key="AccentColor">#0078D4</Color>
-    <Color x:Key="TextPrimaryColor">#FFFFFF</Color>
-    <Color x:Key="TextSecondaryColor">#888888</Color>
-    <Color x:Key="BorderColor">#3E3E3E</Color>
+    <!-- ============================================ -->
+    <!-- THÈME SOMBRE (défaut) -->
+    <!-- ============================================ -->
     
-    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}"/>
-    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}"/>
+    <!-- Couleurs du thème sombre -->
+    <Color x:Key="DarkBackgroundColor">#1E1E1E</Color>
+    <Color x:Key="DarkSurfaceColor">#2D2D2D</Color>
+    <Color x:Key="DarkSurfaceAltColor">#252525</Color>
+    <Color x:Key="DarkBorderColor">#3E3E3E</Color>
+    <Color x:Key="DarkTextPrimaryColor">#FFFFFF</Color>
+    <Color x:Key="DarkTextSecondaryColor">#888888</Color>
+    <Color x:Key="DarkTextTertiaryColor">#666666</Color>
+    <Color x:Key="DarkHoverColor">#3E3E3E</Color>
+    <Color x:Key="DarkCodeBackgroundColor">#1A1A1A</Color>
+    
+    <!-- ============================================ -->
+    <!-- THÈME CLAIR -->
+    <!-- ============================================ -->
+    
+    <!-- Couleurs du thème clair -->
+    <Color x:Key="LightBackgroundColor">#FFFFFF</Color>
+    <Color x:Key="LightSurfaceColor">#F5F5F5</Color>
+    <Color x:Key="LightSurfaceAltColor">#EBEBEB</Color>
+    <Color x:Key="LightBorderColor">#E0E0E0</Color>
+    <Color x:Key="LightTextPrimaryColor">#1E1E1E</Color>
+    <Color x:Key="LightTextSecondaryColor">#666666</Color>
+    <Color x:Key="LightTextTertiaryColor">#999999</Color>
+    <Color x:Key="LightHoverColor">#E8E8E8</Color>
+    <Color x:Key="LightCodeBackgroundColor">#F8F8F8</Color>
+    
+    <!-- ============================================ -->
+    <!-- COULEUR D'ACCENT (partagée) -->
+    <!-- ============================================ -->
+    <Color x:Key="AccentColor">#0078D4</Color>
+    <Color x:Key="AccentHoverColor">#1084D9</Color>
+    <Color x:Key="AccentPressedColor">#006CBD</Color>
+    <Color x:Key="DangerColor">#FF6B6B</Color>
+    <Color x:Key="SuccessColor">#4CAF50</Color>
+    <Color x:Key="WarningColor">#FFA726</Color>
+    
+    <!-- ============================================ -->
+    <!-- RESSOURCES DYNAMIQUES (changent selon le thème) -->
+    <!-- Ces ressources sont remplacées dynamiquement par ThemeService -->
+    <!-- ============================================ -->
+    
+    <!-- Par défaut: thème sombre -->
+    <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource DarkBackgroundColor}"/>
+    <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource DarkSurfaceColor}"/>
+    <SolidColorBrush x:Key="SurfaceAltBrush" Color="{StaticResource DarkSurfaceAltColor}"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource DarkBorderColor}"/>
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource DarkTextPrimaryColor}"/>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource DarkTextSecondaryColor}"/>
+    <SolidColorBrush x:Key="TextTertiaryBrush" Color="{StaticResource DarkTextTertiaryColor}"/>
+    <SolidColorBrush x:Key="HoverBrush" Color="{StaticResource DarkHoverColor}"/>
+    <SolidColorBrush x:Key="CodeBackgroundBrush" Color="{StaticResource DarkCodeBackgroundColor}"/>
+    
+    <!-- Accent (ne change pas) -->
     <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}"/>
-    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}"/>
-    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
-    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}"/>
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}"/>
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
+    
+    <!-- ============================================ -->
+    <!-- STYLES COMMUNS -->
+    <!-- ============================================ -->
     
     <!-- Style TextBox pour recherche -->
     <Style x:Key="SearchTextBoxStyle" TargetType="TextBox">
         <Setter Property="FontSize" Value="18"/>
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
-        <Setter Property="CaretBrush" Value="White"/>
+        <Setter Property="CaretBrush" Value="{DynamicResource TextPrimaryBrush}"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
     
+    <!-- Style ListBoxItem pour résultats -->
+    <Style x:Key="ResultItemStyle" TargetType="ListBoxItem">
+        <Setter Property="Padding" Value="12,10"/>
+        <Setter Property="Margin" Value="4,2"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListBoxItem">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="8"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentBrush}"/>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource HoverBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    
+    <!-- Style pour les boutons de la barre de titre -->
+    <Style x:Key="TitleBarButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Padding" Value="6,4"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+    
+    <!-- Style pour les menus contextuels -->
+    <Style x:Key="ThemedContextMenuStyle" TargetType="ContextMenu">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="Padding" Value="2"/>
+    </Style>
+    
+    <Style x:Key="ThemedMenuItemStyle" TargetType="MenuItem">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
+        <Setter Property="Padding" Value="8,6"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Style.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+                <Setter Property="Background" Value="{DynamicResource HoverBrush}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+    
+    <!-- Style pour les badges (extensions, tags) -->
+    <Style x:Key="BadgeStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource HoverBrush}"/>
+        <Setter Property="CornerRadius" Value="4"/>
+        <Setter Property="Padding" Value="6,3"/>
+        <Setter Property="HorizontalAlignment" Value="Left"/>
+    </Style>
+    
+    <!-- Style pour les séparateurs -->
+    <Style x:Key="ThemedSeparatorStyle" TargetType="Separator">
+        <Setter Property="Background" Value="{DynamicResource BorderBrush}"/>
+        <Setter Property="Height" Value="1"/>
+    </Style>
+    
+    <!-- Style pour le code/texte monospace -->
+    <Style x:Key="CodeTextStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Consolas, Courier New, monospace"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+        <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    
+    <!-- Style pour les liens cliquables -->
+    <Style x:Key="LinkTextStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Style.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+                <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}"/>
+                <Setter Property="TextDecorations" Value="Underline"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+    
+    <!-- Style pour les raccourcis clavier affichés -->
+    <Style x:Key="KeyboardShortcutStyle" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource HoverBrush}"/>
+        <Setter Property="CornerRadius" Value="3"/>
+        <Setter Property="Padding" Value="4,2"/>
+    </Style>
+    
+    <Style x:Key="KeyboardShortcutTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="10"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextTertiaryBrush}"/>
+        <Setter Property="FontFamily" Value="Segoe UI, Arial"/>
+    </Style>
+
 </ResourceDictionary>

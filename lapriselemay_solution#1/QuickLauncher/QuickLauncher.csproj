@@ -29,6 +29,9 @@
     
     <!-- Audio - Contrôle du volume système -->
     <PackageReference Include="NAudio" />
+    
+    <!-- OleDb pour Windows Search API -->
+    <PackageReference Include="System.Data.OleDb" />
   </ItemGroup>
 
   <ItemGroup>

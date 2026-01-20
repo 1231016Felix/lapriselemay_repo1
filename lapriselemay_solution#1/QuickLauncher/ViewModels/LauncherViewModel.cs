@@ -1,6 +1,6 @@
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
+using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickLauncher.Models;
@@ -11,10 +11,14 @@ namespace QuickLauncher.ViewModels;
 /// <summary>
 /// ViewModel pour la fenêtre principale avec commandes système optimisées.
 /// </summary>
-public sealed partial class LauncherViewModel : ObservableObject
+public sealed partial class LauncherViewModel : ObservableObject, IDisposable
 {
     private readonly IndexingService _indexingService;
+    private readonly FileWatcherService? _fileWatcherService;
+    private readonly AliasService _aliasService;
     private AppSettings _settings;
+    private CancellationTokenSource? _searchCts;
+    private bool _disposed;
     
     private static readonly FrozenDictionary<string, AppSystemCommand> AppCommands = 
         new Dictionary<string, AppSystemCommand>(StringComparer.OrdinalIgnoreCase)
@@ -44,28 +48,139 @@ public sealed partial class LauncherViewModel : ObservableObject
     [ObservableProperty]
     private bool _isIndexing;
     
+    [ObservableProperty]
+    private bool _isSearching;
+    
+    [ObservableProperty]
+    private FilePreview? _currentPreview;
+    
+    [ObservableProperty]
+    private bool _showPreviewPanel;
+    
+    [ObservableProperty]
+    private bool _showActionsPanel;
+    
+    [ObservableProperty]
+    private int _selectedActionIndex;
+    
     public ObservableCollection<SearchResult> Results { get; } = [];
+    public ObservableCollection<FileAction> AvailableActions { get; } = [];
     
     public event EventHandler? RequestHide;
     public event EventHandler? RequestOpenSettings;
     public event EventHandler? RequestQuit;
     public event EventHandler? RequestReindex;
+    public event EventHandler<string>? RequestRename;
+    public event EventHandler<(string Name, string Path)>? RequestCreateAlias;
+    public event EventHandler<string>? ShowNotification;
+    
+    /// <summary>
+    /// Service d'alias exposé pour l'UI.
+    /// </summary>
+    public AliasService AliasService => _aliasService;
 
     public LauncherViewModel(IndexingService indexingService)
     {
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
         _settings = AppSettings.Load();
+        _aliasService = new AliasService();
         
         _indexingService.IndexingStarted += (_, _) => IsIndexing = true;
-        _indexingService.IndexingCompleted += (_, _) => IsIndexing = false;
+        _indexingService.IndexingCompleted += (_, _) => 
+        {
+            IsIndexing = false;
+            // Démarrer le FileWatcher après l'indexation initiale
+            _fileWatcherService?.Start();
+        };
+        
+        // Initialiser le FileWatcher
+        try
+        {
+            _fileWatcherService = new FileWatcherService();
+            _fileWatcherService.FilesChanged += OnFilesChanged;
+        }
+        catch
+        {
+            // FileWatcher optionnel - continuer sans
+        }
     }
 
     partial void OnSearchTextChanged(string value) => UpdateResults();
     
+    partial void OnSelectedIndexChanged(int value)
+    {
+        // Mettre à jour la prévisualisation quand la sélection change
+        if (value >= 0 && value < Results.Count && _settings.ShowPreviewPanel)
+        {
+            _ = UpdatePreviewAsync(Results[value]);
+            UpdateAvailableActions(Results[value]);
+        }
+        else
+        {
+            CurrentPreview = null;
+            AvailableActions.Clear();
+        }
+    }
+    
+    private async Task UpdatePreviewAsync(SearchResult result)
+    {
+        try
+        {
+            // Ne pas prévisualiser certains types
+            if (result.Type is ResultType.WebSearch or ResultType.Calculator 
+                or ResultType.SystemCommand or ResultType.SystemControl 
+                or ResultType.SearchHistory)
+            {
+                CurrentPreview = null;
+                return;
+            }
+            
+            var preview = await FilePreviewService.GeneratePreviewAsync(result.Path);
+            CurrentPreview = preview;
+        }
+        catch
+        {
+            CurrentPreview = null;
+        }
+    }
+    
+    private void UpdateAvailableActions(SearchResult result)
+    {
+        AvailableActions.Clear();
+        var isPinned = _settings.IsPinned(result.Path);
+        var actions = FileActionProvider.GetActionsForResult(result, isPinned);
+        foreach (var action in actions)
+            AvailableActions.Add(action);
+        
+        SelectedActionIndex = 0;
+    }
+    
+    private void OnFilesChanged(object? sender, FileChangesEventArgs e)
+    {
+        // Mettre à jour l'index de manière incrémentale
+        System.Diagnostics.Debug.WriteLine($"[FileWatcher] {e.Changes.Count} changements détectés");
+        
+        // Traiter les changements dans l'IndexingService
+        _indexingService.ProcessFileChanges(e.Changes);
+        
+        // Rafraîchir les résultats si une recherche est en cours
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(() => UpdateResults());
+        }
+    }
+    
     private void UpdateResults()
     {
+        // Annuler toute recherche précédente
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        
         Results.Clear();
-        _settings = AppSettings.Load();
+        CurrentPreview = null;
+        AvailableActions.Clear();
+        // Note: Ne pas recharger _settings ici - utiliser l'instance en mémoire
+        // Le rechargement causait des conditions de course avec Pin/Unpin
         
         if (string.IsNullOrWhiteSpace(SearchText))
         {
@@ -75,6 +190,36 @@ public sealed partial class LauncherViewModel : ObservableObject
         
         var query = SearchText.Trim();
         var queryLower = query.ToLowerInvariant();
+        
+        // Commande :find pour la recherche Windows Search
+        if (queryLower.StartsWith(":find ") && query.Length > 6)
+        {
+            var searchQuery = query[6..].Trim();
+            if (searchQuery.Length >= 2)
+            {
+                _ = PerformWindowsSearchAsync(searchQuery, _searchCts.Token);
+                return;
+            }
+        }
+        
+        // Suggestion pour :find
+        if (queryLower.StartsWith(":find") || ":find".StartsWith(queryLower))
+        {
+            Results.Add(new SearchResult
+            {
+                Name = ":find <terme>",
+                Description = "Rechercher dans tout le système via Windows Search",
+                Type = ResultType.SystemCommand,
+                DisplayIcon = "🔍",
+                Path = ":find"
+            });
+            
+            if (queryLower == ":find")
+            {
+                FinalizeResults();
+                return;
+            }
+        }
         
         // Vérifier d'abord les commandes de contrôle système personnalisables
         if (IsSystemControlCommand(queryLower))
@@ -94,12 +239,93 @@ public sealed partial class LauncherViewModel : ObservableObject
             return;
         }
         
+        // Recherche d'alias (priorité haute)
+        if (_settings.EnableAliases)
+        {
+            var aliasResults = _aliasService.Search(query);
+            foreach (var alias in aliasResults.Take(3))
+            {
+                alias.DisplayIcon = "⌨️";
+                alias.Description = $"Alias → {alias.Path}";
+                Results.Add(alias);
+            }
+        }
+        
         // Résultats de recherche normaux
         var searchResults = _indexingService.Search(SearchText);
         foreach (var result in searchResults)
             Results.Add(result);
         
         FinalizeResults();
+    }
+    
+    private async Task PerformWindowsSearchAsync(string query, CancellationToken token)
+    {
+        IsSearching = true;
+        
+        try
+        {
+            // Appliquer la profondeur de recherche depuis les paramètres
+            UniversalSearchService.MaxSearchDepth = _settings.SystemSearchDepth;
+            
+            // Déterminer le moteur utilisé pour l'affichage
+            var engineInfo = UniversalSearchService.GetEngineInfo();
+            var engineName = engineInfo.Name;
+            
+            // Afficher un indicateur de recherche
+            Results.Add(new SearchResult
+            {
+                Name = "Recherche en cours...",
+                Description = $"Recherche de '{query}' via {engineName}",
+                Type = ResultType.SystemCommand,
+                DisplayIcon = "⏳"
+            });
+            FinalizeResults();
+            
+            var results = await UniversalSearchService.SearchAsync(query, null, token);
+            
+            if (token.IsCancellationRequested) return;
+            
+            Results.Clear();
+            
+            if (results.Count == 0)
+            {
+                Results.Add(new SearchResult
+                {
+                    Name = "Aucun résultat",
+                    Description = $"Aucun fichier trouvé pour '{query}'",
+                    Type = ResultType.SystemCommand,
+                    DisplayIcon = "❌"
+                });
+            }
+            else
+            {
+                foreach (var result in results)
+                    Results.Add(result);
+            }
+            
+            FinalizeResults();
+        }
+        catch (OperationCanceledException)
+        {
+            // Recherche annulée
+        }
+        catch (Exception ex)
+        {
+            Results.Clear();
+            Results.Add(new SearchResult
+            {
+                Name = "Erreur de recherche",
+                Description = ex.Message,
+                Type = ResultType.SystemCommand,
+                DisplayIcon = "⚠️"
+            });
+            FinalizeResults();
+        }
+        finally
+        {
+            IsSearching = false;
+        }
     }
 
     /// <summary>
@@ -304,6 +530,16 @@ public sealed partial class LauncherViewModel : ObservableObject
             case SystemControlType.Shutdown:
             case SystemControlType.Restart:
             case SystemControlType.Mute:
+            case SystemControlType.Logoff:
+            case SystemControlType.EmptyRecycleBin:
+            case SystemControlType.OpenTaskManager:
+            case SystemControlType.OpenWindowsSettings:
+            case SystemControlType.OpenControlPanel:
+            case SystemControlType.EmptyTemp:
+            case SystemControlType.OpenCmdAdmin:
+            case SystemControlType.OpenPowerShellAdmin:
+            case SystemControlType.RestartExplorer:
+            case SystemControlType.FlushDns:
                 // Ces commandes n'ont pas d'arguments, le résultat est déjà ajouté
                 break;
         }
@@ -311,21 +547,26 @@ public sealed partial class LauncherViewModel : ObservableObject
     
     private void ShowRecentHistory()
     {
-        if (!_settings.EnableSearchHistory || _settings.SearchHistory.Count == 0)
+        // Afficher d'abord les items épinglés
+        foreach (var pinned in _settings.PinnedItems.OrderBy(p => p.Order))
         {
-            FinalizeResults();
-            return;
+            Results.Add(pinned.ToSearchResult());
         }
         
-        foreach (var history in _settings.SearchHistory.Take(5))
+        // Puis l'historique si activé
+        if (_settings.EnableSearchHistory && _settings.SearchHistory.Count > 0)
         {
-            Results.Add(new SearchResult
+            var maxHistory = Math.Max(0, 5 - _settings.PinnedItems.Count);
+            foreach (var history in _settings.SearchHistory.Take(maxHistory))
             {
-                Name = history,
-                Description = "Recherche récente",
-                Type = ResultType.SearchHistory,
-                DisplayIcon = "🕐"
-            });
+                Results.Add(new SearchResult
+                {
+                    Name = history,
+                    Description = "Recherche récente",
+                    Type = ResultType.SearchHistory,
+                    DisplayIcon = "🕐"
+                });
+            }
         }
         
         FinalizeResults();
@@ -381,6 +622,180 @@ public sealed partial class LauncherViewModel : ObservableObject
             default:
                 LaunchItem(item);
                 break;
+        }
+    }
+    
+    /// <summary>
+    /// Exécute l'action sélectionnée sur le résultat courant.
+    /// </summary>
+    [RelayCommand]
+    private void ExecuteAction()
+    {
+        if (SelectedIndex < 0 || SelectedIndex >= Results.Count) return;
+        if (SelectedActionIndex < 0 || SelectedActionIndex >= AvailableActions.Count) return;
+        
+        var result = Results[SelectedIndex];
+        var action = AvailableActions[SelectedActionIndex];
+        
+        ExecuteActionOnResult(action, result);
+    }
+    
+    /// <summary>
+    /// Exécute une action spécifique sur un résultat.
+    /// </summary>
+    public void ExecuteActionOnResult(FileAction action, SearchResult result)
+    {
+        // Demander confirmation si nécessaire
+        if (action.RequiresConfirmation)
+        {
+            // La confirmation sera gérée par l'UI
+            // Pour l'instant, on exécute directement
+        }
+        
+        // Cas spécial pour Rename
+        if (action.ActionType == FileActionType.Rename)
+        {
+            RequestRename?.Invoke(this, result.Path);
+            return;
+        }
+        
+        // Cas spécial pour Pin
+        if (action.ActionType == FileActionType.Pin)
+        {
+            _settings.PinItem(result.Name, result.Path, result.Type, result.DisplayIcon);
+            _settings.Save();
+            ShowNotification?.Invoke(this, "⭐ Épinglé");
+            UpdateAvailableActions(result); // Rafraîchir les actions
+            ShowActionsPanel = false;
+            return;
+        }
+        
+        // Cas spécial pour Unpin
+        if (action.ActionType == FileActionType.Unpin)
+        {
+            _settings.UnpinItem(result.Path);
+            _settings.Save();
+            ShowNotification?.Invoke(this, "📌 Désépinglé");
+            UpdateAvailableActions(result); // Rafraîchir les actions
+            // Si on était dans la vue des épingles, rafraîchir
+            if (string.IsNullOrWhiteSpace(SearchText))
+            {
+                Results.Clear();
+                ShowRecentHistory();
+            }
+            ShowActionsPanel = false;
+            return;
+        }
+        
+        // Cas spécial pour CreateAlias
+        if (action.ActionType == FileActionType.CreateAlias)
+        {
+            RequestCreateAlias?.Invoke(this, (result.Name, result.Path));
+            ShowActionsPanel = false;
+            return;
+        }
+        
+        var success = action.Execute(result.Path);
+        
+        if (success)
+        {
+            // Notification de succès
+            var message = action.ActionType switch
+            {
+                FileActionType.CopyPath => "Chemin copié",
+                FileActionType.CopyName => "Nom copié",
+                FileActionType.CopyUrl => "URL copiée",
+                FileActionType.Delete => "Envoyé à la corbeille",
+                _ => null
+            };
+            
+            if (message != null)
+                ShowNotification?.Invoke(this, message);
+            
+            // Fermer après certaines actions
+            if (action.ActionType is FileActionType.Open 
+                or FileActionType.RunAsAdmin 
+                or FileActionType.OpenPrivate)
+            {
+                _indexingService.RecordUsage(result);
+                RequestHide?.Invoke(this, EventArgs.Empty);
+            }
+        }
+        
+        ShowActionsPanel = false;
+    }
+    
+    /// <summary>
+    /// Exécute en mode administrateur.
+    /// </summary>
+    [RelayCommand]
+    private void ExecuteAsAdmin()
+    {
+        if (SelectedIndex < 0 || SelectedIndex >= Results.Count) return;
+        
+        var result = Results[SelectedIndex];
+        if (result.Type is ResultType.Application or ResultType.Script or ResultType.File)
+        {
+            FileActionExecutor.Execute(FileActionType.RunAsAdmin, result.Path);
+            _indexingService.RecordUsage(result);
+            RequestHide?.Invoke(this, EventArgs.Empty);
+        }
+    }
+    
+    /// <summary>
+    /// Ouvre l'emplacement du fichier.
+    /// </summary>
+    [RelayCommand]
+    private void OpenLocation()
+    {
+        if (SelectedIndex < 0 || SelectedIndex >= Results.Count) return;
+        
+        var result = Results[SelectedIndex];
+        FileActionExecutor.Execute(FileActionType.OpenLocation, result.Path);
+    }
+    
+    /// <summary>
+    /// Copie le chemin dans le presse-papiers.
+    /// </summary>
+    [RelayCommand]
+    private void CopyPath()
+    {
+        if (SelectedIndex < 0 || SelectedIndex >= Results.Count) return;
+        
+        var result = Results[SelectedIndex];
+        if (FileActionExecutor.Execute(FileActionType.CopyPath, result.Path))
+        {
+            ShowNotification?.Invoke(this, "Chemin copié");
+        }
+    }
+    
+    /// <summary>
+    /// Bascule l'affichage du panneau de prévisualisation.
+    /// </summary>
+    [RelayCommand]
+    private void TogglePreview()
+    {
+        ShowPreviewPanel = !ShowPreviewPanel;
+        _settings.ShowPreviewPanel = ShowPreviewPanel;
+        _settings.Save();
+        
+        if (ShowPreviewPanel && SelectedIndex >= 0 && SelectedIndex < Results.Count)
+        {
+            _ = UpdatePreviewAsync(Results[SelectedIndex]);
+        }
+    }
+    
+    /// <summary>
+    /// Bascule l'affichage du panneau d'actions.
+    /// </summary>
+    [RelayCommand]
+    private void ToggleActions()
+    {
+        ShowActionsPanel = !ShowActionsPanel;
+        
+        if (ShowActionsPanel && SelectedIndex >= 0 && SelectedIndex < Results.Count)
+        {
+            UpdateAvailableActions(Results[SelectedIndex]);
         }
     }
     
@@ -473,7 +888,8 @@ public sealed partial class LauncherViewModel : ObservableObject
             var commandLower = normalizedCommand.ToLowerInvariant();
             if (result.Success && (commandLower.Contains("sleep") || commandLower.Contains("lock") ||
                 commandLower.Contains("shutdown") || commandLower.Contains("restart") || 
-                commandLower.Contains("hibernate")))
+                commandLower.Contains("hibernate") || commandLower.Contains("logoff") ||
+                commandLower.Contains("restartexplorer")))
             {
                 RequestHide?.Invoke(this, EventArgs.Empty);
             }
@@ -509,6 +925,16 @@ public sealed partial class LauncherViewModel : ObservableObject
             SystemControlType.Shutdown => "shutdown",
             SystemControlType.Restart => "restart",
             SystemControlType.Screenshot => "screenshot",
+            SystemControlType.Logoff => "logoff",
+            SystemControlType.EmptyRecycleBin => "emptybin",
+            SystemControlType.OpenTaskManager => "taskmgr",
+            SystemControlType.OpenWindowsSettings => "winsettings",
+            SystemControlType.OpenControlPanel => "control",
+            SystemControlType.EmptyTemp => "emptytemp",
+            SystemControlType.OpenCmdAdmin => "cmd",
+            SystemControlType.OpenPowerShellAdmin => "powershell",
+            SystemControlType.RestartExplorer => "restartexplorer",
+            SystemControlType.FlushDns => "flushdns",
             _ => prefix
         };
         
@@ -557,6 +983,15 @@ public sealed partial class LauncherViewModel : ObservableObject
     private void ShowHelpCommands()
     {
         Results.Clear();
+        
+        // Commande de recherche système
+        Results.Add(new SearchResult 
+        { 
+            Name = ":find <terme>", 
+            Description = "Rechercher via Windows Search (tout le système)", 
+            Type = ResultType.SystemCommand, 
+            DisplayIcon = "🔍" 
+        });
         
         // Commandes de base de l'application
         Results.Add(new SearchResult 
@@ -628,6 +1063,15 @@ public sealed partial class LauncherViewModel : ObservableObject
             });
         }
         
+        // Raccourcis clavier
+        Results.Add(new SearchResult 
+        { 
+            Name = "Raccourcis clavier", 
+            Description = "Tab: Actions • Ctrl+Entrée: Admin • Ctrl+O: Emplacement • Ctrl+Maj+C: Copier chemin", 
+            Type = ResultType.SystemCommand, 
+            DisplayIcon = "⌨️" 
+        });
+        
         FinalizeResults();
     }
 
@@ -645,12 +1089,55 @@ public sealed partial class LauncherViewModel : ObservableObject
         SelectedIndex = newIndex;
     }
     
+    public void MoveActionSelection(int delta)
+    {
+        if (AvailableActions.Count == 0) return;
+        
+        var newIndex = SelectedActionIndex + delta;
+        
+        if (newIndex < 0) 
+            newIndex = AvailableActions.Count - 1;
+        else if (newIndex >= AvailableActions.Count) 
+            newIndex = 0;
+        
+        SelectedActionIndex = newIndex;
+    }
+    
+    /// <summary>
+    /// Recharge les settings depuis le fichier pour synchroniser les changements
+    /// (notamment les épingles modifiées depuis d'autres contextes).
+    /// </summary>
+    public void ReloadSettings()
+    {
+        _settings = AppSettings.Load();
+    }
+    
     public void Reset()
     {
         SearchText = string.Empty;
         Results.Clear();
         SelectedIndex = -1;
         HasResults = false;
+        CurrentPreview = null;
+        ShowActionsPanel = false;
+        AvailableActions.Clear();
+        
+        // Forcer l'affichage des épingles et historique
+        // (OnSearchTextChanged ne se déclenche pas si SearchText était déjà vide)
+        ShowRecentHistory();
+    }
+    
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _fileWatcherService?.Dispose();
+        _aliasService?.Dispose();
+        
+        GC.SuppressFinalize(this);
     }
 }
 

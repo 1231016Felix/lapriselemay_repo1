@@ -253,6 +253,13 @@ public static class SystemControlService
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetSuspendState(bool hibernate, bool forceCritical, bool disableWakeEvent);
 
+    [DllImport("shell32.dll")]
+    private static extern int SHEmptyRecycleBin(IntPtr hwnd, string? pszRootPath, uint dwFlags);
+    
+    private const uint SHERB_NOCONFIRMATION = 0x00000001;
+    private const uint SHERB_NOPROGRESSUI = 0x00000002;
+    private const uint SHERB_NOSOUND = 0x00000004;
+
     /// <summary>
     /// Verrouille la session Windows.
     /// </summary>
@@ -325,6 +332,256 @@ public static class SystemControlService
             var args = force ? "/r /f /t 0" : "/r /t 0";
             Process.Start("shutdown", args);
             return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Déconnecte la session utilisateur.
+    /// </summary>
+    public static bool Logoff(bool force = false)
+    {
+        try
+        {
+            var args = force ? "/l /f" : "/l";
+            Process.Start("shutdown", args);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Vide la corbeille.
+    /// </summary>
+    public static bool EmptyRecycleBin()
+    {
+        try
+        {
+            var result = SHEmptyRecycleBin(IntPtr.Zero, null, 
+                SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND);
+            return result == 0 || result == -2147418113; // S_OK ou corbeille déjà vide
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Ouvre le Gestionnaire des tâches.
+    /// </summary>
+    public static bool OpenTaskManager()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "taskmgr.exe",
+                UseShellExecute = true
+            });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Ouvre les Paramètres Windows.
+    /// </summary>
+    public static bool OpenWindowsSettings()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "ms-settings:",
+                UseShellExecute = true
+            });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Ouvre le Panneau de configuration.
+    /// </summary>
+    public static bool OpenControlPanel()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "control.exe",
+                UseShellExecute = true
+            });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    #endregion
+
+    #region Maintenance Actions
+
+    /// <summary>
+    /// Vide le dossier temporaire de l'utilisateur.
+    /// Retourne le nombre de fichiers supprimés.
+    /// </summary>
+    public static (bool Success, int DeletedCount, int ErrorCount) EmptyTempFolder()
+    {
+        var deletedCount = 0;
+        var errorCount = 0;
+        
+        try
+        {
+            var tempPath = Path.GetTempPath();
+            var dirInfo = new DirectoryInfo(tempPath);
+            
+            // Supprimer les fichiers
+            foreach (var file in dirInfo.GetFiles())
+            {
+                try
+                {
+                    file.Delete();
+                    deletedCount++;
+                }
+                catch
+                {
+                    errorCount++;
+                }
+            }
+            
+            // Supprimer les dossiers
+            foreach (var dir in dirInfo.GetDirectories())
+            {
+                try
+                {
+                    dir.Delete(true);
+                    deletedCount++;
+                }
+                catch
+                {
+                    errorCount++;
+                }
+            }
+            
+            return (true, deletedCount, errorCount);
+        }
+        catch
+        {
+            return (false, deletedCount, errorCount);
+        }
+    }
+
+    /// <summary>
+    /// Ouvre l'invite de commandes en mode administrateur.
+    /// </summary>
+    public static bool OpenCmdAdmin()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                UseShellExecute = true,
+                Verb = "runas"
+            });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Ouvre PowerShell en mode administrateur.
+    /// </summary>
+    public static bool OpenPowerShellAdmin()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                UseShellExecute = true,
+                Verb = "runas"
+            });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Redémarre l'Explorateur Windows.
+    /// </summary>
+    public static bool RestartExplorer()
+    {
+        try
+        {
+            // Tuer explorer.exe
+            foreach (var process in Process.GetProcessesByName("explorer"))
+            {
+                process.Kill();
+                process.WaitForExit(3000);
+            }
+            
+            // Attendre un peu
+            Thread.Sleep(500);
+            
+            // Redémarrer explorer.exe
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                UseShellExecute = true
+            });
+            
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Vide le cache DNS.
+    /// </summary>
+    public static bool FlushDns()
+    {
+        try
+        {
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = "ipconfig",
+                    Arguments = "/flushdns",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true
+                }
+            };
+            process.Start();
+            process.WaitForExit(5000);
+            return process.ExitCode == 0;
         }
         catch
         {
@@ -482,6 +739,34 @@ public static class SystemControlService
             "hibernate" => Hibernate() 
                 ? new SystemCommandResult(true, "Hibernation...") 
                 : new SystemCommandResult(false, "Échec de l'hibernation"),
+            "logoff" or "signout" => Logoff() 
+                ? new SystemCommandResult(true, "Déconnexion...") 
+                : new SystemCommandResult(false, "Échec de la déconnexion"),
+            "emptybin" or "emptyrecyclebin" => EmptyRecycleBin() 
+                ? new SystemCommandResult(true, "Corbeille vidée") 
+                : new SystemCommandResult(false, "Échec du vidage de la corbeille"),
+            "taskmgr" or "taskmanager" => OpenTaskManager() 
+                ? new SystemCommandResult(true, "Gestionnaire des tâches ouvert") 
+                : new SystemCommandResult(false, "Échec de l'ouverture"),
+            "winsettings" or "settings" => OpenWindowsSettings() 
+                ? new SystemCommandResult(true, "Paramètres Windows ouverts") 
+                : new SystemCommandResult(false, "Échec de l'ouverture"),
+            "control" or "controlpanel" => OpenControlPanel() 
+                ? new SystemCommandResult(true, "Panneau de configuration ouvert") 
+                : new SystemCommandResult(false, "Échec de l'ouverture"),
+            "emptytemp" or "cleartemp" => HandleEmptyTempCommand(),
+            "cmd" => OpenCmdAdmin() 
+                ? new SystemCommandResult(true, "Invite de commandes ouvert (admin)") 
+                : new SystemCommandResult(false, "Échec de l'ouverture (annulé ou refusé)"),
+            "powershell" or "pwsh" => OpenPowerShellAdmin() 
+                ? new SystemCommandResult(true, "PowerShell ouvert (admin)") 
+                : new SystemCommandResult(false, "Échec de l'ouverture (annulé ou refusé)"),
+            "restartexplorer" => RestartExplorer() 
+                ? new SystemCommandResult(true, "Explorateur redémarré") 
+                : new SystemCommandResult(false, "Échec du redémarrage de l'Explorateur"),
+            "flushdns" or "cleardns" => FlushDns() 
+                ? new SystemCommandResult(true, "Cache DNS vidé") 
+                : new SystemCommandResult(false, "Échec du vidage du cache DNS"),
             _ => null
         };
     }
@@ -585,6 +870,19 @@ public static class SystemControlService
         return path != null 
             ? new SystemCommandResult(true, $"Capture sauvegardée", path)
             : new SystemCommandResult(false, "Échec de la capture");
+    }
+
+    private static SystemCommandResult HandleEmptyTempCommand()
+    {
+        var (success, deleted, errors) = EmptyTempFolder();
+        if (success)
+        {
+            var message = errors > 0 
+                ? $"{deleted} éléments supprimés ({errors} ignorés - en cours d'utilisation)"
+                : $"{deleted} éléments supprimés du dossier Temp";
+            return new SystemCommandResult(true, message);
+        }
+        return new SystemCommandResult(false, "Échec du nettoyage du dossier Temp");
     }
 
     #endregion

@@ -40,7 +40,6 @@ public partial class SettingsWindow : Window
         MinimizeOnStartupCheck.IsChecked = _settings.MinimizeOnStartup;
         ShowInTaskbarCheck.IsChecked = _settings.ShowInTaskbar;
         CloseAfterLaunchCheck.IsChecked = _settings.CloseAfterLaunch;
-        SingleClickLaunchCheck.IsChecked = _settings.SingleClickLaunch;
         ShowIndexingStatusCheck.IsChecked = _settings.ShowIndexingStatus;
         ShowSettingsButtonCheck.IsChecked = _settings.ShowSettingsButton;
         MaxResultsSlider.Value = _settings.MaxResults;
@@ -75,6 +74,11 @@ public partial class SettingsWindow : Window
         SearchDepthValue.Text = _settings.SearchDepth.ToString();
         IndexHiddenFoldersCheck.IsChecked = _settings.IndexHiddenFolders;
         
+        // Recherche système
+        SystemSearchDepthSlider.Value = _settings.SystemSearchDepth;
+        SystemSearchDepthValue.Text = _settings.SystemSearchDepth.ToString();
+        LoadSearchEngineInfo();
+        
         // Charger la liste des navigateurs
         LoadBrowsersList();
         
@@ -91,9 +95,6 @@ public partial class SettingsWindow : Window
         
         // Commandes système
         LoadSystemCommands();
-        
-        // Guide - liste dynamique des commandes
-        GuideSystemCommandsList.ItemsSource = _settings.SystemCommands.Where(c => c.IsEnabled).ToList();
         
         // À propos
         DataPathText.Text = AppSettings.GetSettingsPath();
@@ -201,6 +202,67 @@ public partial class SettingsWindow : Window
     {
         if (SearchDepthValue != null)
             SearchDepthValue.Text = ((int)e.NewValue).ToString();
+    }
+    
+    private void SystemSearchDepthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (SystemSearchDepthValue != null)
+            SystemSearchDepthValue.Text = ((int)e.NewValue).ToString();
+    }
+    
+    private void LoadSearchEngineInfo()
+    {
+        var info = UniversalSearchService.GetEngineInfo();
+        
+        SearchEngineIcon.Text = info.Icon;
+        SearchEngineName.Text = info.Name;
+        SearchEngineDescription.Text = info.Description;
+        
+        // Style selon le statut
+        if (info.IsOptimal)
+        {
+            SearchEngineIndicator.Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x3A, 0x1E));
+            SearchEngineStatusBadge.Background = new SolidColorBrush(Color.FromRgb(0x10, 0x7C, 0x10));
+            SearchEngineStatusText.Text = "✓ Optimal";
+            SearchEngineStatusText.Foreground = new SolidColorBrush(Colors.White);
+        }
+        else
+        {
+            SearchEngineIndicator.Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x2A, 0x1E));
+            SearchEngineStatusBadge.Background = new SolidColorBrush(Color.FromRgb(0xFF, 0x8C, 0x00));
+            SearchEngineStatusText.Text = "⚠ Non optimal";
+            SearchEngineStatusText.Foreground = new SolidColorBrush(Colors.Black);
+        }
+        
+        // Recommandation
+        if (!string.IsNullOrEmpty(info.Recommendation))
+        {
+            SearchEngineRecommendation.Visibility = Visibility.Visible;
+            SearchEngineRecommendationText.Text = info.Recommendation;
+        }
+        else
+        {
+            SearchEngineRecommendation.Visibility = Visibility.Collapsed;
+        }
+        
+        // Stats du cache
+        UpdateSearchCacheStats();
+    }
+    
+    private void UpdateSearchCacheStats()
+    {
+        var (entryCount, totalResults) = UniversalSearchService.GetCacheStats();
+        if (entryCount > 0)
+            SearchCacheStats.Text = $"Cache: {entryCount} recherches, {totalResults} résultats";
+        else
+            SearchCacheStats.Text = "Cache vide";
+    }
+    
+    private void ClearSearchCache_Click(object sender, RoutedEventArgs e)
+    {
+        UniversalSearchService.ClearCache();
+        UpdateSearchCacheStats();
+        MessageBox.Show("Cache de recherche vidé!", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     // === Gestionnaires d'événements - Apparence ===
@@ -375,32 +437,25 @@ public partial class SettingsWindow : Window
         SystemCommandsList.ItemsSource = _settings.SystemCommands;
     }
     
-    private void SystemCommandsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void SystemCommandItem_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        _selectedSystemCommand = SystemCommandsList.SelectedItem as SystemControlCommand;
-        
-        if (_selectedSystemCommand != null)
+        if (sender is FrameworkElement { DataContext: SystemControlCommand cmd })
         {
-            CommandPrefixBox.Text = _selectedSystemCommand.Prefix;
-            CommandIconBox.Text = _selectedSystemCommand.Icon;
-            CommandDescriptionBox.Text = _selectedSystemCommand.Description;
+            _selectedSystemCommand = cmd;
+            CommandPrefixBox.Text = cmd.Prefix;
+            CommandIconBox.Text = cmd.Icon;
+            CommandEditPanel.Visibility = Visibility.Visible;
         }
     }
     
-    private void EditSystemCommand_Click(object sender, RoutedEventArgs e)
+    private void ToggleSwitch_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        if (SystemCommandsList.SelectedItem is not SystemControlCommand cmd)
+        if (sender is FrameworkElement { Tag: SystemControlCommand cmd })
         {
-            MessageBox.Show("Sélectionnez une commande à modifier.", "Information",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
+            cmd.IsEnabled = !cmd.IsEnabled;
+            LoadSystemCommands();
+            e.Handled = true; // Empêcher la propagation vers le parent
         }
-        
-        _selectedSystemCommand = cmd;
-        CommandPrefixBox.Text = cmd.Prefix;
-        CommandIconBox.Text = cmd.Icon;
-        CommandDescriptionBox.Text = cmd.Description;
-        CommandEditPanel.Visibility = Visibility.Visible;
     }
     
     private void CancelCommandEdit_Click(object sender, RoutedEventArgs e)
@@ -416,7 +471,6 @@ public partial class SettingsWindow : Window
         
         var newPrefix = CommandPrefixBox.Text.Trim().ToLowerInvariant();
         var newIcon = CommandIconBox.Text.Trim();
-        var newDescription = CommandDescriptionBox.Text.Trim();
         
         // Validation
         if (string.IsNullOrWhiteSpace(newPrefix))
@@ -441,14 +495,11 @@ public partial class SettingsWindow : Window
         // Appliquer les modifications
         _selectedSystemCommand.Prefix = newPrefix;
         _selectedSystemCommand.Icon = string.IsNullOrWhiteSpace(newIcon) ? "⚡" : newIcon;
-        _selectedSystemCommand.Description = newDescription;
         
         // Rafraîchir la liste
         LoadSystemCommands();
         CommandEditPanel.Visibility = Visibility.Collapsed;
-        
-        MessageBox.Show("Commande modifiée! N'oubliez pas de sauvegarder.", "Succès",
-            MessageBoxButton.OK, MessageBoxImage.Information);
+        _selectedSystemCommand = null;
     }
     
     private void ResetSystemCommands_Click(object sender, RoutedEventArgs e)
@@ -458,8 +509,7 @@ public partial class SettingsWindow : Window
         {
             _settings.ResetSystemCommands();
             LoadSystemCommands();
-            MessageBox.Show("Commandes réinitialisées! N'oubliez pas de sauvegarder.", "Succès",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            CommandEditPanel.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -543,7 +593,6 @@ public partial class SettingsWindow : Window
         _settings.MinimizeOnStartup = MinimizeOnStartupCheck.IsChecked == true;
         _settings.ShowInTaskbar = ShowInTaskbarCheck.IsChecked == true;
         _settings.CloseAfterLaunch = CloseAfterLaunchCheck.IsChecked == true;
-        _settings.SingleClickLaunch = SingleClickLaunchCheck.IsChecked == true;
         _settings.ShowIndexingStatus = ShowIndexingStatusCheck.IsChecked == true;
         _settings.ShowSettingsButton = ShowSettingsButtonCheck.IsChecked == true;
         _settings.MaxResults = (int)MaxResultsSlider.Value;
@@ -569,6 +618,7 @@ public partial class SettingsWindow : Window
         // Indexation
         _settings.SearchDepth = (int)SearchDepthSlider.Value;
         _settings.IndexHiddenFolders = IndexHiddenFoldersCheck.IsChecked == true;
+        _settings.SystemSearchDepth = (int)SystemSearchDepthSlider.Value;
         
         // Réindexation automatique
         _settings.AutoReindexEnabled = AutoReindexEnabledCheck.IsChecked == true;

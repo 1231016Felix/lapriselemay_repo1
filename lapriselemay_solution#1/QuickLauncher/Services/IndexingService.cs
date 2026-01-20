@@ -473,6 +473,113 @@ public sealed partial class IndexingService : IDisposable
         }
     }
     
+    #region Incremental Indexing
+    
+    /// <summary>
+    /// Ajoute ou met à jour un fichier dans l'index de manière incrémentale.
+    /// </summary>
+    public void AddOrUpdateItem(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath)) return;
+        
+        try
+        {
+            var result = CreateSearchResult(filePath);
+            if (result == null) return;
+            
+            using var conn = new SqliteConnection(_connectionString);
+            conn.Open();
+            
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT OR REPLACE INTO Items (Path, Name, Description, Type, UseCount, IndexedAt)
+                VALUES (@path, @name, @desc, @type, 
+                    COALESCE((SELECT UseCount FROM Items WHERE Path = @path), 0), 
+                    @indexed)
+                """;
+            cmd.Parameters.AddWithValue("@path", result.Path);
+            cmd.Parameters.AddWithValue("@name", result.Name);
+            cmd.Parameters.AddWithValue("@desc", result.Description);
+            cmd.Parameters.AddWithValue("@type", (int)result.Type);
+            cmd.Parameters.AddWithValue("@indexed", DateTime.UtcNow.ToString("o"));
+            cmd.ExecuteNonQuery();
+            
+            // Mettre à jour le cache
+            _cache[result.Path] = result;
+            
+            _logger.Info($"[Incremental] Ajouté/MàJ: {result.Name}");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Erreur AddOrUpdateItem '{filePath}': {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// Supprime un fichier de l'index de manière incrémentale.
+    /// </summary>
+    public void RemoveItem(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath)) return;
+        
+        try
+        {
+            using var conn = new SqliteConnection(_connectionString);
+            conn.Open();
+            
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM Items WHERE Path = @path";
+            cmd.Parameters.AddWithValue("@path", filePath);
+            var affected = cmd.ExecuteNonQuery();
+            
+            // Retirer du cache
+            _cache.TryRemove(filePath, out _);
+            
+            // Invalider le cache d'icône
+            IconCacheService.Invalidate(filePath);
+            
+            if (affected > 0)
+                _logger.Info($"[Incremental] Supprimé: {Path.GetFileName(filePath)}");
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Erreur RemoveItem '{filePath}': {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// Traite une liste de changements de fichiers de manière incrémentale.
+    /// </summary>
+    public void ProcessFileChanges(IEnumerable<FileChangeEvent> changes)
+    {
+        var changeList = changes.ToList();
+        if (changeList.Count == 0) return;
+        
+        _logger.Info($"[Incremental] Traitement de {changeList.Count} changements...");
+        
+        foreach (var change in changeList)
+        {
+            switch (change.Type)
+            {
+                case FileChangeType.Created:
+                    AddOrUpdateItem(change.Path);
+                    break;
+                    
+                case FileChangeType.Deleted:
+                    RemoveItem(change.Path);
+                    break;
+                    
+                case FileChangeType.Modified:
+                    AddOrUpdateItem(change.Path);
+                    break;
+            }
+        }
+        
+        _logger.Info($"[Incremental] Terminé. Cache: {_cache.Count} éléments");
+    }
+    
+    #endregion
+    
     public void Dispose()
     {
         if (_disposed) return;

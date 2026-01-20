@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="QuickLauncher - Paramètres"
-        Width="800" Height="700"
+        Width="850" Height="700"
         WindowStartupLocation="CenterScreen"
         Background="#1E1E1E"
         ResizeMode="CanResizeWithGrip">
@@ -10,7 +10,7 @@
     <Window.Resources>
         <Style x:Key="SettingsCheckBox" TargetType="CheckBox">
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Margin" Value="0,8"/>
+            <Setter Property="Margin" Value="0,6"/>
             <Setter Property="FontSize" Value="13"/>
         </Style>
         
@@ -18,7 +18,14 @@
             <Setter Property="Foreground" Value="#0078D4"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="FontSize" Value="13"/>
-            <Setter Property="Margin" Value="0,15,0,8"/>
+            <Setter Property="Margin" Value="0,20,0,8"/>
+        </Style>
+        
+        <Style x:Key="SubSectionLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#888"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Margin" Value="0,12,0,6"/>
         </Style>
         
         <Style x:Key="ActionButton" TargetType="Button">
@@ -46,8 +53,8 @@
         
         <Style TargetType="TabItem">
             <Setter Property="Foreground" Value="#AAA"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="20,12"/>
             <Setter Property="Margin" Value="2,0"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Template">
@@ -77,6 +84,13 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        
+        <Style x:Key="SettingsCard" TargetType="Border">
+            <Setter Property="Background" Value="#2D2D2D"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="15"/>
+            <Setter Property="Margin" Value="0,8,0,0"/>
+        </Style>
     </Window.Resources>
     
     <Grid Margin="20">
@@ -98,786 +112,513 @@
         <!-- Onglets -->
         <TabControl Grid.Row="1" Background="#252525" BorderThickness="0">
             
-            <!-- ONGLET GÉNÉRAL -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- ONGLET 1: GÉNÉRAL (Démarrage + Comportement + Apparence + Raccourcis) -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
             <TabItem Header="🏠 Général">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
-                    <StackPanel>
-                        <TextBlock Text="Démarrage" Style="{StaticResource SectionLabel}"/>
-                        <CheckBox x:Name="StartWithWindowsCheck" Content="Démarrer QuickLauncher avec Windows" Style="{StaticResource SettingsCheckBox}"/>
-                        <CheckBox x:Name="MinimizeOnStartupCheck" Content="Démarrer minimisé dans la zone de notification" Style="{StaticResource SettingsCheckBox}"/>
-                        <CheckBox x:Name="ShowInTaskbarCheck" Content="Afficher l'icône dans la barre des tâches" Style="{StaticResource SettingsCheckBox}"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
                         
-                        <TextBlock Text="Comportement" Style="{StaticResource SectionLabel}"/>
-                        <CheckBox x:Name="CloseAfterLaunchCheck" Content="Fermer la fenêtre après le lancement d'un élément" Style="{StaticResource SettingsCheckBox}"/>
-                        <CheckBox x:Name="SingleClickLaunchCheck" Content="Lancer les éléments en un seul clic (au lieu de double-clic)" Style="{StaticResource SettingsCheckBox}"/>
-                        <CheckBox x:Name="ShowIndexingStatusCheck" Content="Afficher le statut d'indexation" Style="{StaticResource SettingsCheckBox}"/>
-                        <CheckBox x:Name="ShowSettingsButtonCheck" Content="Afficher le bouton ⚙️ dans la barre de recherche" Style="{StaticResource SettingsCheckBox}"/>
-                        
-                        <TextBlock Text="Position de la fenêtre" Style="{StaticResource SectionLabel}"/>
-                        <ComboBox x:Name="WindowPositionCombo" Width="250" HorizontalAlignment="Left">
-                            <ComboBoxItem Content="Centré sur l'écran" Tag="Center"/>
-                            <ComboBoxItem Content="En haut de l'écran" Tag="Top"/>
-                            <ComboBoxItem Content="Mémoriser la dernière position" Tag="Remember"/>
-                        </ComboBox>
-                        
-                        <TextBlock Text="Résultats de recherche" Style="{StaticResource SectionLabel}"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <TextBlock Text="Nombre maximum de résultats: " Foreground="White" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="MaxResultsValue" Text="8" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="30"/>
-                        </StackPanel>
-                        <Slider x:Name="MaxResultsSlider" Minimum="3" Maximum="15" Value="8" Width="300" HorizontalAlignment="Left" ValueChanged="MaxResultsSlider_ValueChanged"/>
-                        
-                        <TextBlock Text="Historique de recherche" Style="{StaticResource SectionLabel}"/>
-                        <CheckBox x:Name="EnableSearchHistoryCheck" Content="Activer l'historique de recherche" Style="{StaticResource SettingsCheckBox}"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <TextBlock Text="Nombre max d'entrées: " Foreground="White" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="MaxHistoryValue" Text="10" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="30"/>
-                        </StackPanel>
-                        <Slider x:Name="MaxHistorySlider" Minimum="5" Maximum="30" Value="10" Width="300" HorizontalAlignment="Left" ValueChanged="MaxHistorySlider_ValueChanged"/>
-                        <Button Content="🗑️ Effacer l'historique" Click="ClearHistory_Click" Style="{StaticResource ActionButton}" HorizontalAlignment="Left" Margin="0,10,0,0"/>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-            
-            <!-- ONGLET APPARENCE -->
-            <TabItem Header="🎨 Apparence">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
-                    <StackPanel>
-                        <TextBlock Text="Thème" Style="{StaticResource SectionLabel}"/>
-                        <ComboBox x:Name="ThemeCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="ThemeCombo_SelectionChanged">
-                            <ComboBoxItem Content="🌙 Sombre" Tag="Dark"/>
-                            <ComboBoxItem Content="☀️ Clair" Tag="Light"/>
-                            <ComboBoxItem Content="💻 Système" Tag="System"/>
-                        </ComboBox>
-                        <TextBlock Text="Note: Le thème clair sera disponible dans une prochaine version" Foreground="#666" FontSize="10" FontStyle="Italic" Margin="0,5,0,0"/>
-                        
-                        <TextBlock Text="Transparence" Style="{StaticResource SectionLabel}"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <TextBlock Text="Opacité de la fenêtre: " Foreground="White" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="OpacityValue" Text="100%" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <Slider x:Name="OpacitySlider" Minimum="0.5" Maximum="1.0" Value="1.0" Width="300" HorizontalAlignment="Left" ValueChanged="OpacitySlider_ValueChanged"/>
-                        
-                        <TextBlock Text="Couleur d'accent" Style="{StaticResource SectionLabel}"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <Border x:Name="ColorPreview" Width="30" Height="30" CornerRadius="4" Background="#0078D4" Margin="0,0,10,0"/>
-                            <ComboBox x:Name="AccentColorCombo" Width="200" SelectionChanged="AccentColorCombo_SelectionChanged">
-                                <ComboBoxItem Content="Bleu (par défaut)" Tag="#0078D4"/>
-                                <ComboBoxItem Content="Vert" Tag="#107C10"/>
-                                <ComboBoxItem Content="Rouge" Tag="#E81123"/>
-                                <ComboBoxItem Content="Orange" Tag="#FF8C00"/>
-                                <ComboBoxItem Content="Violet" Tag="#881798"/>
-                                <ComboBoxItem Content="Rose" Tag="#E3008C"/>
-                                <ComboBoxItem Content="Turquoise" Tag="#00B7C3"/>
+                        <!-- Colonne gauche -->
+                        <StackPanel Grid.Column="0">
+                            <!-- Démarrage -->
+                            <TextBlock Text="Démarrage" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
+                            <CheckBox x:Name="StartWithWindowsCheck" Content="Démarrer avec Windows" Style="{StaticResource SettingsCheckBox}"/>
+                            <CheckBox x:Name="MinimizeOnStartupCheck" Content="Démarrer minimisé" Style="{StaticResource SettingsCheckBox}"/>
+                            <CheckBox x:Name="ShowInTaskbarCheck" Content="Afficher dans la barre des tâches" Style="{StaticResource SettingsCheckBox}"/>
+                            
+                            <!-- Comportement -->
+                            <TextBlock Text="Comportement" Style="{StaticResource SectionLabel}"/>
+                            <CheckBox x:Name="CloseAfterLaunchCheck" Content="Fermer après lancement" Style="{StaticResource SettingsCheckBox}"/>
+                            <CheckBox x:Name="ShowIndexingStatusCheck" Content="Afficher le statut d'indexation" Style="{StaticResource SettingsCheckBox}"/>
+                            <CheckBox x:Name="ShowSettingsButtonCheck" Content="Afficher le bouton ⚙️" Style="{StaticResource SettingsCheckBox}"/>
+                            
+                            <TextBlock Text="SubSectionLabel" Style="{StaticResource SubSectionLabel}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,5">
+                                <TextBlock Text="Max résultats: " Foreground="White" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="MaxResultsValue" Text="8" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="25"/>
+                            </StackPanel>
+                            <Slider x:Name="MaxResultsSlider" Minimum="3" Maximum="15" Value="8" Width="250" HorizontalAlignment="Left" ValueChanged="MaxResultsSlider_ValueChanged"/>
+                            
+                            <ComboBox x:Name="WindowPositionCombo" Width="220" HorizontalAlignment="Left" Margin="0,10,0,0">
+                                <ComboBoxItem Content="📍 Centré sur l'écran" Tag="Center"/>
+                                <ComboBoxItem Content="📍 En haut de l'écran" Tag="Top"/>
+                                <ComboBoxItem Content="📍 Mémoriser position" Tag="Remember"/>
                             </ComboBox>
+                            
+                            <!-- Historique -->
+                            <TextBlock Text="Historique" Style="{StaticResource SectionLabel}"/>
+                            <CheckBox x:Name="EnableSearchHistoryCheck" Content="Activer l'historique" Style="{StaticResource SettingsCheckBox}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,5">
+                                <TextBlock Text="Max entrées: " Foreground="White" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="MaxHistoryValue" Text="10" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="25"/>
+                            </StackPanel>
+                            <Slider x:Name="MaxHistorySlider" Minimum="5" Maximum="30" Value="10" Width="250" HorizontalAlignment="Left" ValueChanged="MaxHistorySlider_ValueChanged"/>
+                            <Button Content="🗑️ Effacer l'historique" Click="ClearHistory_Click" Style="{StaticResource ActionButton}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
                         </StackPanel>
                         
-                        <TextBlock Text="Animations" Style="{StaticResource SectionLabel}"/>
-                        <CheckBox x:Name="EnableAnimationsCheck" Content="Activer les animations de transition" Style="{StaticResource SettingsCheckBox}"/>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-            
-            <!-- ONGLET RACCOURCIS -->
-            <TabItem Header="⌨️ Raccourcis">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
-                    <StackPanel>
-                        <TextBlock Text="Raccourci clavier global" Style="{StaticResource SectionLabel}"/>
-                        <TextBlock Text="Ce raccourci permet d'ouvrir QuickLauncher depuis n'importe quelle application." Foreground="#888" TextWrapping="Wrap" Margin="0,0,0,15"/>
-                        
-                        <Border Background="#2D2D2D" CornerRadius="8" Padding="20" Margin="0,10">
-                            <StackPanel>
-                                <TextBlock Text="Raccourci actuel:" Foreground="#888" Margin="0,0,0,8"/>
-                                <TextBlock x:Name="CurrentHotkeyDisplay" Text="Alt + Space" FontSize="20" FontWeight="Bold" Foreground="#0078D4" Margin="0,0,0,15"/>
-                                
-                                <TextBlock Text="Modificateurs:" Foreground="White" Margin="0,10,0,5"/>
-                                <WrapPanel>
-                                    <CheckBox x:Name="HotkeyAltCheck" Content="Alt" Style="{StaticResource SettingsCheckBox}" Margin="0,0,20,0" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
-                                    <CheckBox x:Name="HotkeyCtrlCheck" Content="Ctrl" Style="{StaticResource SettingsCheckBox}" Margin="0,0,20,0" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
-                                    <CheckBox x:Name="HotkeyShiftCheck" Content="Shift" Style="{StaticResource SettingsCheckBox}" Margin="0,0,20,0" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
-                                    <CheckBox x:Name="HotkeyWinCheck" Content="Win" Style="{StaticResource SettingsCheckBox}" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
-                                </WrapPanel>
-                                
-                                <TextBlock Text="Touche:" Foreground="White" Margin="0,10,0,5"/>
-                                <ComboBox x:Name="HotkeyKeyCombo" Width="150" HorizontalAlignment="Left" SelectionChanged="HotkeyKeyCombo_SelectionChanged">
-                                    <ComboBoxItem Content="Space" Tag="Space"/>
-                                    <ComboBoxItem Content="Enter" Tag="Enter"/>
-                                    <ComboBoxItem Content="Tab" Tag="Tab"/>
-                                    <ComboBoxItem Content="Q" Tag="Q"/>
-                                    <ComboBoxItem Content="L" Tag="L"/>
-                                    <ComboBoxItem Content="R" Tag="R"/>
-                                    <ComboBoxItem Content="F1" Tag="F1"/>
-                                    <ComboBoxItem Content="F2" Tag="F2"/>
-                                    <ComboBoxItem Content="F12" Tag="F12"/>
+                        <!-- Colonne droite -->
+                        <StackPanel Grid.Column="2">
+                            <!-- Apparence -->
+                            <TextBlock Text="Apparence" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
+                            <ComboBox x:Name="ThemeCombo" Width="180" HorizontalAlignment="Left" SelectionChanged="ThemeCombo_SelectionChanged">
+                                <ComboBoxItem Content="🌙 Thème sombre" Tag="Dark"/>
+                                <ComboBoxItem Content="☀️ Thème clair" Tag="Light"/>
+                                <ComboBoxItem Content="💻 Système" Tag="System"/>
+                            </ComboBox>
+                            
+                            <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                <TextBlock Text="Opacité: " Foreground="White" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="OpacityValue" Text="100%" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Slider x:Name="OpacitySlider" Minimum="0.5" Maximum="1.0" Value="1.0" Width="250" HorizontalAlignment="Left" ValueChanged="OpacitySlider_ValueChanged"/>
+                            
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Border x:Name="ColorPreview" Width="24" Height="24" CornerRadius="4" Background="#0078D4" Margin="0,0,8,0"/>
+                                <ComboBox x:Name="AccentColorCombo" Width="150" SelectionChanged="AccentColorCombo_SelectionChanged">
+                                    <ComboBoxItem Content="Bleu" Tag="#0078D4"/>
+                                    <ComboBoxItem Content="Vert" Tag="#107C10"/>
+                                    <ComboBoxItem Content="Rouge" Tag="#E81123"/>
+                                    <ComboBoxItem Content="Orange" Tag="#FF8C00"/>
+                                    <ComboBoxItem Content="Violet" Tag="#881798"/>
+                                    <ComboBoxItem Content="Rose" Tag="#E3008C"/>
                                 </ComboBox>
                             </StackPanel>
-                        </Border>
-                        
-                        <TextBlock Text="⚠️ Le changement de raccourci prendra effet au prochain redémarrage." Foreground="#FFB900" FontStyle="Italic" TextWrapping="Wrap" Margin="0,15,0,0"/>
-                        
-                        <TextBlock Text="Raccourcis intégrés" Style="{StaticResource SectionLabel}"/>
-                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,10">
-                            <StackPanel>
-                                <Grid Margin="0,3">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Ctrl + ," Foreground="#0078D4" FontFamily="Consolas"/>
-                                    <TextBlock Grid.Column="1" Text="Ouvrir les paramètres" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Ctrl + R" Foreground="#0078D4" FontFamily="Consolas"/>
-                                    <TextBlock Grid.Column="1" Text="Réindexer les fichiers" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Ctrl + Q" Foreground="#0078D4" FontFamily="Consolas"/>
-                                    <TextBlock Grid.Column="1" Text="Quitter l'application" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,3">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="120"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="Échap" Foreground="#0078D4" FontFamily="Consolas"/>
-                                    <TextBlock Grid.Column="1" Text="Fermer la fenêtre de recherche" Foreground="#888"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
+                            <CheckBox x:Name="EnableAnimationsCheck" Content="Activer les animations" Style="{StaticResource SettingsCheckBox}"/>
+                            
+                            <!-- Raccourci clavier -->
+                            <TextBlock Text="Raccourci global" Style="{StaticResource SectionLabel}"/>
+                            <Border Style="{StaticResource SettingsCard}">
+                                <StackPanel>
+                                    <TextBlock x:Name="CurrentHotkeyDisplay" Text="Alt + Space" FontSize="18" FontWeight="Bold" Foreground="#0078D4" Margin="0,0,0,10"/>
+                                    <WrapPanel>
+                                        <CheckBox x:Name="HotkeyAltCheck" Content="Alt" Style="{StaticResource SettingsCheckBox}" Margin="0,0,15,0" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
+                                        <CheckBox x:Name="HotkeyCtrlCheck" Content="Ctrl" Style="{StaticResource SettingsCheckBox}" Margin="0,0,15,0" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
+                                        <CheckBox x:Name="HotkeyShiftCheck" Content="Shift" Style="{StaticResource SettingsCheckBox}" Margin="0,0,15,0" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
+                                        <CheckBox x:Name="HotkeyWinCheck" Content="Win" Style="{StaticResource SettingsCheckBox}" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
+                                    </WrapPanel>
+                                    <ComboBox x:Name="HotkeyKeyCombo" Width="100" HorizontalAlignment="Left" Margin="0,8,0,0" SelectionChanged="HotkeyKeyCombo_SelectionChanged">
+                                        <ComboBoxItem Content="Space" Tag="Space"/>
+                                        <ComboBoxItem Content="Enter" Tag="Enter"/>
+                                        <ComboBoxItem Content="Tab" Tag="Tab"/>
+                                        <ComboBoxItem Content="Q" Tag="Q"/>
+                                        <ComboBoxItem Content="L" Tag="L"/>
+                                        <ComboBoxItem Content="F1" Tag="F1"/>
+                                        <ComboBoxItem Content="F12" Tag="F12"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Text="⚠️ Redémarrage requis après modification" Foreground="#FFB900" FontSize="10" Margin="0,5,0,0"/>
+                        </StackPanel>
+                    </Grid>
                 </ScrollViewer>
             </TabItem>
             
-            <!-- ONGLET INDEXATION -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- ONGLET 2: INDEXATION (Dossiers + Extensions + Navigateurs + Recherche système) -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
             <TabItem Header="📁 Indexation">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
-                    <StackPanel>
-                        <TextBlock Text="Dossiers indexés" Style="{StaticResource SectionLabel}"/>
-                        <ListBox x:Name="IndexedFoldersList" Height="120" Background="#2D2D2D" Foreground="White" BorderThickness="0" Margin="0,5"/>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-                            <Button Content="➕ Ajouter" Click="AddFolder_Click" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
-                            <Button Content="➖ Supprimer" Click="RemoveFolder_Click" Style="{StaticResource ActionButton}"/>
-                        </StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
                         
-                        <TextBlock Text="Extensions de fichiers" Style="{StaticResource SectionLabel}"/>
-                        <TextBlock Text="Extensions à indexer (séparées par des virgules):" Foreground="#888" Margin="0,0,0,5"/>
-                        <TextBox x:Name="FileExtensionsBox" Background="#2D2D2D" Foreground="White" BorderThickness="0" Padding="10" FontFamily="Consolas" TextWrapping="Wrap" Height="60" AcceptsReturn="False"/>
-                        
-                        <TextBlock Text="Options d'indexation" Style="{StaticResource SectionLabel}"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,5">
-                            <TextBlock Text="Profondeur de recherche: " Foreground="White" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="SearchDepthValue" Text="5" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="30"/>
-                            <TextBlock Text="niveaux" Foreground="#888" VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <Slider x:Name="SearchDepthSlider" Minimum="1" Maximum="10" Value="5" Width="300" HorizontalAlignment="Left" ValueChanged="SearchDepthSlider_ValueChanged"/>
-                        
-                        <CheckBox x:Name="IndexHiddenFoldersCheck" Content="Indexer les dossiers cachés" Style="{StaticResource SettingsCheckBox}"/>
-                        
-                        <!-- Liste des navigateurs -->
-                        <TextBlock Text="Navigateurs détectés" Style="{StaticResource SectionLabel}"/>
-                        <TextBlock Text="Importez les favoris de vos navigateurs individuellement." Foreground="#888" Margin="0,0,0,10"/>
-                        
-                        <ItemsControl x:Name="BrowsersList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="#2D2D2D" CornerRadius="6" Padding="12" Margin="0,0,0,8">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="40"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            
-                                            <!-- Icône -->
-                                            <TextBlock Grid.Column="0" 
-                                                       Text="{Binding Icon}" 
-                                                       FontSize="22" 
-                                                       VerticalAlignment="Center"/>
-                                            
-                                            <!-- Nom et statut -->
-                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="5,0">
-                                                <TextBlock Text="{Binding Name}" 
-                                                           Foreground="White" 
-                                                           FontWeight="SemiBold"
-                                                           FontSize="13"/>
-                                                <TextBlock Foreground="#888" FontSize="11">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="{Binding BookmarkCount, StringFormat='{}{0} favoris disponibles'}"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsInstalled}" Value="False">
-                                                                    <Setter Property="Text" Value="Non installé"/>
-                                                                    <Setter Property="Foreground" Value="#666"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </StackPanel>
-                                            
-                                            <!-- Badge statut -->
-                                            <Border Grid.Column="2" 
-                                                    CornerRadius="4" 
-                                                    Padding="8,4" 
-                                                    VerticalAlignment="Center"
-                                                    Margin="0,0,10,0">
-                                                <Border.Style>
-                                                    <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="#1E3A1E"/>
-                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsInstalled}" Value="False">
-                                                                <Setter Property="Background" Value="#3A2020"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Border.Style>
-                                                <TextBlock FontSize="10" FontWeight="SemiBold">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="✓ Installé"/>
-                                                            <Setter Property="Foreground" Value="#4CAF50"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsInstalled}" Value="False">
-                                                                    <Setter Property="Text" Value="✗ Non trouvé"/>
-                                                                    <Setter Property="Foreground" Value="#E57373"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </Border>
-                                            
-                                            <!-- Bouton Importer -->
-                                            <Button Grid.Column="3" 
-                                                    Content="📥 Importer" 
-                                                    Tag="{Binding Name}"
-                                                    Click="ImportBrowserBookmarks_Click"
-                                                    Padding="12,6"
-                                                    Background="#0078D4"
-                                                    Foreground="White"
-                                                    BorderThickness="0"
-                                                    Cursor="Hand"
-                                                    VerticalAlignment="Center">
-                                                <Button.Style>
-                                                    <Style TargetType="Button">
-                                                        <Setter Property="IsEnabled" Value="True"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsInstalled}" Value="False">
-                                                                <Setter Property="IsEnabled" Value="False"/>
-                                                                <Setter Property="Opacity" Value="0.5"/>
-                                                            </DataTrigger>
-                                                            <Trigger Property="IsMouseOver" Value="True">
-                                                                <Setter Property="Background" Value="#1084D8"/>
-                                                            </Trigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Button.Style>
-                                            </Button>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        
-                        <Button Content="📥 Importer tous les favoris" 
-                                Click="ImportAllBrowserBookmarks_Click" 
-                                Style="{StaticResource PrimaryButton}" 
-                                HorizontalAlignment="Left" 
-                                Margin="0,10,0,0"/>
-                        
-                        <!-- Réindexation automatique -->
-                        <TextBlock Text="Réindexation automatique" Style="{StaticResource SectionLabel}"/>
-                        <CheckBox x:Name="AutoReindexEnabledCheck" Content="Activer la réindexation automatique" Style="{StaticResource SettingsCheckBox}" Checked="AutoReindexEnabled_Changed" Unchecked="AutoReindexEnabled_Changed"/>
-                        
-                        <StackPanel x:Name="AutoReindexOptionsPanel" Margin="20,5,0,0">
-                            <RadioButton x:Name="ReindexIntervalRadio" Content="À intervalle régulier" Foreground="White" Margin="0,5" GroupName="ReindexMode" Checked="ReindexMode_Changed"/>
-                            <StackPanel Orientation="Horizontal" Margin="20,5,0,10">
-                                <TextBlock Text="Intervalle: " Foreground="#888" VerticalAlignment="Center"/>
-                                <ComboBox x:Name="ReindexIntervalCombo" Width="150">
-                                    <ComboBoxItem Content="15 minutes" Tag="15"/>
-                                    <ComboBoxItem Content="30 minutes" Tag="30"/>
-                                    <ComboBoxItem Content="1 heure" Tag="60"/>
-                                    <ComboBoxItem Content="2 heures" Tag="120"/>
-                                    <ComboBoxItem Content="4 heures" Tag="240"/>
-                                    <ComboBoxItem Content="8 heures" Tag="480"/>
-                                </ComboBox>
+                        <!-- Colonne gauche -->
+                        <StackPanel Grid.Column="0">
+                            <!-- Dossiers indexés -->
+                            <TextBlock Text="Dossiers indexés" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
+                            <ListBox x:Name="IndexedFoldersList" Height="100" Background="#2D2D2D" Foreground="White" BorderThickness="0"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                <Button Content="➕" Click="AddFolder_Click" Style="{StaticResource PrimaryButton}" Padding="10,6" Margin="0,0,5,0" ToolTip="Ajouter"/>
+                                <Button Content="➖" Click="RemoveFolder_Click" Style="{StaticResource ActionButton}" Padding="10,6" ToolTip="Supprimer"/>
                             </StackPanel>
                             
-                            <RadioButton x:Name="ReindexTimeRadio" Content="À une heure précise" Foreground="White" Margin="0,5" GroupName="ReindexMode" Checked="ReindexMode_Changed"/>
-                            <StackPanel Orientation="Horizontal" Margin="20,5,0,0">
-                                <TextBlock Text="Heure: " Foreground="#888" VerticalAlignment="Center"/>
-                                <ComboBox x:Name="ReindexHourCombo" Width="70">
-                                    <ComboBoxItem Content="00h" Tag="00"/>
-                                    <ComboBoxItem Content="01h" Tag="01"/>
-                                    <ComboBoxItem Content="02h" Tag="02"/>
-                                    <ComboBoxItem Content="03h" Tag="03"/>
-                                    <ComboBoxItem Content="04h" Tag="04"/>
-                                    <ComboBoxItem Content="05h" Tag="05"/>
-                                    <ComboBoxItem Content="06h" Tag="06"/>
-                                    <ComboBoxItem Content="12h" Tag="12"/>
-                                    <ComboBoxItem Content="18h" Tag="18"/>
-                                    <ComboBoxItem Content="22h" Tag="22"/>
-                                    <ComboBoxItem Content="23h" Tag="23"/>
+                            <!-- Extensions -->
+                            <TextBlock Text="Extensions" Style="{StaticResource SectionLabel}"/>
+                            <TextBox x:Name="FileExtensionsBox" Background="#2D2D2D" Foreground="White" BorderThickness="0" Padding="10" FontFamily="Consolas" TextWrapping="Wrap" Height="50"/>
+                            
+                            <!-- Options -->
+                            <TextBlock Text="Options" Style="{StaticResource SectionLabel}"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,5">
+                                <TextBlock Text="Profondeur: " Foreground="White" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="SearchDepthValue" Text="5" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="25"/>
+                                <TextBlock Text="niveaux" Foreground="#888" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <Slider x:Name="SearchDepthSlider" Minimum="1" Maximum="10" Value="5" Width="250" HorizontalAlignment="Left" ValueChanged="SearchDepthSlider_ValueChanged"/>
+                            <CheckBox x:Name="IndexHiddenFoldersCheck" Content="Indexer dossiers cachés" Style="{StaticResource SettingsCheckBox}"/>
+                            
+                            <!-- Réindexation -->
+                            <Border Style="{StaticResource SettingsCard}" Margin="0,15,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🔄" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <StackPanel VerticalAlignment="Center">
+                                        <TextBlock Text="Réindexer" Foreground="White" FontWeight="SemiBold"/>
+                                        <TextBlock Text="Reconstruire l'index complet" Foreground="#888" FontSize="10"/>
+                                    </StackPanel>
+                                    <Button Content="Go" Click="Reindex_Click" Style="{StaticResource ActionButton}" VerticalAlignment="Center" Margin="15,0,0,0" Padding="12,6"/>
+                                </StackPanel>
+                            </Border>
+                            
+                            <!-- Réindexation auto -->
+                            <TextBlock Text="Réindexation automatique" Style="{StaticResource SectionLabel}"/>
+                            <CheckBox x:Name="AutoReindexEnabledCheck" Content="Activer" Style="{StaticResource SettingsCheckBox}" Checked="AutoReindexEnabled_Changed" Unchecked="AutoReindexEnabled_Changed"/>
+                            <StackPanel x:Name="AutoReindexOptionsPanel" Margin="15,0,0,0">
+                                <RadioButton x:Name="ReindexIntervalRadio" Content="Intervalle" Foreground="White" Margin="0,3" GroupName="ReindexMode" Checked="ReindexMode_Changed"/>
+                                <ComboBox x:Name="ReindexIntervalCombo" Width="120" Margin="20,3,0,8">
+                                    <ComboBoxItem Content="15 min" Tag="15"/>
+                                    <ComboBoxItem Content="30 min" Tag="30"/>
+                                    <ComboBoxItem Content="1 heure" Tag="60"/>
+                                    <ComboBoxItem Content="2 heures" Tag="120"/>
                                 </ComboBox>
-                                <TextBlock Text=" : " Foreground="#888" VerticalAlignment="Center"/>
-                                <ComboBox x:Name="ReindexMinuteCombo" Width="70">
-                                    <ComboBoxItem Content="00" Tag="00"/>
-                                    <ComboBoxItem Content="15" Tag="15"/>
-                                    <ComboBoxItem Content="30" Tag="30"/>
-                                    <ComboBoxItem Content="45" Tag="45"/>
-                                </ComboBox>
+                                <RadioButton x:Name="ReindexTimeRadio" Content="Heure fixe" Foreground="White" Margin="0,3" GroupName="ReindexMode" Checked="ReindexMode_Changed"/>
+                                <StackPanel Orientation="Horizontal" Margin="20,3,0,0">
+                                    <ComboBox x:Name="ReindexHourCombo" Width="55">
+                                        <ComboBoxItem Content="00h" Tag="00"/>
+                                        <ComboBoxItem Content="03h" Tag="03"/>
+                                        <ComboBoxItem Content="06h" Tag="06"/>
+                                        <ComboBoxItem Content="12h" Tag="12"/>
+                                        <ComboBoxItem Content="18h" Tag="18"/>
+                                    </ComboBox>
+                                    <TextBlock Text=":" Foreground="#888" VerticalAlignment="Center" Margin="3,0"/>
+                                    <ComboBox x:Name="ReindexMinuteCombo" Width="55">
+                                        <ComboBoxItem Content="00" Tag="00"/>
+                                        <ComboBoxItem Content="30" Tag="30"/>
+                                    </ComboBox>
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
                         
-                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,20,0,0">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="🔄" FontSize="18" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="Réindexer maintenant" Foreground="White" FontWeight="SemiBold"/>
-                                    <TextBlock Text="Reconstruit l'index de recherche complet" Foreground="#888" FontSize="11"/>
-                                </StackPanel>
-                                <Button Content="Réindexer" Click="Reindex_Click" Style="{StaticResource ActionButton}" VerticalAlignment="Center" Margin="20,0,0,0"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-            
-            <!-- ONGLET RECHERCHE WEB -->
-            <TabItem Header="🌐 Recherche Web">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
-                    <StackPanel>
-                        <TextBlock Text="Moteurs de recherche" Style="{StaticResource SectionLabel}"/>
-                        <TextBlock Text="Tapez le préfixe suivi d'un espace et votre recherche (ex: 'g pizza')" Foreground="#888" TextWrapping="Wrap" Margin="0,0,0,10"/>
-                        
-                        <ListBox x:Name="SearchEnginesList" Height="200" Background="#2D2D2D" Foreground="White" BorderThickness="0">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Grid Margin="5">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="50"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Border Grid.Column="0" Background="#0078D4" CornerRadius="4" Padding="8,4" HorizontalAlignment="Left">
-                                            <TextBlock Text="{Binding Prefix}" FontWeight="Bold" Foreground="White"/>
+                        <!-- Colonne droite -->
+                        <StackPanel Grid.Column="2">
+                            <!-- Navigateurs -->
+                            <TextBlock Text="Favoris navigateurs" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
+                            <ItemsControl x:Name="BrowsersList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#2A2A2A" CornerRadius="4" Padding="10" Margin="0,0,0,5">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="30"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Icon}" FontSize="18" VerticalAlignment="Center"/>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="5,0">
+                                                    <TextBlock Text="{Binding Name}" Foreground="White" FontSize="12"/>
+                                                    <TextBlock Foreground="#666" FontSize="10">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Text" Value="{Binding BookmarkCount, StringFormat='{}{0} favoris'}"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsInstalled}" Value="False">
+                                                                        <Setter Property="Text" Value="Non installé"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                                <Button Grid.Column="2" Content="📥" Tag="{Binding Name}" Click="ImportBrowserBookmarks_Click" Padding="8,4" Background="#0078D4" Foreground="White" BorderThickness="0" Cursor="Hand" ToolTip="Importer">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsInstalled}" Value="False">
+                                                                    <Setter Property="IsEnabled" Value="False"/>
+                                                                    <Setter Property="Opacity" Value="0.4"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+                                            </Grid>
                                         </Border>
-                                        <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" Margin="10,0"/>
-                                        <TextBlock Grid.Column="2" Text="{Binding UrlTemplate}" Foreground="#666" FontSize="10" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                    </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        
-                        <TextBlock Text="Commandes spéciales" Style="{StaticResource SectionLabel}"/>
-                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15">
-                            <StackPanel>
-                                <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text=":settings" Foreground="#0078D4" FontFamily="Consolas"/>
-                                    <TextBlock Grid.Column="1" Text="Ouvrir les paramètres" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text=":reload" Foreground="#0078D4" FontFamily="Consolas"/>
-                                    <TextBlock Grid.Column="1" Text="Réindexer les fichiers" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text=":history" Foreground="#0078D4" FontFamily="Consolas"/>
-                                    <TextBlock Grid.Column="1" Text="Voir l'historique de recherche" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text=":clear" Foreground="#0078D4" FontFamily="Consolas"/>
-                                    <TextBlock Grid.Column="1" Text="Effacer l'historique" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text=":help ou ?" Foreground="#0078D4" FontFamily="Consolas"/>
-                                    <TextBlock Grid.Column="1" Text="Afficher l'aide" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text=":quit" Foreground="#0078D4" FontFamily="Consolas"/>
-                                    <TextBlock Grid.Column="1" Text="Quitter QuickLauncher" Foreground="#888"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-            
-            <!-- ONGLET CONTRÔLE SYSTÈME -->
-            <TabItem Header="🎛️ Contrôle Système">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
-                    <StackPanel>
-                        <TextBlock Text="Commandes de contrôle système" Style="{StaticResource SectionLabel}"/>
-                        <TextBlock Text="Personnalisez les préfixes et activez/désactivez les commandes de contrôle système. Tapez ':' suivi du préfixe dans la barre de recherche." Foreground="#888" TextWrapping="Wrap" Margin="0,0,0,15"/>
-                        
-                        <!-- Liste des commandes -->
-                        <ListBox x:Name="SystemCommandsList" 
-                                 Background="#2D2D2D" 
-                                 Foreground="White" 
-                                 BorderThickness="0"
-                                 MaxHeight="400"
-                                 SelectionChanged="SystemCommandsList_SelectionChanged">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="#252525" CornerRadius="6" Padding="12" Margin="2">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="80"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            
-                                            <!-- Icône -->
-                                            <TextBlock Grid.Column="0" 
-                                                       Text="{Binding Icon}" 
-                                                       FontSize="20" 
-                                                       VerticalAlignment="Center" 
-                                                       Margin="0,0,12,0"/>
-                                            
-                                            <!-- Préfixe -->
-                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding Prefix, StringFormat=:/{0}}" 
-                                                           Foreground="#0078D4" 
-                                                           FontFamily="Consolas"
-                                                           FontWeight="Bold"/>
-                                            </StackPanel>
-                                            
-                                            <!-- Nom et description -->
-                                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="10,0">
-                                                <TextBlock Text="{Binding Name}" 
-                                                           Foreground="White" 
-                                                           FontWeight="SemiBold"/>
-                                                <TextBlock Text="{Binding Description}" 
-                                                           Foreground="#888" 
-                                                           FontSize="11"/>
-                                            </StackPanel>
-                                            
-                                            <!-- Toggle activé/désactivé -->
-                                            <CheckBox Grid.Column="3" 
-                                                      IsChecked="{Binding IsEnabled}" 
-                                                      VerticalAlignment="Center"
-                                                      ToolTip="Activer/Désactiver cette commande"/>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        
-                        <!-- Panneau d'édition -->
-                        <Border x:Name="CommandEditPanel" 
-                                Background="#2D2D2D" 
-                                CornerRadius="8" 
-                                Padding="15" 
-                                Margin="0,15,0,0"
-                                Visibility="Collapsed">
-                            <StackPanel>
-                                <TextBlock Text="Modifier la commande" Foreground="#0078D4" FontWeight="SemiBold" Margin="0,0,0,15"/>
-                                
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Button Content="📥 Importer tous" Click="ImportAllBrowserBookmarks_Click" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,5,0,0"/>
+                            
+                            <!-- Recherche système (:find) -->
+                            <TextBlock Text="Recherche système (:find)" Style="{StaticResource SectionLabel}"/>
+                            <Border x:Name="SearchEngineIndicator" CornerRadius="6" Padding="12" Margin="0,5,0,0">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-                                    
-                                    <!-- Préfixe -->
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Préfixe:" Foreground="White" VerticalAlignment="Center" Margin="0,0,15,10"/>
-                                    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
-                                        <TextBlock Text=":" Foreground="#0078D4" FontFamily="Consolas" FontSize="14" VerticalAlignment="Center"/>
-                                        <TextBox x:Name="CommandPrefixBox" 
-                                                 Width="150" 
-                                                 Background="#1E1E1E" 
-                                                 Foreground="White" 
-                                                 BorderBrush="#3E3E3E"
-                                                 Padding="8,5"
-                                                 FontFamily="Consolas"/>
+                                    <TextBlock x:Name="SearchEngineIcon" Text="⚡" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock x:Name="SearchEngineName" Text="Everything" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
+                                        <TextBlock x:Name="SearchEngineDescription" Text="Recherche ultra-rapide" Foreground="#888" FontSize="10"/>
                                     </StackPanel>
-                                    
-                                    <!-- Icône -->
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Icône:" Foreground="White" VerticalAlignment="Center" Margin="0,0,15,10"/>
-                                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,0,0,10">
-                                        <TextBox x:Name="CommandIconBox" 
-                                                 Width="50" 
-                                                 Background="#1E1E1E" 
-                                                 Foreground="White" 
-                                                 BorderBrush="#3E3E3E"
-                                                 Padding="8,5"
-                                                 FontSize="16"
-                                                 TextAlignment="Center"/>
-                                        <TextBlock Text="(emoji)" Foreground="#666" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                                    </StackPanel>
-                                    
-                                    <!-- Description -->
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Description:" Foreground="White" VerticalAlignment="Center" Margin="0,0,15,10"/>
-                                    <TextBox x:Name="CommandDescriptionBox" 
-                                             Grid.Row="2" Grid.Column="1"
-                                             Background="#1E1E1E" 
-                                             Foreground="White" 
-                                             BorderBrush="#3E3E3E"
-                                             Padding="8,5"
-                                             Margin="0,0,0,10"/>
-                                    
-                                    <!-- Boutons -->
-                                    <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                                        <Button Content="Annuler" 
-                                                Click="CancelCommandEdit_Click" 
-                                                Style="{StaticResource ActionButton}" 
-                                                Margin="0,0,10,0"/>
-                                        <Button Content="Appliquer" 
-                                                Click="ApplyCommandEdit_Click" 
-                                                Style="{StaticResource PrimaryButton}"/>
-                                    </StackPanel>
+                                    <Border Grid.Column="2" x:Name="SearchEngineStatusBadge" CornerRadius="3" Padding="8,3" VerticalAlignment="Center">
+                                        <TextBlock x:Name="SearchEngineStatusText" Text="Optimal" FontSize="10" FontWeight="SemiBold"/>
+                                    </Border>
                                 </Grid>
+                            </Border>
+                            <Border x:Name="SearchEngineRecommendation" Background="#1E2A3E" CornerRadius="4" Padding="8" Margin="0,5,0,0" Visibility="Collapsed">
+                                <TextBlock x:Name="SearchEngineRecommendationText" Foreground="#64B5F6" TextWrapping="Wrap" FontSize="10"/>
+                            </Border>
+                            
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <TextBlock Text="Profondeur: " Foreground="White" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="SystemSearchDepthValue" Text="5" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="25"/>
                             </StackPanel>
-                        </Border>
+                            <Slider x:Name="SystemSearchDepthSlider" Minimum="2" Maximum="10" Value="5" Width="250" HorizontalAlignment="Left" ValueChanged="SystemSearchDepthSlider_ValueChanged"/>
+                            
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button Content="🗑️ Vider cache" Click="ClearSearchCache_Click" Style="{StaticResource ActionButton}" Padding="10,6"/>
+                                <TextBlock x:Name="SearchCacheStats" Text="" Foreground="#666" FontSize="10" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- ONGLET 3: COMMANDES (Recherche Web + Contrôle Système) -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <TabItem Header="🔍 Commandes">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
                         
-                        <!-- Boutons d'action -->
-                        <StackPanel Orientation="Horizontal" Margin="0,15,0,0">
-                            <Button Content="✏️ Modifier" 
-                                    Click="EditSystemCommand_Click" 
-                                    Style="{StaticResource ActionButton}" 
-                                    Margin="0,0,10,0"/>
-                            <Button Content="🔄 Réinitialiser tout" 
-                                    Click="ResetSystemCommands_Click" 
-                                    Style="{StaticResource ActionButton}"/>
+                        <!-- Colonne gauche: Recherche Web -->
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Recherche Web" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
+                            <TextBlock Text="Tapez le préfixe + espace + recherche (ex: g pizza)" Foreground="#888" FontSize="11" Margin="0,0,0,8"/>
+                            
+                            <ListBox x:Name="SearchEnginesList" Height="180" Background="#2D2D2D" Foreground="White" BorderThickness="0">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="5,3">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="45"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Background="#0078D4" CornerRadius="3" Padding="6,2" HorizontalAlignment="Left">
+                                                <TextBlock Text="{Binding Prefix}" FontWeight="Bold" Foreground="White" FontSize="11"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" Margin="8,0" FontSize="12"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            
+                            <!-- Commandes intégrées -->
+                            <TextBlock Text="Commandes intégrées" Style="{StaticResource SectionLabel}"/>
+                            <Border Style="{StaticResource SettingsCard}">
+                                <StackPanel>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text=":settings" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Paramètres" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text=":reload" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Réindexer" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text=":find" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Recherche système" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text=":history" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Historique" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text=":help" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Aide" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text=":quit" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Quitter" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                         
-                        <!-- Aide -->
-                        <Border Background="#1E2A3E" CornerRadius="6" Padding="12" Margin="0,20,0,0">
-                            <StackPanel>
-                                <TextBlock Text="💡 Conseils" Foreground="#64B5F6" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                                <TextBlock Text="• Utilisez des préfixes courts et mémorisables (ex: 'vol' au lieu de 'volume')" Foreground="#AAA" TextWrapping="Wrap"/>
-                                <TextBlock Text="• Désactivez les commandes que vous n'utilisez pas pour simplifier les suggestions" Foreground="#AAA" TextWrapping="Wrap" Margin="0,4,0,0"/>
-                                <TextBlock Text="• Les commandes désactivées ne seront plus suggérées dans la recherche" Foreground="#AAA" TextWrapping="Wrap" Margin="0,4,0,0"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
+                        <!-- Colonne droite: Contrôle Système -->
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Contrôle Système" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
+                            <TextBlock Text="Tapez ':' + préfixe dans la barre de recherche" Foreground="#888" FontSize="11" Margin="0,0,0,8"/>
+                            
+                            <ItemsControl x:Name="SystemCommandsList" MaxHeight="350">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#2A2A2A" CornerRadius="3" Padding="8,5" Margin="0,0,5,5" Cursor="Hand" MouseLeftButtonUp="SystemCommandItem_Click">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#353535"/>
+                                                        </Trigger>
+                                                        <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                                            <Setter Property="Opacity" Value="0.4"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Icon}" FontSize="12" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                <TextBlock Text="{Binding Prefix, StringFormat=:{0}}" Foreground="#0078D4" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+                                                <Border Width="28" Height="14" CornerRadius="7" VerticalAlignment="Center" Margin="8,0,0,0" MouseLeftButtonUp="ToggleSwitch_Click" Tag="{Binding}">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Background" Value="#404040"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsEnabled}" Value="True">
+                                                                    <Setter Property="Background" Value="#0078D4"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <Ellipse Width="10" Height="10" Fill="White" VerticalAlignment="Center">
+                                                        <Ellipse.Style>
+                                                            <Style TargetType="Ellipse">
+                                                                <Setter Property="HorizontalAlignment" Value="Left"/>
+                                                                <Setter Property="Margin" Value="2,0,0,0"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsEnabled}" Value="True">
+                                                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                                                        <Setter Property="Margin" Value="0,0,2,0"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Ellipse.Style>
+                                                    </Ellipse>
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            
+                            <!-- Panneau d'édition -->
+                            <Border x:Name="CommandEditPanel" Background="#252525" CornerRadius="4" Padding="10" Margin="0,10,0,0" Visibility="Collapsed">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text=":" Foreground="#0078D4" FontFamily="Consolas" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="CommandPrefixBox" Width="70" Background="#1E1E1E" Foreground="White" BorderBrush="#3E3E3E" Padding="5,3" FontFamily="Consolas" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="CommandIconBox" Width="35" Background="#1E1E1E" Foreground="White" BorderBrush="#3E3E3E" Padding="5,3" TextAlignment="Center" VerticalAlignment="Center" Margin="8,0"/>
+                                    <Button Content="✓" Click="ApplyCommandEdit_Click" Background="#107C10" Foreground="White" Width="24" Height="24" BorderThickness="0" Cursor="Hand"/>
+                                    <Button Content="✕" Click="CancelCommandEdit_Click" Background="#3E3E3E" Foreground="White" Width="24" Height="24" BorderThickness="0" Cursor="Hand" Margin="5,0,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            
+                            <Button Content="🔄 Réinitialiser" Click="ResetSystemCommands_Click" Style="{StaticResource ActionButton}" HorizontalAlignment="Left" Margin="0,10,0,0"/>
+                        </StackPanel>
+                    </Grid>
                 </ScrollViewer>
             </TabItem>
             
-            <!-- ONGLET GUIDE -->
-            <TabItem Header="📖 Guide">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
-                    <StackPanel>
-                        <!-- Introduction -->
-                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,0,0,15">
-                            <StackPanel>
-                                <TextBlock Text="🚀 Bienvenue dans QuickLauncher" FontSize="18" FontWeight="Bold" Foreground="White" Margin="0,0,0,10"/>
-                                <TextBlock Text="Ce guide présente les fonctionnalités avancées pour vous aider à tirer le meilleur parti de votre lanceur d'applications." Foreground="#AAA" TextWrapping="Wrap"/>
-                            </StackPanel>
-                        </Border>
-                        
-                        <!-- Section: Menu contextuel -->
-                        <TextBlock Text="🖱️ Actions rapides (Clic droit)" Style="{StaticResource SectionLabel}" FontSize="15"/>
-                        <TextBlock Text="Faites un clic droit sur n'importe quel résultat de recherche pour accéder à des actions supplémentaires." Foreground="#888" TextWrapping="Wrap" Margin="0,0,0,10"/>
-                        
-                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,0,0,15">
-                            <StackPanel>
-                                <TextBlock Text="Actions sur les fichiers" Foreground="#0078D4" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="📂 Ouvrir l'emplacement" Foreground="White"/>
-                                    <TextBlock Grid.Column="1" Text="Ouvre l'Explorateur avec le fichier sélectionné" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="📋 Copier le chemin" Foreground="White"/>
-                                    <TextBlock Grid.Column="1" Text="Copie le chemin complet dans le presse-papiers" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="📝 Copier le nom" Foreground="White"/>
-                                    <TextBlock Grid.Column="1" Text="Copie uniquement le nom du fichier" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="✏️ Renommer..." Foreground="White"/>
-                                    <TextBlock Grid.Column="1" Text="Ouvre une boîte de dialogue pour renommer" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="📁 Déplacer vers..." Foreground="White"/>
-                                    <TextBlock Grid.Column="1" Text="Déplace le fichier vers un autre dossier" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="🗑️ Supprimer" Foreground="#FF6B6B"/>
-                                    <TextBlock Grid.Column="1" Text="Envoie le fichier à la corbeille" Foreground="#888"/>
-                                </Grid>
-                                
-                                <Separator Background="#3E3E3E" Margin="0,12"/>
-                                
-                                <TextBlock Text="Actions sur les applications" Foreground="#0078D4" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="🔑 Exécuter en admin" Foreground="White"/>
-                                    <TextBlock Grid.Column="1" Text="Lance l'application avec les droits administrateur" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="📎 Ouvrir avec..." Foreground="White"/>
-                                    <TextBlock Grid.Column="1" Text="Choisir une application pour ouvrir le fichier" Foreground="#888"/>
-                                </Grid>
-                                
-                                <Separator Background="#3E3E3E" Margin="0,12"/>
-                                
-                                <TextBlock Text="Actions Terminal" Foreground="#0078D4" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="💻 Terminal ici" Foreground="White"/>
-                                    <TextBlock Grid.Column="1" Text="Ouvre Windows Terminal dans le dossier" Foreground="#888"/>
-                                </Grid>
-                                <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="180"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="📟 PowerShell ici" Foreground="White"/>
-                                    <TextBlock Grid.Column="1" Text="Ouvre PowerShell dans le dossier" Foreground="#888"/>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-                        
-                        <!-- Section: Commandes système -->
-                        <TextBlock Text="🎛️ Contrôle système rapide" Style="{StaticResource SectionLabel}" FontSize="15"/>
-                        <TextBlock Text="Contrôlez votre système directement depuis la barre de recherche en tapant des commandes commençant par ':'." Foreground="#888" TextWrapping="Wrap" Margin="0,0,0,10"/>
-                        
-                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,0,0,15">
-                            <StackPanel>
-                                <!-- Liste dynamique des commandes système -->
-                                <ItemsControl x:Name="GuideSystemCommandsList">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="0,4">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="30"/>
-                                                    <ColumnDefinition Width="150"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Icon}" FontSize="14" VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="1" 
-                                                           Text="{Binding Prefix, StringFormat=:{0}}" 
-                                                           Foreground="#0078D4" 
-                                                           FontFamily="Consolas"
-                                                           VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="2" 
-                                                           Text="{Binding Description}" 
-                                                           Foreground="#888"
-                                                           VerticalAlignment="Center"/>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                
-                                <Border Background="#1E3A1E" CornerRadius="6" Padding="10" Margin="0,15,0,0">
-                                    <TextBlock Text="💡 Les préfixes sont personnalisables dans l'onglet 'Contrôle Système'" Foreground="#4CAF50" TextWrapping="Wrap"/>
-                                </Border>
-                                
-                                <Border Background="#1E2A3E" CornerRadius="6" Padding="10" Margin="0,10,0,0">
-                                    <TextBlock Text="📸 Les captures sont sauvegardées dans Images\Screenshots" Foreground="#64B5F6" TextWrapping="Wrap"/>
-                                </Border>
-                            </StackPanel>
-                        </Border>
-                        
-                        <!-- Section: Icônes natives -->
-                        <TextBlock Text="🖼️ Icônes natives" Style="{StaticResource SectionLabel}" FontSize="15"/>
-                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,0,0,15">
-                            <StackPanel>
-                                <TextBlock Text="QuickLauncher affiche automatiquement les vraies icônes de vos applications au lieu des emojis génériques." Foreground="#AAA" TextWrapping="Wrap" Margin="0,0,0,10"/>
-                                
-                                <StackPanel Orientation="Horizontal" Margin="0,5">
-                                    <TextBlock Text="✅" Margin="0,0,10,0"/>
-                                    <TextBlock Text="Applications (.exe)" Foreground="White"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,5">
-                                    <TextBlock Text="✅" Margin="0,0,10,0"/>
-                                    <TextBlock Text="Raccourcis (.lnk)" Foreground="White"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,5">
-                                    <TextBlock Text="✅" Margin="0,0,10,0"/>
-                                    <TextBlock Text="Fichiers (icône selon le type)" Foreground="White"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,5">
-                                    <TextBlock Text="✅" Margin="0,0,10,0"/>
-                                    <TextBlock Text="Dossiers" Foreground="White"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,5">
-                                    <TextBlock Text="✅" Margin="0,0,10,0"/>
-                                    <TextBlock Text="Applications du Microsoft Store" Foreground="White"/>
-                                </StackPanel>
-                                
-                                <Border Background="#1E2A3E" CornerRadius="6" Padding="10" Margin="0,15,0,0">
-                                    <TextBlock Text="💡 Les icônes sont mises en cache pour des performances optimales. Si une icône ne s'affiche pas, un emoji de fallback est utilisé." Foreground="#64B5F6" TextWrapping="Wrap"/>
-                                </Border>
-                            </StackPanel>
-                        </Border>
-                        
-                        <!-- Section: Astuces -->
-                        <TextBlock Text="💡 Astuces" Style="{StaticResource SectionLabel}" FontSize="15"/>
-                        <Border Background="#2D3D2D" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#4CAF50" BorderThickness="1">
-                            <StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,5">
-                                    <TextBlock Text="•" Foreground="#4CAF50" FontWeight="Bold" Margin="0,0,10,0"/>
-                                    <TextBlock Text="Tapez ':help' ou '?' pour voir toutes les commandes disponibles" Foreground="#AAA" TextWrapping="Wrap"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,5">
-                                    <TextBlock Text="•" Foreground="#4CAF50" FontWeight="Bold" Margin="0,0,10,0"/>
-                                    <TextBlock Text="Les résultats sont triés par fréquence d'utilisation" Foreground="#AAA" TextWrapping="Wrap"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,5">
-                                    <TextBlock Text="•" Foreground="#4CAF50" FontWeight="Bold" Margin="0,0,10,0"/>
-                                    <TextBlock Text="Utilisez 'g recherche' pour une recherche Google rapide" Foreground="#AAA" TextWrapping="Wrap"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,5">
-                                    <TextBlock Text="•" Foreground="#4CAF50" FontWeight="Bold" Margin="0,0,10,0"/>
-                                    <TextBlock Text="La calculatrice intégrée fonctionne automatiquement (ex: '2+2*3')" Foreground="#AAA" TextWrapping="Wrap"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,5">
-                                    <TextBlock Text="•" Foreground="#4CAF50" FontWeight="Bold" Margin="0,0,10,0"/>
-                                    <TextBlock Text="Déplacez la fenêtre en cliquant n'importe où (hors zone de texte)" Foreground="#AAA" TextWrapping="Wrap"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-            
-            <!-- ONGLET À PROPOS -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- ONGLET 4: À PROPOS (Guide + Stats + Infos) -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
             <TabItem Header="ℹ️ À propos">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
-                    <StackPanel>
-                        <StackPanel HorizontalAlignment="Center" Margin="0,20">
-                            <TextBlock Text="🚀" FontSize="48" HorizontalAlignment="Center"/>
-                            <TextBlock Text="QuickLauncher" FontSize="28" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" Margin="0,10,0,5"/>
-                            <TextBlock Text="Version 1.0.0" Foreground="#888" HorizontalAlignment="Center"/>
-                            <TextBlock Text="Par Felix-Antoine" Foreground="#0078D4" HorizontalAlignment="Center" Margin="0,5,0,20"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="20"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <!-- Colonne gauche: Guide -->
+                        <StackPanel Grid.Column="0">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+                                <TextBlock Text="🚀" FontSize="36" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="QuickLauncher" FontSize="22" FontWeight="Bold" Foreground="White"/>
+                                    <TextBlock Text="Version 1.0.0 • Par Felix-Antoine" Foreground="#888" FontSize="11"/>
+                                </StackPanel>
+                            </StackPanel>
+                            
+                            <TextBlock Text="Raccourcis clavier" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
+                            <Border Style="{StaticResource SettingsCard}">
+                                <StackPanel>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Entrée" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Lancer l'élément" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Tab" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Panneau d'actions" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Ctrl+P" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Épingler / Désépingler" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Ctrl+Entrée" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Exécuter en admin" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Ctrl+O" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Ouvrir emplacement" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Ctrl+Maj+C" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Copier le chemin" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <TextBlock Text="Échap" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Grid.Column="1" Text="Fermer" Foreground="#888" FontSize="11"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                            
+                            <TextBlock Text="Astuces" Style="{StaticResource SectionLabel}"/>
+                            <Border Background="#2D3D2D" CornerRadius="6" Padding="12" BorderBrush="#4CAF50" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="• ⭐ Épinglez vos apps favorites (Tab → Épingler)" Foreground="#AAA" FontSize="11" Margin="0,2"/>
+                                    <TextBlock Text="• Les épinglés apparaissent quand la barre est vide" Foreground="#AAA" FontSize="11" Margin="0,2"/>
+                                    <TextBlock Text="• Tapez ':help' pour voir toutes les commandes" Foreground="#AAA" FontSize="11" Margin="0,2"/>
+                                    <TextBlock Text="• Calculatrice intégrée: tapez '2+2*3'" Foreground="#AAA" FontSize="11" Margin="0,2"/>
+                                    <TextBlock Text="• Clic droit pour actions contextuelles" Foreground="#AAA" FontSize="11" Margin="0,2"/>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                         
-                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,10">
-                            <StackPanel>
-                                <TextBlock Text="📊 Statistiques" Foreground="#0078D4" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                                <TextBlock x:Name="StatsText" Text="Chargement..." Foreground="#888"/>
-                            </StackPanel>
-                        </Border>
-                        
-                        <Border Background="#2D2D2D" CornerRadius="8" Padding="15" Margin="0,10">
-                            <StackPanel>
-                                <TextBlock Text="📂 Emplacement des données" Foreground="#0078D4" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                                <TextBlock x:Name="DataPathText" Text="" Foreground="#888" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11"/>
-                                <Button Content="📂 Ouvrir le dossier" Click="OpenDataFolder_Click" Style="{StaticResource ActionButton}" Margin="0,10,0,0" HorizontalAlignment="Left"/>
-                            </StackPanel>
-                        </Border>
-                        
-                        <Border Background="#3D2020" CornerRadius="8" Padding="15" Margin="0,20,0,0" BorderBrush="#E81123" BorderThickness="1">
-                            <StackPanel>
-                                <TextBlock Text="⚠️ Zone dangereuse" Foreground="#E81123" FontWeight="SemiBold" Margin="0,0,0,10"/>
-                                <TextBlock Text="Réinitialiser tous les paramètres aux valeurs par défaut. Cette action est irréversible." Foreground="#888" TextWrapping="Wrap" Margin="0,0,0,10"/>
-                                <Button Content="🗑️ Réinitialiser les paramètres" Click="ResetSettings_Click" Background="#E81123" Foreground="White" Padding="12,8" BorderThickness="0" HorizontalAlignment="Left" Cursor="Hand"/>
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
+                        <!-- Colonne droite: Stats et données -->
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Statistiques" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
+                            <Border Style="{StaticResource SettingsCard}">
+                                <TextBlock x:Name="StatsText" Text="Chargement..." Foreground="#888" FontSize="11"/>
+                            </Border>
+                            
+                            <TextBlock Text="Données" Style="{StaticResource SectionLabel}"/>
+                            <Border Style="{StaticResource SettingsCard}">
+                                <StackPanel>
+                                    <TextBlock x:Name="DataPathText" Text="" Foreground="#888" TextWrapping="Wrap" FontFamily="Consolas" FontSize="10"/>
+                                    <Button Content="📂 Ouvrir le dossier" Click="OpenDataFolder_Click" Style="{StaticResource ActionButton}" Margin="0,10,0,0" HorizontalAlignment="Left"/>
+                                </StackPanel>
+                            </Border>
+                            
+                            <TextBlock Text="Zone dangereuse" Style="{StaticResource SectionLabel}"/>
+                            <Border Background="#3D2020" CornerRadius="6" Padding="12" BorderBrush="#E81123" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="Réinitialiser tous les paramètres aux valeurs par défaut." Foreground="#888" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,10"/>
+                                    <Button Content="🗑️ Réinitialiser" Click="ResetSettings_Click" Background="#E81123" Foreground="White" Padding="10,6" BorderThickness="0" HorizontalAlignment="Left" Cursor="Hand"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Grid>
                 </ScrollViewer>
             </TabItem>
         </TabControl>

@@ -56,6 +56,10 @@ public sealed class AppSettings
     public bool EnableAnimations { get; set; } = true;
     public string Theme { get; set; } = "Dark";
     public bool ShowSettingsButton { get; set; } = true;
+    public bool ShowPreviewPanel { get; set; } = true;
+    
+    // === Surveillance fichiers ===
+    public bool EnableFileWatcher { get; set; } = true;
     
     // === Position fenêtre ===
     public string WindowPosition { get; set; } = "Center";
@@ -70,6 +74,9 @@ public sealed class AppSettings
     public bool IndexHiddenFolders { get; set; }
     public bool IndexBrowserBookmarks { get; set; } = true;
     
+    // === Recherche système (:find) ===
+    public int SystemSearchDepth { get; set; } = 5;
+    
     // === Réindexation automatique ===
     public bool AutoReindexEnabled { get; set; }
     public AutoReindexMode AutoReindexMode { get; set; } = AutoReindexMode.Interval;
@@ -78,6 +85,12 @@ public sealed class AppSettings
     
     // === Historique de recherche ===
     public List<string> SearchHistory { get; set; } = [];
+    
+    // === Items épinglés ===
+    public List<PinnedItem> PinnedItems { get; set; } = [];
+    
+    // === Alias activés ===
+    public bool EnableAliases { get; set; } = true;
 
     private static List<string> GetDefaultIndexedFolders() =>
     [
@@ -97,14 +110,23 @@ public sealed class AppSettings
     
     private static List<SystemControlCommand> GetDefaultSystemCommands() =>
     [
+        // Audio
         new() { Type = SystemControlType.Volume, Name = "Volume", Prefix = "volume", Icon = "🔊", 
                 Description = "Régler le volume (0-100, up, down)", RequiresArgument = true, ArgumentHint = "[0-100|up|down]" },
         new() { Type = SystemControlType.Mute, Name = "Muet", Prefix = "mute", Icon = "🔇", 
                 Description = "Basculer le mode muet" },
+        
+        // Affichage
         new() { Type = SystemControlType.Brightness, Name = "Luminosité", Prefix = "brightness", Icon = "☀️", 
                 Description = "Régler la luminosité (0-100)", RequiresArgument = true, ArgumentHint = "[0-100]" },
+        
+        // Réseau
         new() { Type = SystemControlType.Wifi, Name = "WiFi", Prefix = "wifi", Icon = "📶", 
                 Description = "Contrôler le WiFi", RequiresArgument = true, ArgumentHint = "[on|off|status]" },
+        new() { Type = SystemControlType.FlushDns, Name = "Vider DNS", Prefix = "flushdns", Icon = "🌐", 
+                Description = "Vider le cache DNS" },
+        
+        // Session/Alimentation
         new() { Type = SystemControlType.Lock, Name = "Verrouiller", Prefix = "lock", Icon = "🔒", 
                 Description = "Verrouiller la session" },
         new() { Type = SystemControlType.Sleep, Name = "Veille", Prefix = "sleep", Icon = "😴", 
@@ -115,8 +137,32 @@ public sealed class AppSettings
                 Description = "Éteindre l'ordinateur" },
         new() { Type = SystemControlType.Restart, Name = "Redémarrer", Prefix = "restart", Icon = "🔄", 
                 Description = "Redémarrer l'ordinateur" },
+        new() { Type = SystemControlType.Logoff, Name = "Déconnexion", Prefix = "logoff", Icon = "🚪", 
+                Description = "Déconnecter la session" },
+        
+        // Capture
         new() { Type = SystemControlType.Screenshot, Name = "Capture", Prefix = "screenshot", Icon = "📸", 
-                Description = "Prendre une capture d'écran", ArgumentHint = "[snip|primary]" }
+                Description = "Prendre une capture d'écran", ArgumentHint = "[snip|primary]" },
+        
+        // Système
+        new() { Type = SystemControlType.EmptyRecycleBin, Name = "Vider corbeille", Prefix = "emptybin", Icon = "🗑️", 
+                Description = "Vider la corbeille" },
+        new() { Type = SystemControlType.OpenTaskManager, Name = "Gestionnaire tâches", Prefix = "taskmgr", Icon = "📊", 
+                Description = "Ouvrir le Gestionnaire des tâches" },
+        new() { Type = SystemControlType.OpenWindowsSettings, Name = "Paramètres Windows", Prefix = "winsettings", Icon = "⚙️", 
+                Description = "Ouvrir les Paramètres Windows" },
+        new() { Type = SystemControlType.OpenControlPanel, Name = "Panneau config.", Prefix = "control", Icon = "🎛️", 
+                Description = "Ouvrir le Panneau de configuration" },
+        
+        // Maintenance
+        new() { Type = SystemControlType.EmptyTemp, Name = "Vider Temp", Prefix = "emptytemp", Icon = "🧹", 
+                Description = "Vider le dossier temporaire" },
+        new() { Type = SystemControlType.OpenCmdAdmin, Name = "CMD Admin", Prefix = "cmd", Icon = "⬛", 
+                Description = "Ouvrir l'invite de commandes (admin)" },
+        new() { Type = SystemControlType.OpenPowerShellAdmin, Name = "PowerShell Admin", Prefix = "powershell", Icon = "🔵", 
+                Description = "Ouvrir PowerShell (admin)" },
+        new() { Type = SystemControlType.RestartExplorer, Name = "Redém. Explorer", Prefix = "restartexplorer", Icon = "📁", 
+                Description = "Redémarrer l'Explorateur Windows" }
     ];
     
     /// <summary>
@@ -132,12 +178,38 @@ public sealed class AppSettings
             {
                 var json = File.ReadAllText(SettingsPath);
                 var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
-                return settings ?? new AppSettings();
+                if (settings != null)
+                {
+                    // Migration: ajouter les nouvelles commandes système manquantes
+                    settings.MigrateSystemCommands();
+                    System.Diagnostics.Debug.WriteLine($"[Settings] Chargé avec {settings.PinnedItems.Count} épingles");
+                    return settings;
+                }
             }
         }
-        catch { /* Retourne les paramètres par défaut en cas d'erreur */ }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Settings] Erreur chargement: {ex.Message}");
+        }
         
         return new AppSettings();
+    }
+
+    /// <summary>
+    /// Ajoute les commandes système manquantes (migration).
+    /// </summary>
+    private void MigrateSystemCommands()
+    {
+        var defaultCommands = GetDefaultSystemCommands();
+        var existingTypes = SystemCommands.Select(c => c.Type).ToHashSet();
+        
+        foreach (var cmd in defaultCommands)
+        {
+            if (!existingTypes.Contains(cmd.Type))
+            {
+                SystemCommands.Add(cmd);
+            }
+        }
     }
 
     public void Save()
@@ -147,8 +219,12 @@ public sealed class AppSettings
             Directory.CreateDirectory(SettingsDir);
             var json = JsonSerializer.Serialize(this, JsonOptions);
             File.WriteAllText(SettingsPath, json);
+            System.Diagnostics.Debug.WriteLine($"[Settings] Sauvegardé avec {PinnedItems.Count} épingles");
         }
-        catch { /* Ignore les erreurs de sauvegarde */ }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Settings] Erreur sauvegarde: {ex.Message}");
+        }
     }
     
     public void AddToSearchHistory(string query)
@@ -163,6 +239,83 @@ public sealed class AppSettings
     }
     
     public void ClearSearchHistory() => SearchHistory.Clear();
+    
+    // === Gestion des items épinglés ===
+    
+    /// <summary>
+    /// Épingle un item.
+    /// </summary>
+    public void PinItem(string name, string path, ResultType type, string? icon = null)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return;
+        
+        // Vérifier si déjà épinglé
+        if (PinnedItems.Any(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
+            return;
+        
+        PinnedItems.Add(new PinnedItem
+        {
+            Name = name,
+            Path = path,
+            Type = type,
+            Icon = icon,
+            PinnedAt = DateTime.Now,
+            Order = PinnedItems.Count
+        });
+    }
+    
+    /// <summary>
+    /// Désépingle un item.
+    /// </summary>
+    public bool UnpinItem(string path)
+    {
+        var item = PinnedItems.FirstOrDefault(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+        if (item != null)
+        {
+            PinnedItems.Remove(item);
+            // Réordonner
+            for (int i = 0; i < PinnedItems.Count; i++)
+                PinnedItems[i].Order = i;
+            return true;
+        }
+        return false;
+    }
+    
+    /// <summary>
+    /// Vérifie si un item est épinglé.
+    /// </summary>
+    public bool IsPinned(string path)
+    {
+        return PinnedItems.Any(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+    }
+    
+    /// <summary>
+    /// Déplace un item épinglé vers le haut.
+    /// </summary>
+    public void MovePinnedItemUp(string path)
+    {
+        var index = PinnedItems.FindIndex(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+        if (index > 0)
+        {
+            (PinnedItems[index], PinnedItems[index - 1]) = (PinnedItems[index - 1], PinnedItems[index]);
+            PinnedItems[index].Order = index;
+            PinnedItems[index - 1].Order = index - 1;
+        }
+    }
+    
+    /// <summary>
+    /// Déplace un item épinglé vers le bas.
+    /// </summary>
+    public void MovePinnedItemDown(string path)
+    {
+        var index = PinnedItems.FindIndex(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
+        if (index >= 0 && index < PinnedItems.Count - 1)
+        {
+            (PinnedItems[index], PinnedItems[index + 1]) = (PinnedItems[index + 1], PinnedItems[index]);
+            PinnedItems[index].Order = index;
+            PinnedItems[index + 1].Order = index + 1;
+        }
+    }
     
     public static void Reset()
     {
@@ -225,19 +378,33 @@ public sealed class WebSearchEngine
 
 /// <summary>
 /// Types d'actions de contrôle système.
+/// IMPORTANT: Ne pas réorganiser les valeurs existantes pour la compatibilité JSON!
 /// </summary>
 public enum SystemControlType
 {
-    Volume,
-    Mute,
-    Brightness,
-    Wifi,
-    Lock,
-    Sleep,
-    Hibernate,
-    Shutdown,
-    Restart,
-    Screenshot
+    // Valeurs originales (ne pas modifier l'ordre)
+    Volume = 0,
+    Mute = 1,
+    Brightness = 2,
+    Wifi = 3,
+    Lock = 4,
+    Sleep = 5,
+    Hibernate = 6,
+    Shutdown = 7,
+    Restart = 8,
+    Screenshot = 9,
+    
+    // Nouvelles valeurs (ajouter à la fin uniquement)
+    FlushDns = 10,
+    Logoff = 11,
+    EmptyRecycleBin = 12,
+    OpenTaskManager = 13,
+    OpenWindowsSettings = 14,
+    OpenControlPanel = 15,
+    EmptyTemp = 16,
+    OpenCmdAdmin = 17,
+    OpenPowerShellAdmin = 18,
+    RestartExplorer = 19
 }
 
 /// <summary>
@@ -267,5 +434,42 @@ public sealed class SystemControlCommand
         IsEnabled = IsEnabled,
         RequiresArgument = RequiresArgument,
         ArgumentHint = ArgumentHint
+    };
+}
+
+/// <summary>
+/// Item épinglé par l'utilisateur pour accès rapide.
+/// </summary>
+public sealed class PinnedItem
+{
+    public string Name { get; set; } = string.Empty;
+    public string Path { get; set; } = string.Empty;
+    public ResultType Type { get; set; }
+    public string? Icon { get; set; }
+    public DateTime PinnedAt { get; set; }
+    public int Order { get; set; }
+    
+    /// <summary>
+    /// Convertit en SearchResult pour l'affichage.
+    /// </summary>
+    public SearchResult ToSearchResult() => new()
+    {
+        Name = Name,
+        Path = Path,
+        Type = Type,
+        Description = "⭐ Épinglé",
+        DisplayIcon = Icon ?? GetDefaultIcon(),
+        Score = 10000 + (1000 - Order) // Score très élevé pour apparaître en premier
+    };
+    
+    private string GetDefaultIcon() => Type switch
+    {
+        ResultType.Application => "🚀",
+        ResultType.StoreApp => "🪧",
+        ResultType.File => "📄",
+        ResultType.Folder => "📁",
+        ResultType.Script => "⚡",
+        ResultType.Bookmark => "⭐",
+        _ => "📌"
     };
 }

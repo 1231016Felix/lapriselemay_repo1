@@ -1,12 +1,12 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using Microsoft.Win32;
 using QuickLauncher.Models;
 using QuickLauncher.Services;
 using QuickLauncher.ViewModels;
 
 using KeyEventArgs = System.Windows.Input.KeyEventArgs;
+using Clipboard = System.Windows.Clipboard;
 using MessageBox = System.Windows.MessageBox;
 
 namespace QuickLauncher.Views;
@@ -14,7 +14,7 @@ namespace QuickLauncher.Views;
 public partial class LauncherWindow : Window
 {
     private readonly LauncherViewModel _viewModel;
-    private readonly AppSettings _settings;
+    private AppSettings _settings;
     
     public event EventHandler? RequestOpenSettings;
     public event EventHandler? RequestQuit;
@@ -38,6 +38,8 @@ public partial class LauncherWindow : Window
         _viewModel.RequestOpenSettings += (_, _) => RequestOpenSettings?.Invoke(this, EventArgs.Empty);
         _viewModel.RequestQuit += (_, _) => RequestQuit?.Invoke(this, EventArgs.Empty);
         _viewModel.RequestReindex += (_, _) => RequestReindex?.Invoke(this, EventArgs.Empty);
+        _viewModel.RequestRename += OnRequestRename;
+        _viewModel.ShowNotification += OnShowNotification;
         
         _viewModel.PropertyChanged += (_, e) =>
         {
@@ -48,29 +50,44 @@ public partial class LauncherWindow : Window
                     : Visibility.Visible;
             }
         };
+    }
+    
+    private void OnRequestRename(object? sender, string path)
+    {
+        var name = System.IO.Path.GetFileName(path);
+        var dialog = new RenameDialog(name) { Owner = this };
         
-        // Lancement en simple clic ou double-clic selon le paramètre
-        if (_settings.SingleClickLaunch)
+        if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.NewName))
         {
-            ResultsList.PreviewMouseLeftButtonUp += (_, e) =>
+            var success = FileActionsService.Rename(path, dialog.NewName);
+            if (success)
             {
-                if (ResultsList.SelectedItem != null)
-                {
-                    _viewModel.ExecuteCommand.Execute(null);
-                    e.Handled = true;
-                }
-            };
+                RequestReindex?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                MessageBox.Show("Impossible de renommer le fichier.", "Erreur", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
-        else
-        {
-            ResultsList.MouseDoubleClick += (_, _) => _viewModel.ExecuteCommand.Execute(null);
-        }
+    }
+    
+    private void OnShowNotification(object? sender, string message)
+    {
+        // Pour l'instant, on peut utiliser une notification simple
+        // TODO: Implémenter un toast notification
+        System.Diagnostics.Debug.WriteLine($"[Notification] {message}");
     }
     
     private void ApplySettings()
     {
+        _settings = AppSettings.Load();
         Opacity = _settings.WindowOpacity;
         SettingsButton.Visibility = _settings.ShowSettingsButton ? Visibility.Visible : Visibility.Collapsed;
+        _viewModel.ShowPreviewPanel = _settings.ShowPreviewPanel;
+        
+        // Ajuster la largeur selon si le panneau de prévisualisation est visible
+        Width = _settings.ShowPreviewPanel ? 900 : 680;
     }
     
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
@@ -85,6 +102,9 @@ public partial class LauncherWindow : Window
     
     public void FocusSearchBox()
     {
+        _settings = AppSettings.Load();
+        ApplySettings();
+        _viewModel.ReloadSettings(); // Synchroniser les settings du ViewModel (épingles, etc.)
         _viewModel.Reset();
         CenterOnScreen();
         SearchBox.Focus();
@@ -93,6 +113,13 @@ public partial class LauncherWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Si le panneau d'actions est ouvert, gérer ses raccourcis
+        if (_viewModel.ShowActionsPanel)
+        {
+            HandleActionsKeyDown(e);
+            return;
+        }
+        
         // Raccourcis avec Ctrl
         if (Keyboard.Modifiers == ModifierKeys.Control)
         {
@@ -114,7 +141,61 @@ public partial class LauncherWindow : Window
                     RequestQuit?.Invoke(this, EventArgs.Empty);
                     e.Handled = true;
                     return;
+                    
+                case Key.P:
+                    _viewModel.TogglePreviewCommand.Execute(null);
+                    Width = _viewModel.ShowPreviewPanel ? 900 : 680;
+                    CenterOnScreen();
+                    e.Handled = true;
+                    return;
+                    
+                case Key.O:
+                    _viewModel.OpenLocationCommand.Execute(null);
+                    e.Handled = true;
+                    return;
+                    
+                case Key.T:
+                    // Ouvrir terminal
+                    if (_viewModel.SelectedIndex >= 0 && _viewModel.SelectedIndex < _viewModel.Results.Count)
+                    {
+                        var item = _viewModel.Results[_viewModel.SelectedIndex];
+                        FileActionExecutor.Execute(FileActionType.OpenInTerminal, item.Path);
+                    }
+                    e.Handled = true;
+                    return;
             }
+        }
+        
+        // Ctrl+Shift+C: Copier le chemin
+        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.C)
+        {
+            _viewModel.CopyPathCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+        
+        // Ctrl+Enter: Exécuter en admin
+        if (Keyboard.Modifiers == ModifierKeys.Control && e.Key == Key.Enter)
+        {
+            _viewModel.ExecuteAsAdminCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+        
+        // Ctrl+Shift+Enter: Ouvrir en navigation privée (pour les bookmarks/URLs)
+        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.Enter)
+        {
+            if (_viewModel.SelectedIndex >= 0 && _viewModel.SelectedIndex < _viewModel.Results.Count)
+            {
+                var item = _viewModel.Results[_viewModel.SelectedIndex];
+                if (item.Type is ResultType.Bookmark or ResultType.WebSearch)
+                {
+                    FileActionExecutor.Execute(FileActionType.OpenPrivate, item.Path);
+                    HideWindow();
+                }
+            }
+            e.Handled = true;
+            return;
         }
         
         // Raccourcis sans modificateurs
@@ -141,9 +222,98 @@ public partial class LauncherWindow : Window
                 break;
                 
             case Key.Tab:
-                _viewModel.MoveSelection(Keyboard.Modifiers == ModifierKeys.Shift ? -1 : 1);
+                // Tab ouvre le panneau d'actions
+                if (_viewModel.HasResults && _viewModel.SelectedIndex >= 0)
+                {
+                    _viewModel.ToggleActionsCommand.Execute(null);
+                }
                 e.Handled = true;
                 break;
+                
+            case Key.F2:
+                // Renommer
+                if (_viewModel.SelectedIndex >= 0 && _viewModel.SelectedIndex < _viewModel.Results.Count)
+                {
+                    var item = _viewModel.Results[_viewModel.SelectedIndex];
+                    if (item.Type is ResultType.File or ResultType.Folder or ResultType.Application)
+                    {
+                        OnRequestRename(this, item.Path);
+                    }
+                }
+                e.Handled = true;
+                break;
+                
+            case Key.Delete:
+                // Supprimer
+                if (_viewModel.SelectedIndex >= 0 && _viewModel.SelectedIndex < _viewModel.Results.Count)
+                {
+                    var item = _viewModel.Results[_viewModel.SelectedIndex];
+                    if (item.Type is ResultType.File or ResultType.Folder)
+                    {
+                        ConfirmAndDelete(item);
+                    }
+                }
+                e.Handled = true;
+                break;
+        }
+    }
+    
+    private void HandleActionsKeyDown(KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Escape:
+                _viewModel.ShowActionsPanel = false;
+                SearchBox.Focus();
+                e.Handled = true;
+                break;
+                
+            case Key.Enter:
+                _viewModel.ExecuteActionCommand.Execute(null);
+                e.Handled = true;
+                break;
+                
+            case Key.Down:
+                _viewModel.MoveActionSelection(1);
+                e.Handled = true;
+                break;
+                
+            case Key.Up:
+                _viewModel.MoveActionSelection(-1);
+                e.Handled = true;
+                break;
+                
+            case Key.Tab:
+                if (Keyboard.Modifiers == ModifierKeys.Shift)
+                    _viewModel.MoveActionSelection(-1);
+                else
+                    _viewModel.MoveActionSelection(1);
+                e.Handled = true;
+                break;
+        }
+    }
+    
+    private void ConfirmAndDelete(SearchResult item)
+    {
+        var result = MessageBox.Show(
+            $"Voulez-vous vraiment supprimer '{item.Name}' ?\n\nLe fichier sera envoyé à la corbeille.",
+            "Confirmer la suppression",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        
+        if (result == MessageBoxResult.Yes)
+        {
+            var success = FileActionsService.DeleteToRecycleBin(item.Path);
+            if (success)
+            {
+                RequestReindex?.Invoke(this, EventArgs.Empty);
+                HideWindow();
+            }
+            else
+            {
+                MessageBox.Show("Impossible de supprimer le fichier.", "Erreur", 
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
     }
     
@@ -153,6 +323,9 @@ public partial class LauncherWindow : Window
     {
         if (_settings.WindowPosition == "Remember")
         {
+            // Recharger les settings depuis le fichier pour ne pas écraser les changements
+            // du ViewModel (comme les épingles) avec une ancienne version
+            _settings = AppSettings.Load();
             _settings.LastWindowLeft = Left;
             _settings.LastWindowTop = Top;
             _settings.Save();
@@ -172,6 +345,32 @@ public partial class LauncherWindow : Window
     {
         _viewModel.SearchText = string.Empty;
         SearchBox.Focus();
+    }
+    
+    private void PreviewToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.TogglePreviewCommand.Execute(null);
+        Width = _viewModel.ShowPreviewPanel ? 900 : 680;
+        CenterOnScreen();
+    }
+    
+    private void PreviewPath_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (_viewModel.CurrentPreview != null)
+        {
+            Clipboard.SetText(_viewModel.CurrentPreview.FullPath);
+            OnShowNotification(this, "Chemin copié");
+        }
+    }
+    
+    private void ResultsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        _viewModel.ExecuteCommand.Execute(null);
+    }
+    
+    private void ActionsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        _viewModel.ExecuteActionCommand.Execute(null);
     }
     
     private void Window_Loaded(object sender, RoutedEventArgs e) => CenterOnScreen();
@@ -229,7 +428,7 @@ public partial class LauncherWindow : Window
         var item = GetContextItem(sender);
         if (item != null)
         {
-            FileActionsService.OpenContainingFolder(item.Path);
+            FileActionExecutor.Execute(FileActionType.OpenLocation, item.Path);
         }
     }
 
@@ -238,8 +437,8 @@ public partial class LauncherWindow : Window
         var item = GetContextItem(sender);
         if (item != null)
         {
-            FileActionsService.CopyPath(item.Path);
-            HideWindow();
+            FileActionExecutor.Execute(FileActionType.CopyPath, item.Path);
+            OnShowNotification(this, "Chemin copié");
         }
     }
 
@@ -248,8 +447,8 @@ public partial class LauncherWindow : Window
         var item = GetContextItem(sender);
         if (item != null)
         {
-            FileActionsService.CopyName(item.Path);
-            HideWindow();
+            FileActionExecutor.Execute(FileActionType.CopyName, item.Path);
+            OnShowNotification(this, "Nom copié");
         }
     }
 
@@ -258,7 +457,7 @@ public partial class LauncherWindow : Window
         var item = GetContextItem(sender);
         if (item != null)
         {
-            FileActionsService.RunAsAdmin(item.Path);
+            FileActionExecutor.Execute(FileActionType.RunAsAdmin, item.Path);
             HideWindow();
         }
     }
@@ -272,23 +471,23 @@ public partial class LauncherWindow : Window
             HideWindow();
         }
     }
+    
+    private void ContextMenu_OpenPrivate(object sender, RoutedEventArgs e)
+    {
+        var item = GetContextItem(sender);
+        if (item != null)
+        {
+            FileActionExecutor.Execute(FileActionType.OpenPrivate, item.Path);
+            HideWindow();
+        }
+    }
 
     private void ContextMenu_OpenTerminal(object sender, RoutedEventArgs e)
     {
         var item = GetContextItem(sender);
         if (item != null)
         {
-            FileActionsService.OpenTerminalHere(item.Path);
-            HideWindow();
-        }
-    }
-
-    private void ContextMenu_OpenPowerShell(object sender, RoutedEventArgs e)
-    {
-        var item = GetContextItem(sender);
-        if (item != null)
-        {
-            FileActionsService.OpenPowerShellHere(item.Path);
+            FileActionExecutor.Execute(FileActionType.OpenInTerminal, item.Path);
             HideWindow();
         }
     }
@@ -296,80 +495,18 @@ public partial class LauncherWindow : Window
     private void ContextMenu_Rename(object sender, RoutedEventArgs e)
     {
         var item = GetContextItem(sender);
-        if (item == null) return;
-
-        var dialog = new RenameDialog(item.Name)
+        if (item != null)
         {
-            Owner = this
-        };
-        
-        if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.NewName))
-        {
-            var success = FileActionsService.Rename(item.Path, dialog.NewName);
-            if (success)
-            {
-                // Demander une réindexation
-                RequestReindex?.Invoke(this, EventArgs.Empty);
-            }
-            else
-            {
-                MessageBox.Show("Impossible de renommer le fichier.", "Erreur", 
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-    }
-
-    private void ContextMenu_MoveTo(object sender, RoutedEventArgs e)
-    {
-        var item = GetContextItem(sender);
-        if (item == null) return;
-
-        var dialog = new System.Windows.Forms.FolderBrowserDialog
-        {
-            Description = "Sélectionnez le dossier de destination",
-            ShowNewFolderButton = true
-        };
-        
-        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-        {
-            var success = FileActionsService.MoveTo(item.Path, dialog.SelectedPath);
-            if (success)
-            {
-                RequestReindex?.Invoke(this, EventArgs.Empty);
-                HideWindow();
-            }
-            else
-            {
-                MessageBox.Show("Impossible de déplacer le fichier.", "Erreur", 
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            OnRequestRename(this, item.Path);
         }
     }
 
     private void ContextMenu_Delete(object sender, RoutedEventArgs e)
     {
         var item = GetContextItem(sender);
-        if (item == null) return;
-
-        var result = MessageBox.Show(
-            $"Voulez-vous vraiment supprimer '{item.Name}' ?\n\nLe fichier sera envoyé à la corbeille.",
-            "Confirmer la suppression",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
-        
-        if (result == MessageBoxResult.Yes)
+        if (item != null)
         {
-            var success = FileActionsService.DeleteToRecycleBin(item.Path);
-            if (success)
-            {
-                RequestReindex?.Invoke(this, EventArgs.Empty);
-                HideWindow();
-            }
-            else
-            {
-                MessageBox.Show("Impossible de supprimer le fichier.", "Erreur", 
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            ConfirmAndDelete(item);
         }
     }
 
