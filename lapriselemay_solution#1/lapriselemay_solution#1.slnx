@@ -12,4 +12,5 @@
   </Folder>
   <Project Path="QuickLauncher/QuickLauncher.csproj" Id="a1b2c3d4-e5f6-7890-abcd-ef1234567890" />
   <Project Path="WallpaperManager/WallpaperManager.csproj" Id="c3d4e5f6-a7b8-9012-cdef-345678901234" />
+  <Project Path="TempCleaner/TempCleaner.vcxproj" Id="f1e2d3c4-b5a6-7890-abcd-ef1234567890" />
 </Solution>
