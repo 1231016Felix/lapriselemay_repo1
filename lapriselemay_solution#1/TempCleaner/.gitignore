@@ -1,0 +1,12 @@
+# Build outputs
+bin/
+Debug/
+Release/
+*.obj
+*.pdb
+*.ilk
+*.log
+
+# Visual Studio
+.vs/
+*.user
