@@ -6,6 +6,7 @@
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx11.h"
 #include <d3d11.h>
+#include "resource.h"
 #include <tchar.h>
 #include <string>
 #include <thread>
@@ -142,9 +143,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     g_options = TempCleaner::Cleaner::loadOptions();
 
     // Creer la fenetre
+    HINSTANCE hInst = GetModuleHandle(nullptr);
     WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, 
-                       GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr, 
-                       L"TempCleanerClass", nullptr };
+                       hInst, 
+                       LoadIcon(hInst, MAKEINTRESOURCE(IDI_TEMPCLEANER)),
+                       LoadCursor(nullptr, IDC_ARROW), nullptr, nullptr, 
+                       L"TempCleanerClass", 
+                       LoadIcon(hInst, MAKEINTRESOURCE(IDI_TEMPCLEANER)) };
     RegisterClassExW(&wc);
     
     HWND hwnd = CreateWindowW(wc.lpszClassName, L"TempCleaner", 
