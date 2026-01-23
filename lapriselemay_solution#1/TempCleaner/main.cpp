@@ -313,13 +313,15 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 
         // Fenetre parametres
         if (g_showSettings) {
-            ImGui::SetNextWindowSize(ImVec2(340, 480));
+            ImGui::SetNextWindowSize(ImVec2(340, 420));
             ImGui::Begin("Parametres", &g_showSettings, ImGuiWindowFlags_NoResize);
+            
+            // Reduire l'espacement pour cette fenetre
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 6));
             
             if (ImGui::BeginTabBar("SettingsTabs")) {
                 // Onglet Nettoyage de base
                 if (ImGui::BeginTabItem("Base")) {
-                    ImGui::Spacing();
                     ImGui::Checkbox("Temp utilisateur (%TEMP%)", &g_options.cleanUserTemp);
                     ImGui::Checkbox("Temp Windows", &g_options.cleanWindowsTemp);
                     ImGui::Checkbox("Prefetch", &g_options.cleanPrefetch);
@@ -331,9 +333,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                 
                 // Onglet Nettoyage avance
                 if (ImGui::BeginTabItem("Avance")) {
-                    ImGui::Spacing();
                     ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "Necessite les droits admin");
-                    ImGui::Spacing();
                     ImGui::Checkbox("Cache Windows Update", &g_options.cleanWindowsUpdate);
                     ImGui::Checkbox("Logs systeme", &g_options.cleanSystemLogs);
                     ImGui::Checkbox("Crash dumps", &g_options.cleanCrashDumps);
@@ -344,23 +344,39 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                     ImGui::EndTabItem();
                 }
                 
+                // Onglet Systeme supplementaire
+                if (ImGui::BeginTabItem("Systeme")) {
+                    ImGui::Checkbox("Cache DNS", &g_options.cleanDnsCache);
+                    ImGui::Checkbox("Raccourcis casses", &g_options.cleanBrokenShortcuts);
+                    ImGui::Checkbox("Cache Windows Store", &g_options.cleanWindowsStoreCache);
+                    ImGui::Checkbox("Presse-papiers", &g_options.cleanClipboard);
+                    ImGui::Checkbox("Fichiers Chkdsk", &g_options.cleanChkdskFiles);
+                    ImGui::Checkbox("Cache reseau / IIS", &g_options.cleanNetworkCache);
+                    ImGui::Separator();
+                    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "Danger:");
+                    ImGui::Checkbox("Windows.old", &g_options.cleanWindowsOld);
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Supprime l'ancienne installation Windows.\nImpossible de revenir en arriere!");
+                    }
+                    ImGui::EndTabItem();
+                }
+                
                 ImGui::EndTabBar();
             }
             
-            ImGui::Spacing();
             ImGui::Separator();
-            ImGui::Spacing();
             
-            if (ImGui::Button("Sauvegarder", ImVec2(120, 30))) {
+            if (ImGui::Button("Sauvegarder", ImVec2(100, 28))) {
                 TempCleaner::Cleaner::saveOptions(g_options);
                 g_showSettings = false;
             }
             ImGui::SameLine();
-            if (ImGui::Button("Annuler", ImVec2(120, 30))) {
+            if (ImGui::Button("Annuler", ImVec2(100, 28))) {
                 g_options = TempCleaner::Cleaner::loadOptions();
                 g_showSettings = false;
             }
             
+            ImGui::PopStyleVar(); // Restaurer l'espacement
             ImGui::End();
         }
 

@@ -40,4 +40,9 @@
       <Filter>Ressources</Filter>
     </Image>
   </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="app.manifest">
+      <Filter>Ressources</Filter>
+    </Manifest>
+  </ItemGroup>
 </Project>

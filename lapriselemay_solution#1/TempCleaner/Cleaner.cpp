@@ -3,9 +3,13 @@
 #include <ShlObj.h>
 #include <shellapi.h>
 #include <winevt.h>
+#include <shobjidl.h>
+#include <objbase.h>
 #include <fstream>
+#include <sstream>
 
 #pragma comment(lib, "wevtapi.lib")
+#pragma comment(lib, "ole32.lib")
 
 namespace fs = std::filesystem;
 
@@ -112,6 +116,43 @@ namespace TempCleaner {
         if (options.cleanFontCache) {
             tasks.emplace_back(L"Cache polices", [&]() {
                 cleanDirectory(getFontCachePath(), stats, progressCallback, L"Cache polices");
+            });
+        }
+        
+        // Nouvelles options Windows
+        if (options.cleanDnsCache) {
+            tasks.emplace_back(L"Cache DNS", [&]() {
+                flushDnsCache(stats);
+            });
+        }
+        if (options.cleanBrokenShortcuts) {
+            tasks.emplace_back(L"Raccourcis casses", [&]() {
+                cleanBrokenShortcuts(stats);
+            });
+        }
+        if (options.cleanWindowsOld) {
+            tasks.emplace_back(L"Windows.old", [&]() {
+                cleanWindowsOld(stats);
+            });
+        }
+        if (options.cleanWindowsStoreCache) {
+            tasks.emplace_back(L"Cache Windows Store", [&]() {
+                cleanWindowsStoreCache(stats);
+            });
+        }
+        if (options.cleanClipboard) {
+            tasks.emplace_back(L"Presse-papiers", [&]() {
+                clearClipboard(stats);
+            });
+        }
+        if (options.cleanChkdskFiles) {
+            tasks.emplace_back(L"Fichiers Chkdsk", [&]() {
+                cleanChkdskFiles(stats);
+            });
+        }
+        if (options.cleanNetworkCache) {
+            tasks.emplace_back(L"Cache reseau", [&]() {
+                cleanNetworkCache(stats);
             });
         }
         
@@ -323,7 +364,285 @@ namespace TempCleaner {
         }
     }
 
-    // Chemins de base
+    // ========== NOUVELLES METHODES ==========
+
+    void Cleaner::flushDnsCache(CleaningStats& stats) {
+        // Utiliser DnsFlushResolverCache via ipconfig
+        STARTUPINFOW si = { sizeof(si) };
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        PROCESS_INFORMATION pi;
+        
+        wchar_t cmd[] = L"ipconfig /flushdns";
+        if (CreateProcessW(nullptr, cmd, nullptr, nullptr, FALSE, 
+            CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            WaitForSingleObject(pi.hProcess, 5000);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+            stats.filesDeleted++; // Compte comme une action réussie
+        } else {
+            stats.errors++;
+            ErrorInfo error;
+            error.filePath = L"DNS Cache";
+            error.category = L"Cache DNS";
+            error.errorMessage = GetWindowsErrorMessage(GetLastError());
+            stats.errorDetails.push_back(error);
+        }
+    }
+
+    bool Cleaner::isShortcutBroken(const fs::path& shortcutPath) {
+        CoInitialize(nullptr);
+        bool isBroken = false;
+        
+        IShellLinkW* pShellLink = nullptr;
+        IPersistFile* pPersistFile = nullptr;
+        
+        HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER,
+            IID_IShellLinkW, (void**)&pShellLink);
+        
+        if (SUCCEEDED(hr)) {
+            hr = pShellLink->QueryInterface(IID_IPersistFile, (void**)&pPersistFile);
+            if (SUCCEEDED(hr)) {
+                hr = pPersistFile->Load(shortcutPath.c_str(), STGM_READ);
+                if (SUCCEEDED(hr)) {
+                    wchar_t targetPath[MAX_PATH];
+                    WIN32_FIND_DATAW findData;
+                    hr = pShellLink->GetPath(targetPath, MAX_PATH, &findData, SLGP_RAWPATH);
+                    
+                    if (SUCCEEDED(hr) && targetPath[0] != L'\0') {
+                        // Vérifier si la cible existe
+                        // Ignorer les chemins spéciaux (UWP apps, etc.)
+                        if (wcsstr(targetPath, L":\\") != nullptr || 
+                            wcsncmp(targetPath, L"\\\\", 2) == 0) {
+                            // Expand environment variables
+                            wchar_t expandedPath[MAX_PATH];
+                            ExpandEnvironmentStringsW(targetPath, expandedPath, MAX_PATH);
+                            
+                            if (!fs::exists(expandedPath)) {
+                                isBroken = true;
+                            }
+                        }
+                    }
+                }
+                pPersistFile->Release();
+            }
+            pShellLink->Release();
+        }
+        
+        CoUninitialize();
+        return isBroken;
+    }
+
+    void Cleaner::cleanBrokenShortcuts(CleaningStats& stats) {
+        auto folders = getShortcutFolders();
+        
+        for (const auto& folder : folders) {
+            if (m_stopRequested) return;
+            if (!fs::exists(folder)) continue;
+            
+            std::error_code ec;
+            for (const auto& entry : fs::recursive_directory_iterator(folder,
+                fs::directory_options::skip_permission_denied, ec)) {
+                
+                if (m_stopRequested) return;
+                
+                try {
+                    if (entry.is_regular_file() && 
+                        entry.path().extension() == L".lnk") {
+                        
+                        if (isShortcutBroken(entry.path())) {
+                            auto fileSize = entry.file_size(ec);
+                            if (fs::remove(entry.path(), ec)) {
+                                stats.filesDeleted++;
+                                stats.bytesFreed += fileSize;
+                            } else {
+                                stats.errors++;
+                                ErrorInfo error;
+                                error.filePath = entry.path().wstring();
+                                error.category = L"Raccourcis casses";
+                                error.errorMessage = GetErrorCodeMessage(ec);
+                                stats.errorDetails.push_back(error);
+                            }
+                        }
+                    }
+                } catch (...) {
+                    // Ignorer les erreurs individuelles
+                }
+            }
+        }
+    }
+
+    void Cleaner::cleanWindowsOld(CleaningStats& stats) {
+        auto windowsOldPath = getWindowsOldPath();
+        if (!fs::exists(windowsOldPath)) return;
+        
+        // Windows.old nécessite des permissions spéciales
+        // Utiliser la commande système pour le supprimer
+        std::wstring cmd = L"cmd.exe /c rd /s /q \"" + windowsOldPath.wstring() + L"\"";
+        
+        STARTUPINFOW si = { sizeof(si) };
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        PROCESS_INFORMATION pi;
+        
+        // Calculer la taille avant suppression
+        uint64_t totalSize = 0;
+        uint64_t fileCount = 0;
+        std::error_code ec;
+        
+        try {
+            for (const auto& entry : fs::recursive_directory_iterator(windowsOldPath,
+                fs::directory_options::skip_permission_denied, ec)) {
+                if (entry.is_regular_file()) {
+                    totalSize += entry.file_size(ec);
+                    fileCount++;
+                }
+            }
+        } catch (...) {}
+        
+        // Prendre possession et supprimer
+        std::wstring takeownCmd = L"cmd.exe /c takeown /f \"" + windowsOldPath.wstring() + 
+            L"\" /r /d y && icacls \"" + windowsOldPath.wstring() + 
+            L"\" /grant administrators:F /t /q && rd /s /q \"" + windowsOldPath.wstring() + L"\"";
+        
+        std::vector<wchar_t> cmdBuffer(takeownCmd.begin(), takeownCmd.end());
+        cmdBuffer.push_back(L'\0');
+        
+        if (CreateProcessW(nullptr, cmdBuffer.data(), nullptr, nullptr, FALSE,
+            CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            WaitForSingleObject(pi.hProcess, 300000); // 5 minutes max
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+            
+            if (!fs::exists(windowsOldPath)) {
+                stats.filesDeleted += fileCount;
+                stats.bytesFreed += totalSize;
+            } else {
+                stats.errors++;
+                ErrorInfo error;
+                error.filePath = windowsOldPath.wstring();
+                error.category = L"Windows.old";
+                error.errorMessage = L"Suppression partielle ou echouee";
+                stats.errorDetails.push_back(error);
+            }
+        } else {
+            stats.errors++;
+            ErrorInfo error;
+            error.filePath = windowsOldPath.wstring();
+            error.category = L"Windows.old";
+            error.errorMessage = GetWindowsErrorMessage(GetLastError());
+            stats.errorDetails.push_back(error);
+        }
+    }
+
+    void Cleaner::cleanWindowsStoreCache(CleaningStats& stats) {
+        // Réinitialiser le cache Windows Store via wsreset
+        STARTUPINFOW si = { sizeof(si) };
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        PROCESS_INFORMATION pi;
+        
+        wchar_t cmd[] = L"wsreset.exe";
+        if (CreateProcessW(nullptr, cmd, nullptr, nullptr, FALSE,
+            CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            WaitForSingleObject(pi.hProcess, 30000); // 30 secondes max
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+            stats.filesDeleted++;
+        }
+        
+        // Nettoyer aussi le dossier cache manuellement
+        auto storeCachePath = getWindowsStoreCachePath();
+        if (fs::exists(storeCachePath)) {
+            cleanDirectory(storeCachePath, stats, nullptr, L"Cache Windows Store");
+        }
+    }
+
+    void Cleaner::clearClipboard(CleaningStats& stats) {
+        if (OpenClipboard(nullptr)) {
+            if (EmptyClipboard()) {
+                stats.filesDeleted++;
+            } else {
+                stats.errors++;
+                ErrorInfo error;
+                error.filePath = L"Clipboard";
+                error.category = L"Presse-papiers";
+                error.errorMessage = GetWindowsErrorMessage(GetLastError());
+                stats.errorDetails.push_back(error);
+            }
+            CloseClipboard();
+        } else {
+            stats.errors++;
+            ErrorInfo error;
+            error.filePath = L"Clipboard";
+            error.category = L"Presse-papiers";
+            error.errorMessage = L"Impossible d'ouvrir le presse-papiers";
+            stats.errorDetails.push_back(error);
+        }
+    }
+
+    void Cleaner::cleanChkdskFiles(CleaningStats& stats) {
+        auto chkdskPaths = getChkdskFilePaths();
+        
+        for (const auto& path : chkdskPaths) {
+            if (m_stopRequested) return;
+            
+            if (fs::is_directory(path)) {
+                cleanDirectory(path, stats, nullptr, L"Fichiers Chkdsk");
+            } else if (fs::exists(path)) {
+                std::error_code ec;
+                auto fileSize = fs::file_size(path, ec);
+                if (fs::remove(path, ec)) {
+                    stats.filesDeleted++;
+                    stats.bytesFreed += fileSize;
+                } else {
+                    stats.errors++;
+                    ErrorInfo error;
+                    error.filePath = path.wstring();
+                    error.category = L"Fichiers Chkdsk";
+                    error.errorMessage = GetErrorCodeMessage(ec);
+                    stats.errorDetails.push_back(error);
+                }
+            }
+        }
+    }
+
+    void Cleaner::cleanNetworkCache(CleaningStats& stats) {
+        auto networkPaths = getNetworkCachePaths();
+        
+        for (const auto& path : networkPaths) {
+            if (m_stopRequested) return;
+            if (fs::exists(path)) {
+                cleanDirectory(path, stats, nullptr, L"Cache reseau");
+            }
+        }
+        
+        // Nettoyer aussi le cache ARP
+        STARTUPINFOW si = { sizeof(si) };
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        PROCESS_INFORMATION pi;
+        
+        wchar_t arpCmd[] = L"netsh interface ip delete arpcache";
+        if (CreateProcessW(nullptr, arpCmd, nullptr, nullptr, FALSE,
+            CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            WaitForSingleObject(pi.hProcess, 5000);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        }
+        
+        // Nettoyer le cache NetBIOS
+        wchar_t nbtCmd[] = L"nbtstat -R";
+        if (CreateProcessW(nullptr, nbtCmd, nullptr, nullptr, FALSE,
+            CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
+            WaitForSingleObject(pi.hProcess, 5000);
+            CloseHandle(pi.hProcess);
+            CloseHandle(pi.hThread);
+        }
+    }
+
+    // ========== CHEMINS ==========
+
     fs::path Cleaner::getUserTempPath() const {
         wchar_t path[MAX_PATH];
         GetTempPathW(MAX_PATH, path);
@@ -350,7 +669,6 @@ namespace TempCleaner {
         return {};
     }
 
-    // Chemins avancés
     fs::path Cleaner::getWindowsUpdateCachePath() const {
         wchar_t winDir[MAX_PATH];
         GetWindowsDirectoryW(winDir, MAX_PATH);
@@ -383,23 +701,33 @@ namespace TempCleaner {
         return fs::path(winDir) / L"ServiceProfiles" / L"LocalService" / L"AppData" / L"Local" / L"FontCache";
     }
 
+    fs::path Cleaner::getWindowsOldPath() const {
+        wchar_t sysDir[MAX_PATH];
+        GetSystemDirectoryW(sysDir, MAX_PATH);
+        // Extraire la lettre du lecteur système (ex: C:)
+        std::wstring sysDrive(sysDir, 2);
+        return fs::path(sysDrive) / L"Windows.old";
+    }
+
+    fs::path Cleaner::getWindowsStoreCachePath() const {
+        wchar_t localAppData[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, localAppData))) {
+            return fs::path(localAppData) / L"Packages" / L"Microsoft.WindowsStore_8wekyb3d8bbwe" / L"LocalCache";
+        }
+        return {};
+    }
+
     std::vector<fs::path> Cleaner::getSystemLogPaths() const {
         std::vector<fs::path> paths;
         wchar_t winDir[MAX_PATH];
         GetWindowsDirectoryW(winDir, MAX_PATH);
         fs::path winPath(winDir);
         
-        // Logs CBS
         paths.push_back(winPath / L"Logs" / L"CBS");
-        // Logs DISM
         paths.push_back(winPath / L"Logs" / L"DISM");
-        // Logs Windows Update
         paths.push_back(winPath / L"Logs" / L"WindowsUpdate");
-        // Logs SIH (Service Initiated Healing)
         paths.push_back(winPath / L"Logs" / L"SIH");
-        // Panther (installation logs)
         paths.push_back(winPath / L"Panther");
-        // Memory dumps log
         paths.push_back(winPath / L"LiveKernelReports");
         
         return paths;
@@ -411,20 +739,15 @@ namespace TempCleaner {
         GetWindowsDirectoryW(winDir, MAX_PATH);
         fs::path winPath(winDir);
         
-        // Minidumps
         paths.push_back(winPath / L"Minidump");
-        
-        // Memory.dmp
         paths.push_back(winPath / L"MEMORY.DMP");
         
-        // Local crash dumps
         wchar_t localAppData[MAX_PATH];
         if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_LOCAL_APPDATA, nullptr, 0, localAppData))) {
             paths.push_back(fs::path(localAppData) / L"CrashDumps");
             paths.push_back(fs::path(localAppData) / L"Microsoft" / L"Windows" / L"WER");
         }
         
-        // ProgramData crash reports
         wchar_t programData[MAX_PATH];
         if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_COMMON_APPDATA, nullptr, 0, programData))) {
             paths.push_back(fs::path(programData) / L"Microsoft" / L"Windows" / L"WER");
@@ -473,10 +796,118 @@ namespace TempCleaner {
         return paths;
     }
 
+    std::vector<fs::path> Cleaner::getShortcutFolders() const {
+        std::vector<fs::path> paths;
+        
+        // Bureau utilisateur
+        wchar_t desktop[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_DESKTOP, nullptr, 0, desktop))) {
+            paths.push_back(desktop);
+        }
+        
+        // Bureau commun (tous les utilisateurs)
+        wchar_t commonDesktop[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_COMMON_DESKTOPDIRECTORY, nullptr, 0, commonDesktop))) {
+            paths.push_back(commonDesktop);
+        }
+        
+        // Menu Démarrer utilisateur
+        wchar_t startMenu[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_STARTMENU, nullptr, 0, startMenu))) {
+            paths.push_back(startMenu);
+        }
+        
+        // Menu Démarrer commun
+        wchar_t commonStartMenu[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_COMMON_STARTMENU, nullptr, 0, commonStartMenu))) {
+            paths.push_back(commonStartMenu);
+        }
+        
+        // Barre des tâches (épinglé)
+        wchar_t appData[MAX_PATH];
+        if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, 0, appData))) {
+            paths.push_back(fs::path(appData) / L"Microsoft" / L"Internet Explorer" / L"Quick Launch" / L"User Pinned" / L"TaskBar");
+        }
+        
+        return paths;
+    }
+
+    std::vector<fs::path> Cleaner::getChkdskFilePaths() const {
+        std::vector<fs::path> paths;
+        
+        // Récupérer tous les lecteurs
+        DWORD drives = GetLogicalDrives();
+        for (char letter = 'A'; letter <= 'Z'; letter++) {
+            if (drives & (1 << (letter - 'A'))) {
+                std::wstring root = std::wstring(1, letter) + L":\\";
+                UINT driveType = GetDriveTypeW(root.c_str());
+                
+                // Seulement les disques fixes
+                if (driveType == DRIVE_FIXED) {
+                    // Dossier FOUND.xxx (fichiers récupérés par chkdsk)
+                    std::error_code ec;
+                    for (const auto& entry : fs::directory_iterator(root, 
+                        fs::directory_options::skip_permission_denied, ec)) {
+                        try {
+                            if (entry.is_directory()) {
+                                std::wstring name = entry.path().filename().wstring();
+                                // FOUND.000, FOUND.001, etc.
+                                if (name.length() >= 6 && 
+                                    name.substr(0, 6) == L"FOUND.") {
+                                    paths.push_back(entry.path());
+                                }
+                            }
+                        } catch (...) {}
+                    }
+                    
+                    // Fichiers .chk à la racine
+                    for (const auto& entry : fs::directory_iterator(root,
+                        fs::directory_options::skip_permission_denied, ec)) {
+                        try {
+                            if (entry.is_regular_file() && 
+                                entry.path().extension() == L".chk") {
+                                paths.push_back(entry.path());
+                            }
+                        } catch (...) {}
+                    }
+                }
+            }
+        }
+        
+        return paths;
+    }
+
+    std::vector<fs::path> Cleaner::getNetworkCachePaths() const {
+        std::vector<fs::path> paths;
+        wchar_t winDir[MAX_PATH];
+        GetWindowsDirectoryW(winDir, MAX_PATH);
+        fs::path winPath(winDir);
+        
+        // IIS Logs (si IIS est installé)
+        wchar_t sysDir[MAX_PATH];
+        GetSystemDirectoryW(sysDir, MAX_PATH);
+        std::wstring sysDrive(sysDir, 2);
+        paths.push_back(fs::path(sysDrive) / L"inetpub" / L"logs" / L"LogFiles");
+        
+        // HTTP Error Logs
+        paths.push_back(winPath / L"System32" / L"LogFiles" / L"HTTPERR");
+        
+        // Windows Networking logs
+        paths.push_back(winPath / L"System32" / L"LogFiles" / L"WMI");
+        
+        // Offline Files cache
+        paths.push_back(winPath / L"CSC");
+        
+        // Downloaded Program Files (ActiveX, etc.)
+        paths.push_back(winPath / L"Downloaded Program Files");
+        
+        return paths;
+    }
+
+    // ========== SAUVEGARDE/CHARGEMENT ==========
+
     void Cleaner::saveOptions(const CleaningOptions& options) {
         std::wstring configPath = getConfigPath();
-        
-        // Créer le dossier si nécessaire
         fs::create_directories(fs::path(configPath).parent_path());
         
         std::wofstream file(configPath);
@@ -497,6 +928,14 @@ namespace TempCleaner {
             file << L"DeliveryOptimization=" << (options.cleanDeliveryOptimization ? 1 : 0) << L"\n";
             file << L"WindowsInstaller=" << (options.cleanWindowsInstaller ? 1 : 0) << L"\n";
             file << L"FontCache=" << (options.cleanFontCache ? 1 : 0) << L"\n";
+            // Nouvelles options
+            file << L"DnsCache=" << (options.cleanDnsCache ? 1 : 0) << L"\n";
+            file << L"BrokenShortcuts=" << (options.cleanBrokenShortcuts ? 1 : 0) << L"\n";
+            file << L"WindowsOld=" << (options.cleanWindowsOld ? 1 : 0) << L"\n";
+            file << L"WindowsStoreCache=" << (options.cleanWindowsStoreCache ? 1 : 0) << L"\n";
+            file << L"Clipboard=" << (options.cleanClipboard ? 1 : 0) << L"\n";
+            file << L"ChkdskFiles=" << (options.cleanChkdskFiles ? 1 : 0) << L"\n";
+            file << L"NetworkCache=" << (options.cleanNetworkCache ? 1 : 0) << L"\n";
         }
     }
 
@@ -525,6 +964,14 @@ namespace TempCleaner {
         options.cleanDeliveryOptimization = readBool(L"DeliveryOptimization");
         options.cleanWindowsInstaller = readBool(L"WindowsInstaller");
         options.cleanFontCache = readBool(L"FontCache");
+        // Nouvelles options
+        options.cleanDnsCache = readBool(L"DnsCache");
+        options.cleanBrokenShortcuts = readBool(L"BrokenShortcuts");
+        options.cleanWindowsOld = readBool(L"WindowsOld");
+        options.cleanWindowsStoreCache = readBool(L"WindowsStoreCache");
+        options.cleanClipboard = readBool(L"Clipboard");
+        options.cleanChkdskFiles = readBool(L"ChkdskFiles");
+        options.cleanNetworkCache = readBool(L"NetworkCache");
         
         return options;
     }

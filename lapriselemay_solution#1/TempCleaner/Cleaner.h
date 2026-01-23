@@ -41,6 +41,15 @@ namespace TempCleaner {
         bool cleanDeliveryOptimization = false;
         bool cleanWindowsInstaller = false;
         bool cleanFontCache = false;
+        
+        // Nouvelles options Windows
+        bool cleanDnsCache = false;
+        bool cleanBrokenShortcuts = false;
+        bool cleanWindowsOld = false;
+        bool cleanWindowsStoreCache = false;
+        bool cleanClipboard = false;
+        bool cleanChkdskFiles = false;
+        bool cleanNetworkCache = false;
     };
 
     // Callback pour le progrès
@@ -75,6 +84,18 @@ namespace TempCleaner {
         void cleanEventLogs(CleaningStats& stats);
         void cleanWithCommand(const std::wstring& command, CleaningStats& stats);
         
+        // Nouvelles méthodes de nettoyage
+        void flushDnsCache(CleaningStats& stats);
+        void cleanBrokenShortcuts(CleaningStats& stats);
+        void cleanWindowsOld(CleaningStats& stats);
+        void cleanWindowsStoreCache(CleaningStats& stats);
+        void clearClipboard(CleaningStats& stats);
+        void cleanChkdskFiles(CleaningStats& stats);
+        void cleanNetworkCache(CleaningStats& stats);
+        
+        // Helper pour les raccourcis
+        bool isShortcutBroken(const std::filesystem::path& shortcutPath);
+        
         // Récupère les chemins des dossiers
         std::filesystem::path getUserTempPath() const;
         std::filesystem::path getWindowsTempPath() const;
@@ -85,9 +106,14 @@ namespace TempCleaner {
         std::filesystem::path getThumbnailCachePath() const;
         std::filesystem::path getWindowsInstallerPatchPath() const;
         std::filesystem::path getFontCachePath() const;
+        std::filesystem::path getWindowsOldPath() const;
+        std::filesystem::path getWindowsStoreCachePath() const;
         std::vector<std::filesystem::path> getSystemLogPaths() const;
         std::vector<std::filesystem::path> getCrashDumpPaths() const;
         std::vector<std::filesystem::path> getBrowserCachePaths() const;
+        std::vector<std::filesystem::path> getShortcutFolders() const;
+        std::vector<std::filesystem::path> getChkdskFilePaths() const;
+        std::vector<std::filesystem::path> getNetworkCachePaths() const;
     };
 
 } // namespace TempCleaner
