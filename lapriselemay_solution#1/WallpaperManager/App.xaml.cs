@@ -18,6 +18,7 @@ public partial class App : Application
     private TrayIconService? _trayIconService;
     private static WallpaperRotationService? _rotationService;
     private static AnimatedWallpaperService? _animatedService;
+    private static DynamicWallpaperService? _dynamicService;
     private static SystemMonitorService? _systemMonitorService;
     private static bool _isInitialized;
     private static bool _mainWindowVisible;
@@ -80,6 +81,7 @@ public partial class App : Application
         
         _rotationService = new WallpaperRotationService();
         _animatedService = new AnimatedWallpaperService();
+        _dynamicService = new DynamicWallpaperService();
         _systemMonitorService = new SystemMonitorService();
         _isInitialized = true;
     }
@@ -200,6 +202,13 @@ public partial class App : Application
             _animatedService = null;
         }
         
+        if (_dynamicService != null)
+        {
+            _dynamicService.Stop();
+            _dynamicService.Dispose();
+            _dynamicService = null;
+        }
+        
         // Disposer le tray icon
         _trayIconService?.Dispose();
         _trayIconService = null;
@@ -245,6 +254,9 @@ public partial class App : Application
                 {
                     _rotationService?.Resume();
                 }
+                // Rafraîchir le wallpaper dynamique si actif
+                _dynamicService?.Refresh();
+                
                 if (_systemMonitorService != null && !_systemMonitorService.ShouldPauseAnimated())
                 {
                     // Note: Les fonds animés ne reprennent pas automatiquement après veille
@@ -320,6 +332,16 @@ public partial class App : Application
             if (!_isInitialized || _animatedService == null)
                 throw new InvalidOperationException("App non initialisée");
             return _animatedService;
+        }
+    }
+    
+    public static DynamicWallpaperService DynamicService
+    {
+        get
+        {
+            if (!_isInitialized || _dynamicService == null)
+                throw new InvalidOperationException("App non initialisée");
+            return _dynamicService;
         }
     }
     

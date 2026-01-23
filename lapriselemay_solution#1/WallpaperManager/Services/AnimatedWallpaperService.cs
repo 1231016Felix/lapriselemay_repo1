@@ -10,7 +10,9 @@ public sealed class AnimatedWallpaperService : IDisposable
 {
     private LibVLC? _libVLC;
     private MediaPlayer? _mediaPlayer;
+    private Media? _currentMedia;
     private Window? _videoWindow;
+    private LibVLCSharp.WPF.VideoView? _videoView;
     private bool _isPlaying;
     private volatile bool _disposed;
     private volatile bool _libVLCInitialized;
@@ -26,7 +28,6 @@ public sealed class AnimatedWallpaperService : IDisposable
     
     private void EnsureLibVLCInitialized()
     {
-        // Double-check locking pattern avec volatile
         if (_libVLCInitialized || _disposed) return;
         
         lock (_lock)
@@ -36,8 +37,14 @@ public sealed class AnimatedWallpaperService : IDisposable
             try
             {
                 Core.Initialize();
-                _libVLC = new LibVLC("--no-audio", "--input-repeat=65535", "--quiet");
+                _libVLC = new LibVLC(
+                    "--no-audio", 
+                    "--input-repeat=65535", 
+                    "--quiet",
+                    "--no-video-title-show"
+                );
                 _libVLCInitialized = true;
+                System.Diagnostics.Debug.WriteLine("LibVLC initialisé avec succès");
             }
             catch (Exception ex)
             {
@@ -56,13 +63,21 @@ public sealed class AnimatedWallpaperService : IDisposable
         if (wallpaper.Type is not WallpaperType.Video and not WallpaperType.Animated)
             return;
         
-        // Initialisation à la demande
+        if (!System.IO.File.Exists(wallpaper.FilePath))
+        {
+            System.Diagnostics.Debug.WriteLine($"Fichier introuvable: {wallpaper.FilePath}");
+            return;
+        }
+        
         EnsureLibVLCInitialized();
         
         if (_libVLC == null)
             return;
         
         Stop();
+        
+        // Invalider le cache WorkerW pour s'assurer d'avoir le bon handle
+        DesktopWindowApi.InvalidateCache();
         
         System.Windows.Application.Current?.Dispatcher.Invoke(() =>
         {
@@ -86,35 +101,118 @@ public sealed class AnimatedWallpaperService : IDisposable
             }
         });
     }
-    
+
     private void CreateVideoWindow()
     {
-        _videoWindow = new Window
-        {
-            WindowStyle = WindowStyle.None,
-            AllowsTransparency = false,
-            ShowInTaskbar = false,
-            Topmost = false,
-            Background = System.Windows.Media.Brushes.Black,
-            Left = 0,
-            Top = 0,
-            Width = SystemParameters.VirtualScreenWidth,
-            Height = SystemParameters.VirtualScreenHeight
-        };
-        
-        var videoView = new LibVLCSharp.WPF.VideoView();
-        _videoWindow.Content = videoView;
-        
+        // Créer le MediaPlayer d'abord
         _mediaPlayer = new MediaPlayer(_libVLC!)
         {
-            Volume = Math.Clamp(SettingsService.Current.AnimatedVolume, 0, 100)
+            Volume = Math.Clamp(SettingsService.Current.AnimatedVolume, 0, 100),
+            EnableHardwareDecoding = true
         };
-        videoView.MediaPlayer = _mediaPlayer;
         
+        _mediaPlayer.EncounteredError += OnMediaPlayerError;
+        _mediaPlayer.EndReached += OnMediaEndReached;
+        
+        // Créer le VideoView avec stretch explicite
+        _videoView = new LibVLCSharp.WPF.VideoView
+        {
+            MediaPlayer = _mediaPlayer,
+            Background = System.Windows.Media.Brushes.Black,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch,
+            VerticalAlignment = System.Windows.VerticalAlignment.Stretch
+        };
+        
+        // Wrapper Grid pour garantir l'étirement du contenu
+        var container = new System.Windows.Controls.Grid
+        {
+            Background = System.Windows.Media.Brushes.Black
+        };
+        container.Children.Add(_videoView);
+        
+        // Créer la fenêtre - les dimensions seront définies par SetAsDesktopChild
+        // qui utilise les pixels physiques du WorkerW (pas les dimensions WPF logiques)
+        _videoWindow = new Window
+        {
+            Title = "WallpaperManager_Video",
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            AllowsTransparency = false,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Topmost = false,
+            Background = System.Windows.Media.Brushes.Black,
+            // Taille temporaire - sera ajustée par SetAsDesktopChild avec les pixels physiques
+            Left = 0,
+            Top = 0,
+            Width = 800,
+            Height = 600,
+            Content = container
+        };
+        
+        // Gestionnaire pour configurer la fenêtre après initialisation
+        _videoWindow.SourceInitialized += OnVideoWindowSourceInitialized;
+        
+        // Afficher la fenêtre (nécessaire avant SetParent)
         _videoWindow.Show();
+    }
+    
+    private void OnVideoWindowSourceInitialized(object? sender, EventArgs e)
+    {
+        if (_videoWindow == null) return;
         
         var handle = new WindowInteropHelper(_videoWindow).Handle;
-        DesktopWindowApi.SetAsDesktopChild(handle);
+        System.Diagnostics.Debug.WriteLine($"Handle de la fenêtre vidéo: {handle}");
+        
+        // Configurer comme enfant du bureau
+        var success = DesktopWindowApi.SetAsDesktopChild(handle);
+        System.Diagnostics.Debug.WriteLine($"SetAsDesktopChild: {success}");
+        
+        if (success)
+        {
+            // Après SetWindowPos, forcer WPF à synchroniser avec la taille Win32
+            // Utiliser les dimensions de l'écran virtuel (plein écran sans taskbar)
+            var screenWidth = System.Windows.SystemParameters.PrimaryScreenWidth;
+            var screenHeight = System.Windows.SystemParameters.PrimaryScreenHeight;
+            
+            // Définir la taille WPF en unités logiques (WPF gère le DPI automatiquement)
+            _videoWindow.Width = screenWidth;
+            _videoWindow.Height = screenHeight;
+            
+            System.Diagnostics.Debug.WriteLine($"WPF dimensions: {screenWidth}x{screenHeight}");
+            
+            // Forcer la mise à jour complète du layout
+            _videoWindow.InvalidateVisual();
+            _videoWindow.UpdateLayout();
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine("SetAsDesktopChild a échoué, tentative de fallback...");
+            // Fallback: envoyer juste à l'arrière
+            DesktopWindowApi.SendToBack(handle);
+        }
+    }
+    
+    private void OnMediaPlayerError(object? sender, EventArgs e)
+    {
+        System.Diagnostics.Debug.WriteLine("Erreur MediaPlayer détectée");
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(Stop);
+    }
+    
+    private void OnMediaEndReached(object? sender, EventArgs e)
+    {
+        // Relancer la lecture en boucle
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
+        {
+            lock (_lock)
+            {
+                if (_mediaPlayer != null && _currentMedia != null && !_disposed)
+                {
+                    _mediaPlayer.Stop();
+                    _mediaPlayer.Play(_currentMedia);
+                }
+            }
+        });
     }
     
     private void SetupMediaPlayer(Wallpaper wallpaper)
@@ -122,10 +220,23 @@ public sealed class AnimatedWallpaperService : IDisposable
         if (_mediaPlayer == null || _libVLC == null)
             return;
         
-        using var media = new Media(_libVLC, new Uri(wallpaper.FilePath));
-        _mediaPlayer.Play(media);
+        _currentMedia?.Dispose();
+        _currentMedia = new Media(_libVLC, wallpaper.FilePath, FromType.FromPath);
+        _currentMedia.AddOption(":input-repeat=65535");
+        
+        // Configurer VLC pour étirer/couvrir tout l'espace disponible
+        _mediaPlayer.Scale = 0; // 0 = auto-scale pour remplir la fenêtre
+        
+        // Forcer le ratio d'aspect de l'écran pour éviter le letterboxing
+        var screenWidth = (int)System.Windows.SystemParameters.PrimaryScreenWidth;
+        var screenHeight = (int)System.Windows.SystemParameters.PrimaryScreenHeight;
+        // Format: "width:height" - force VLC à utiliser exactement ce ratio
+        _mediaPlayer.AspectRatio = $"{screenWidth}:{screenHeight}";
+        
+        System.Diagnostics.Debug.WriteLine($"Lecture de: {wallpaper.FilePath}");
+        _mediaPlayer.Play(_currentMedia);
     }
-    
+
     public void Stop()
     {
         lock (_lock)
@@ -150,13 +261,28 @@ public sealed class AnimatedWallpaperService : IDisposable
         {
             if (_mediaPlayer != null)
             {
+                _mediaPlayer.EncounteredError -= OnMediaPlayerError;
+                _mediaPlayer.EndReached -= OnMediaEndReached;
                 _mediaPlayer.Stop();
                 _mediaPlayer.Dispose();
                 _mediaPlayer = null;
             }
             
+            if (_currentMedia != null)
+            {
+                _currentMedia.Dispose();
+                _currentMedia = null;
+            }
+            
+            if (_videoView != null)
+            {
+                _videoView.MediaPlayer = null;
+                _videoView = null;
+            }
+            
             if (_videoWindow != null)
             {
+                _videoWindow.SourceInitialized -= OnVideoWindowSourceInitialized;
                 _videoWindow.Close();
                 _videoWindow = null;
             }
@@ -167,9 +293,6 @@ public sealed class AnimatedWallpaperService : IDisposable
         }
     }
     
-    /// <summary>
-    /// Libère complètement LibVLC pour économiser la RAM quand aucune vidéo n'est en cours.
-    /// </summary>
     public void ReleaseLibVLC()
     {
         lock (_lock)
@@ -184,7 +307,6 @@ public sealed class AnimatedWallpaperService : IDisposable
             }
         }
         
-        // Forcer le GC pour libérer la mémoire native (hors du lock)
         GC.Collect(2, GCCollectionMode.Aggressive, blocking: false);
     }
     

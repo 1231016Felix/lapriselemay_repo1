@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
+using System.Windows.Data;
 using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -15,24 +17,47 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly Lock _ctsLock = new();
     private volatile bool _disposed;
     
-    [ObservableProperty]
-    private ObservableCollection<Wallpaper> _wallpapers = [];
+    // Collections source
+    private ObservableCollection<Wallpaper> _allWallpapers = [];
     
     [ObservableProperty]
-    private ObservableCollection<WallpaperCollection> _collections = [];
+    private ObservableCollection<Wallpaper> _wallpapers = [];
     
     [ObservableProperty]
     private ObservableCollection<UnsplashPhoto> _unsplashPhotos = [];
     
     [ObservableProperty]
+    private ObservableCollection<DynamicWallpaper> _dynamicWallpapers = [];
+    
+    [ObservableProperty]
     private Wallpaper? _selectedWallpaper;
     
     [ObservableProperty]
-    private WallpaperCollection? _selectedCollection;
+    private ObservableCollection<Wallpaper> _selectedWallpapers = [];
     
+    [ObservableProperty]
+    private DynamicWallpaper? _selectedDynamicWallpaper;
+    
+    // === FILTRES ET TRI ===
     [ObservableProperty]
     private string _searchQuery = string.Empty;
     
+    [ObservableProperty]
+    private string _filterType = "Tous"; // Tous, Statique, Animé, Vidéo
+    
+    [ObservableProperty]
+    private bool _filterFavoritesOnly;
+    
+    [ObservableProperty]
+    private string _sortBy = "Date"; // Date, Nom, Taille, Résolution
+    
+    [ObservableProperty]
+    private bool _sortDescending = true;
+    
+    public string[] FilterTypes { get; } = ["Tous", "Statique", "Animé", "Vidéo"];
+    public string[] SortOptions { get; } = ["Date", "Nom", "Taille", "Résolution"];
+    
+    // === AUTRES PROPRIÉTÉS ===
     [ObservableProperty]
     private string _unsplashSearchQuery = string.Empty;
     
@@ -74,17 +99,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _pauseOnFullscreen = true;
     
     public string RotationStatusText => IsRotationEnabled ? "Active" : "Desactive";
+    
+    public int SelectedCount => SelectedWallpapers.Count;
+    public int TotalCount => _allWallpapers.Count;
+    public int FilteredCount => Wallpapers.Count;
 
     public MainViewModel()
     {
         _unsplashService = new UnsplashService();
+        SelectedWallpapers.CollectionChanged += (s, e) => OnPropertyChanged(nameof(SelectedCount));
         LoadData();
     }
     
     private void LoadData()
     {
-        Wallpapers = new ObservableCollection<Wallpaper>(SettingsService.Wallpapers);
-        Collections = new ObservableCollection<WallpaperCollection>(SettingsService.Collections);
+        _allWallpapers = new ObservableCollection<Wallpaper>(SettingsService.Wallpapers);
+        DynamicWallpapers = new ObservableCollection<DynamicWallpaper>(SettingsService.DynamicWallpapers);
+        LoadCollections();
+        
+        ApplyFiltersAndSort();
         
         IsRotationEnabled = SettingsService.Current.RotationEnabled;
         RotationInterval = SettingsService.Current.RotationIntervalMinutes;
@@ -93,10 +126,370 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MinimizeToTray = SettingsService.Current.MinimizeToTray;
         PauseOnBattery = SettingsService.Current.PauseOnBattery;
         PauseOnFullscreen = SettingsService.Current.PauseOnFullscreen;
-        
-        System.Diagnostics.Debug.WriteLine($"LoadData: IsRotationEnabled={IsRotationEnabled}");
     }
     
+    // === MÉTHODES DE FILTRE ET TRI ===
+    partial void OnSearchQueryChanged(string value) => ApplyFiltersAndSort();
+    partial void OnFilterTypeChanged(string value) => ApplyFiltersAndSort();
+    partial void OnFilterFavoritesOnlyChanged(bool value) => ApplyFiltersAndSort();
+    partial void OnSortByChanged(string value) => ApplyFiltersAndSort();
+    partial void OnSortDescendingChanged(bool value) => ApplyFiltersAndSort();
+    
+    private void ApplyFiltersAndSort()
+    {
+        var filtered = _allWallpapers.AsEnumerable();
+        
+        // Filtre par recherche
+        if (!string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            var query = SearchQuery.ToLowerInvariant();
+            filtered = filtered.Where(w => 
+                w.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                w.FilePath.Contains(query, StringComparison.OrdinalIgnoreCase));
+        }
+        
+        // Filtre par type
+        filtered = FilterType switch
+        {
+            "Statique" => filtered.Where(w => w.Type == WallpaperType.Static),
+            "Animé" => filtered.Where(w => w.Type == WallpaperType.Animated),
+            "Vidéo" => filtered.Where(w => w.Type == WallpaperType.Video),
+            _ => filtered
+        };
+        
+        // Filtre favoris
+        if (FilterFavoritesOnly)
+            filtered = filtered.Where(w => w.IsFavorite);
+        
+        // Tri
+        filtered = SortBy switch
+        {
+            "Nom" => SortDescending 
+                ? filtered.OrderByDescending(w => w.DisplayName) 
+                : filtered.OrderBy(w => w.DisplayName),
+            "Taille" => SortDescending 
+                ? filtered.OrderByDescending(w => w.FileSize) 
+                : filtered.OrderBy(w => w.FileSize),
+            "Résolution" => SortDescending 
+                ? filtered.OrderByDescending(w => w.Width * w.Height) 
+                : filtered.OrderBy(w => w.Width * w.Height),
+            _ => SortDescending 
+                ? filtered.OrderByDescending(w => w.AddedDate) 
+                : filtered.OrderBy(w => w.AddedDate)
+        };
+        
+        Wallpapers = new ObservableCollection<Wallpaper>(filtered);
+        OnPropertyChanged(nameof(FilteredCount));
+        OnPropertyChanged(nameof(TotalCount));
+    }
+    
+    [RelayCommand]
+    private void ClearFilters()
+    {
+        SearchQuery = string.Empty;
+        FilterType = "Tous";
+        FilterFavoritesOnly = false;
+        SortBy = "Date";
+        SortDescending = true;
+    }
+    
+    // === MULTI-SÉLECTION ===
+    public void UpdateSelection(System.Collections.IList selectedItems)
+    {
+        SelectedWallpapers.Clear();
+        foreach (var item in selectedItems)
+        {
+            if (item is Wallpaper w)
+                SelectedWallpapers.Add(w);
+        }
+        OnPropertyChanged(nameof(SelectedCount));
+    }
+    
+    [RelayCommand]
+    private void SelectAll()
+    {
+        SelectedWallpapers.Clear();
+        foreach (var w in Wallpapers)
+            SelectedWallpapers.Add(w);
+        OnPropertyChanged(nameof(SelectedCount));
+    }
+    
+    [RelayCommand]
+    private void DeselectAll()
+    {
+        SelectedWallpapers.Clear();
+        OnPropertyChanged(nameof(SelectedCount));
+    }
+    
+    [RelayCommand]
+    private void DeleteSelected()
+    {
+        if (SelectedWallpapers.Count == 0) return;
+        
+        var toRemove = SelectedWallpapers.ToList();
+        var count = toRemove.Count;
+        
+        foreach (var wallpaper in toRemove)
+        {
+            SettingsService.RemoveWallpaper(wallpaper.Id);
+            _allWallpapers.Remove(wallpaper);
+            Wallpapers.Remove(wallpaper);
+        }
+        
+        SelectedWallpapers.Clear();
+        SelectedWallpaper = null;
+        SettingsService.Save();
+        
+        StatusMessage = $"{count} fond(s) d'écran supprimé(s)";
+        
+        if (App.IsInitialized)
+            App.RotationService.RefreshPlaylist();
+        
+        OnPropertyChanged(nameof(TotalCount));
+        OnPropertyChanged(nameof(FilteredCount));
+    }
+    
+    [RelayCommand]
+    private void ToggleFavoriteSelected()
+    {
+        if (SelectedWallpapers.Count == 0) return;
+        
+        // Si au moins un n'est pas favori, on les met tous en favoris
+        var shouldFavorite = SelectedWallpapers.Any(w => !w.IsFavorite);
+        
+        foreach (var wallpaper in SelectedWallpapers)
+        {
+            wallpaper.IsFavorite = shouldFavorite;
+        }
+        
+        SettingsService.MarkDirty();
+        SettingsService.Save();
+        
+        // Rafraîchir la collection Favoris
+        RefreshFavoritesCollection();
+        
+        StatusMessage = shouldFavorite 
+            ? $"{SelectedWallpapers.Count} ajouté(s) aux favoris"
+            : $"{SelectedWallpapers.Count} retiré(s) des favoris";
+        
+        ApplyFiltersAndSort();
+    }
+    
+    // === PRÉVISUALISATION ===
+    [RelayCommand]
+    private void PreviewWallpaper(Wallpaper? wallpaper)
+    {
+        var target = wallpaper ?? SelectedWallpaper;
+        if (target == null) return;
+        
+        var index = Wallpapers.IndexOf(target);
+        var previewWindow = new Views.PreviewWindow(Wallpapers, index >= 0 ? index : 0);
+        previewWindow.ApplyRequested += (s, w) => ApplyWallpaperDirect(w);
+        previewWindow.ShowDialog();
+    }
+    
+    private void ApplyWallpaperDirect(Wallpaper wallpaper)
+    {
+        if (!App.IsInitialized) return;
+        
+        if (wallpaper.Type == WallpaperType.Static)
+        {
+            App.RotationService.ApplyWallpaper(wallpaper);
+            StatusMessage = $"Fond d'écran appliqué: {wallpaper.DisplayName}";
+        }
+        else
+        {
+            App.AnimatedService.Play(wallpaper);
+            StatusMessage = "Fond d'écran animé démarré";
+        }
+    }
+    
+    // === DRAG & DROP ===
+    public async Task HandleDroppedFilesAsync(string[] files)
+    {
+        if (files == null || files.Length == 0) return;
+        
+        IsLoading = true;
+        StatusMessage = "Ajout des fichiers...";
+        
+        var cancellationToken = ResetCancellationToken();
+        var addedCount = 0;
+        
+        try
+        {
+            var validExtensions = new[] { ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".mp4", ".webm", ".avi", ".mkv" };
+            
+            foreach (var file in files)
+            {
+                if (cancellationToken.IsCancellationRequested) break;
+                
+                var ext = Path.GetExtension(file).ToLowerInvariant();
+                if (!validExtensions.Contains(ext)) continue;
+                
+                var wallpaper = await CreateWallpaperFromFileAsync(file).ConfigureAwait(true);
+                if (wallpaper != null)
+                {
+                    SettingsService.AddWallpaper(wallpaper);
+                    _allWallpapers.Add(wallpaper);
+                    addedCount++;
+                }
+            }
+            
+            if (addedCount > 0)
+            {
+                ApplyFiltersAndSort();
+                SettingsService.Save();
+                
+                if (App.IsInitialized)
+                    App.RotationService.RefreshPlaylist();
+            }
+            
+            StatusMessage = addedCount > 0 
+                ? $"{addedCount} fond(s) d'écran ajouté(s) par glisser-déposer"
+                : "Aucun fichier valide trouvé";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Opération annulée";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+    
+    // === WALLPAPERS DYNAMIQUES ===
+    [RelayCommand]
+    private void CreateDynamicWallpaper() => CreateDynamicWithPreset(4);
+    
+    [RelayCommand]
+    private void CreateDynamic2Periods() => CreateDynamicWithPreset(2);
+    
+    [RelayCommand]
+    private void CreateDynamic4Periods() => CreateDynamicWithPreset(4);
+    
+    [RelayCommand]
+    private void CreateDynamic6Periods() => CreateDynamicWithPreset(6);
+    
+    private void CreateDynamicWithPreset(int periodCount)
+    {
+        var dynamic = new DynamicWallpaper
+        {
+            Name = $"Wallpaper Dynamique {DynamicWallpapers.Count + 1}"
+        };
+        
+        var presets = periodCount switch
+        {
+            2 => TimePresets.TwoPeriods,
+            6 => TimePresets.SixPeriods,
+            _ => TimePresets.FourPeriods
+        };
+        
+        foreach (var (label, time) in presets)
+        {
+            dynamic.Variants.Add(new TimeVariant
+            {
+                StartTime = time,
+                Label = label
+            });
+        }
+        
+        SettingsService.AddDynamicWallpaper(dynamic);
+        DynamicWallpapers.Add(dynamic);
+        SelectedDynamicWallpaper = dynamic;
+        SettingsService.Save();
+        
+        StatusMessage = $"Wallpaper dynamique créé ({periodCount} périodes) - Configurez les images";
+    }
+    
+    [RelayCommand]
+    private void DeleteDynamicWallpaper()
+    {
+        if (SelectedDynamicWallpaper == null) return;
+        
+        // Désactiver si c'est le wallpaper actif
+        if (App.IsInitialized && App.DynamicService.ActiveWallpaper?.Id == SelectedDynamicWallpaper.Id)
+            App.DynamicService.Stop();
+        
+        SettingsService.RemoveDynamicWallpaper(SelectedDynamicWallpaper.Id);
+        DynamicWallpapers.Remove(SelectedDynamicWallpaper);
+        SelectedDynamicWallpaper = null;
+        SettingsService.Save();
+        
+        StatusMessage = "Wallpaper dynamique supprimé";
+    }
+    
+    [RelayCommand]
+    private void ActivateDynamicWallpaper()
+    {
+        if (SelectedDynamicWallpaper == null || !App.IsInitialized) return;
+        
+        // Vérifier qu'au moins une variante a un fichier
+        if (!SelectedDynamicWallpaper.Variants.Any(v => v.Exists))
+        {
+            StatusMessage = "Configurez au moins une image avant d'activer";
+            return;
+        }
+        
+        // Désactiver la rotation normale
+        if (IsRotationEnabled)
+        {
+            IsRotationEnabled = false;
+        }
+        
+        App.DynamicService.Activate(SelectedDynamicWallpaper);
+        StatusMessage = $"Wallpaper dynamique '{SelectedDynamicWallpaper.Name}' activé";
+    }
+    
+    [RelayCommand]
+    private void DeactivateDynamicWallpaper()
+    {
+        if (!App.IsInitialized) return;
+        
+        App.DynamicService.Stop();
+        StatusMessage = "Wallpaper dynamique désactivé";
+    }
+    
+    [RelayCommand]
+    private async Task SetVariantImageAsync(TimeVariant? variant)
+    {
+        if (variant == null || SelectedDynamicWallpaper == null) return;
+        
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "Images|*.jpg;*.jpeg;*.png;*.bmp",
+            Title = $"Sélectionner l'image pour {variant.Label ?? variant.StartTimeFormatted}"
+        };
+        
+        if (dialog.ShowDialog() != true) return;
+        
+        // Trouver l'index et créer une nouvelle variante pour forcer le rafraîchissement
+        var index = SelectedDynamicWallpaper.Variants.IndexOf(variant);
+        if (index >= 0)
+        {
+            var newVariant = new TimeVariant
+            {
+                Id = variant.Id,
+                StartTime = variant.StartTime,
+                Label = variant.Label,
+                FilePath = dialog.FileName
+            };
+            SelectedDynamicWallpaper.Variants[index] = newVariant;
+        }
+        
+        SettingsService.MarkDirty();
+        SettingsService.Save();
+        
+        // Rafraîchir si c'est le wallpaper actif
+        if (App.IsInitialized && App.DynamicService.ActiveWallpaper?.Id == SelectedDynamicWallpaper?.Id)
+        {
+            App.DynamicService.Refresh();
+        }
+        
+        StatusMessage = $"Image configurée pour {variant.Label ?? variant.StartTimeFormatted}";
+    }
+    
+    // === MÉTHODES EXISTANTES ===
     private CancellationToken ResetCancellationToken()
     {
         lock (_ctsLock)
@@ -115,56 +508,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             Multiselect = true,
             Filter = "Images|*.jpg;*.jpeg;*.png;*.bmp;*.gif|Videos|*.mp4;*.webm;*.avi|Tous|*.*",
-            Title = "Selectionner des fonds d'ecran"
+            Title = "Sélectionner des fonds d'écran"
         };
         
         if (dialog.ShowDialog() != true || dialog.FileNames.Length == 0)
             return;
         
-        IsLoading = true;
-        StatusMessage = "Ajout des fonds d'ecran...";
-        
-        var cancellationToken = ResetCancellationToken();
-        
-        try
-        {
-            var addedCount = 0;
-            foreach (var file in dialog.FileNames)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                    break;
-                    
-                var wallpaper = await CreateWallpaperFromFileAsync(file).ConfigureAwait(true);
-                if (wallpaper != null)
-                {
-                    SettingsService.AddWallpaper(wallpaper);
-                    Wallpapers.Add(wallpaper);
-                    addedCount++;
-                }
-            }
-            
-            SettingsService.Save();
-            StatusMessage = $"{addedCount} fond(s) d'ecran ajoute(s)";
-            
-            // Rafraichir la playlist du service de rotation
-            if (App.IsInitialized)
-            {
-                App.RotationService.RefreshPlaylist();
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            StatusMessage = "Operation annulee";
-        }
-        finally
-        {
-            IsLoading = false;
-        }
+        await HandleDroppedFilesAsync(dialog.FileNames);
     }
     
-    private static Task<Wallpaper?> CreateWallpaperFromFileAsync(string filePath)
+    internal static async Task<Wallpaper?> CreateWallpaperFromFileAsync(string filePath)
     {
-        return Task.Run(() =>
+        return await Task.Run(() =>
         {
             if (!File.Exists(filePath))
                 return null;
@@ -177,11 +532,53 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 _ => WallpaperType.Static
             };
             
-            var fileInfo = new FileInfo(filePath);
+            // Copier le fichier vers le dossier WallpaperManager si nécessaire
+            var targetFolder = SettingsService.Current.WallpaperFolder;
+            var finalPath = filePath;
+            
+            // Vérifier si le fichier n'est pas déjà dans le dossier cible
+            if (!filePath.StartsWith(targetFolder, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    // Créer le dossier si nécessaire
+                    if (!Directory.Exists(targetFolder))
+                        Directory.CreateDirectory(targetFolder);
+                    
+                    var fileName = Path.GetFileName(filePath);
+                    var targetPath = Path.Combine(targetFolder, fileName);
+                    
+                    // Gérer les conflits de nom
+                    if (File.Exists(targetPath))
+                    {
+                        var nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                        var counter = 1;
+                        do
+                        {
+                            targetPath = Path.Combine(targetFolder, $"{nameWithoutExt}_{counter}{extension}");
+                            counter++;
+                        } while (File.Exists(targetPath));
+                    }
+                    
+                    // Copier le fichier
+                    File.Copy(filePath, targetPath, overwrite: false);
+                    finalPath = targetPath;
+                    
+                    System.Diagnostics.Debug.WriteLine($"Fichier copié: {filePath} -> {targetPath}");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Erreur copie fichier: {ex.Message}");
+                    // En cas d'erreur, utiliser le chemin original
+                    finalPath = filePath;
+                }
+            }
+            
+            var fileInfo = new FileInfo(finalPath);
             var wallpaper = new Wallpaper
             {
-                FilePath = filePath,
-                Name = Path.GetFileNameWithoutExtension(filePath),
+                FilePath = finalPath,
+                Name = Path.GetFileNameWithoutExtension(finalPath),
                 Type = type,
                 FileSize = fileInfo.Length
             };
@@ -190,7 +587,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 try
                 {
-                    using var stream = File.OpenRead(filePath);
+                    using var stream = File.OpenRead(finalPath);
                     var decoder = BitmapDecoder.Create(
                         stream, 
                         BitmapCreateOptions.IgnoreColorProfile | BitmapCreateOptions.DelayCreation,
@@ -209,7 +606,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             
             return wallpaper;
-        });
+        }).ConfigureAwait(false);
     }
     
     [RelayCommand]
@@ -226,7 +623,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         
         try
         {
-            // Ouvre l'explorateur et sélectionne le fichier
             System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{target.FilePath}\"");
         }
         catch (Exception ex)
@@ -240,41 +636,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (SelectedWallpaper == null) return;
         
-        var id = SelectedWallpaper.Id;
-        SettingsService.RemoveWallpaper(id);
+        SettingsService.RemoveWallpaper(SelectedWallpaper.Id);
+        _allWallpapers.Remove(SelectedWallpaper);
         Wallpapers.Remove(SelectedWallpaper);
         SelectedWallpaper = null;
         
         SettingsService.Save();
-        StatusMessage = "Fond d'ecran supprime";
+        StatusMessage = "Fond d'écran supprimé";
         
         if (App.IsInitialized)
-        {
             App.RotationService.RefreshPlaylist();
-        }
+        
+        OnPropertyChanged(nameof(TotalCount));
+        OnPropertyChanged(nameof(FilteredCount));
     }
     
     [RelayCommand]
     private void ApplyWallpaper()
     {
         if (SelectedWallpaper == null) return;
-        
-        if (!App.IsInitialized)
-        {
-            StatusMessage = "Service non initialise";
-            return;
-        }
-        
-        if (SelectedWallpaper.Type == WallpaperType.Static)
-        {
-            App.RotationService.ApplyWallpaper(SelectedWallpaper);
-            StatusMessage = $"Fond d'ecran applique: {SelectedWallpaper.DisplayName}";
-        }
-        else
-        {
-            App.AnimatedService.Play(SelectedWallpaper);
-            StatusMessage = "Fond d'ecran anime demarre";
-        }
+        ApplyWallpaperDirect(SelectedWallpaper);
     }
     
     [RelayCommand]
@@ -282,20 +663,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (!App.IsInitialized)
         {
-            StatusMessage = "Service non initialise";
+            StatusMessage = "Service non initialisé";
             return;
         }
         
         App.RotationService.RefreshPlaylist();
         
-        if (Wallpapers.Count == 0)
+        if (_allWallpapers.Count == 0)
         {
-            StatusMessage = "Ajoutez des fonds d'ecran d'abord";
+            StatusMessage = "Ajoutez des fonds d'écran d'abord";
             return;
         }
         
         App.RotationService.Next();
-        StatusMessage = "Fond d'ecran suivant applique";
+        StatusMessage = "Fond d'écran suivant appliqué";
     }
     
     [RelayCommand]
@@ -303,50 +684,49 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (!App.IsInitialized)
         {
-            StatusMessage = "Service non initialise";
+            StatusMessage = "Service non initialisé";
             return;
         }
         
         App.RotationService.RefreshPlaylist();
         
-        if (Wallpapers.Count == 0)
+        if (_allWallpapers.Count == 0)
         {
-            StatusMessage = "Ajoutez des fonds d'ecran d'abord";
+            StatusMessage = "Ajoutez des fonds d'écran d'abord";
             return;
         }
         
         App.RotationService.Previous();
-        StatusMessage = "Fond d'ecran precedent applique";
+        StatusMessage = "Fond d'écran précédent appliqué";
     }
     
     partial void OnRotationIntervalChanged(int value)
     {
         SettingsService.Current.RotationIntervalMinutes = value;
         if (App.IsInitialized)
-        {
             App.RotationService.SetInterval(value);
-        }
         SettingsService.Save();
     }
     
     partial void OnIsRotationEnabledChanged(bool value)
     {
-        System.Diagnostics.Debug.WriteLine($"OnIsRotationEnabledChanged: {value}");
-        
         SettingsService.Current.RotationEnabled = value;
         
         if (App.IsInitialized)
         {
             if (value)
             {
+                // Désactiver le wallpaper dynamique si actif
+                App.DynamicService.Stop();
+                
                 App.RotationService.RefreshPlaylist();
                 App.RotationService.Start();
-                StatusMessage = "Rotation automatique activee";
+                StatusMessage = "Rotation automatique activée";
             }
             else
             {
                 App.RotationService.Stop();
-                StatusMessage = "Rotation automatique desactivee";
+                StatusMessage = "Rotation automatique désactivée";
             }
         }
         
@@ -383,7 +763,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         try
         {
             var groups = await DuplicateDetectionService.FindDuplicatesAsync(
-                Wallpapers, 
+                _allWallpapers, 
                 progress, 
                 cancellationToken).ConfigureAwait(true);
             
@@ -400,7 +780,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 StatusMessage = $"{totalDuplicates} doublon(s) trouvé(s) - {DuplicateDetectionService.FormatSize(recoverableSpace)} récupérables";
             }
             
-            // Sauvegarder les hash calculés
             SettingsService.Save();
         }
         catch (OperationCanceledException)
@@ -422,18 +801,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (wallpaper == null) return;
         
-        // Retirer de la bibliothèque (ne supprime pas le fichier)
         SettingsService.RemoveWallpaper(wallpaper.Id);
+        _allWallpapers.Remove(wallpaper);
         Wallpapers.Remove(wallpaper);
         
-        // Mettre à jour les groupes de doublons
         foreach (var group in DuplicateGroups.ToList())
         {
             group.Wallpapers.Remove(wallpaper);
             if (group.Wallpapers.Count <= 1)
-            {
                 DuplicateGroups.Remove(group);
-            }
         }
         
         SettingsService.Save();
@@ -444,9 +820,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             : "Tous les doublons ont été traités";
         
         if (App.IsInitialized)
-        {
             App.RotationService.RefreshPlaylist();
-        }
+        
+        OnPropertyChanged(nameof(TotalCount));
+        OnPropertyChanged(nameof(FilteredCount));
     }
     
     [RelayCommand]
@@ -454,14 +831,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         ThumbnailService.Instance.ClearAllCache();
         StatusMessage = "Cache des miniatures vidé";
-        
-        // Forcer le rafraîchissement de la liste
-        var temp = Wallpapers.ToList();
-        Wallpapers.Clear();
-        foreach (var w in temp)
-        {
-            Wallpapers.Add(w);
-        }
+        ApplyFiltersAndSort();
     }
     
     public void Dispose()

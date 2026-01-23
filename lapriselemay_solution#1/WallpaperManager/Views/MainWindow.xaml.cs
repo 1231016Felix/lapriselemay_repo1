@@ -1,8 +1,14 @@
 using System.ComponentModel;
 using System.Windows;
-using System.Windows.Controls.Primitives;
+using WallpaperManager.Models;
 using WallpaperManager.Services;
 using WallpaperManager.ViewModels;
+using DataFormats = System.Windows.DataFormats;
+using DragEventArgs = System.Windows.DragEventArgs;
+using DragDropEffects = System.Windows.DragDropEffects;
+using ListBox = System.Windows.Controls.ListBox;
+using MouseButtonEventArgs = System.Windows.Input.MouseButtonEventArgs;
+using SelectionChangedEventArgs = System.Windows.Controls.SelectionChangedEventArgs;
 
 namespace WallpaperManager.Views;
 
@@ -17,7 +23,6 @@ public partial class MainWindow : Window
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
         
-        // S'abonner aux événements de rotation
         if (App.IsInitialized)
         {
             App.RotationService.WallpaperChanged += OnWallpaperChanged;
@@ -28,11 +33,10 @@ public partial class MainWindow : Window
     {
         EnsureWindowIsOnScreen();
         
-        // Mettre à jour le status initial
-        var count = _viewModel.Wallpapers.Count;
+        var count = _viewModel.TotalCount;
         _viewModel.StatusMessage = count > 0 
-            ? $"{count} fond(s) d'ecran dans la bibliotheque" 
-            : "Ajoutez des fonds d'ecran avec le bouton + Ajouter";
+            ? $"{count} fond(s) d'écran dans la bibliothèque" 
+            : "Ajoutez des fonds d'écran avec + Ajouter ou glissez-déposez des fichiers";
     }
     
     private void EnsureWindowIsOnScreen()
@@ -47,42 +51,114 @@ public partial class MainWindow : Window
         if (Height > workArea.Height) Height = workArea.Height;
     }
 
-    private void OnWallpaperChanged(object? sender, Models.Wallpaper e)
+    private void OnWallpaperChanged(object? sender, Wallpaper e)
     {
         Dispatcher.Invoke(() =>
         {
             Title = $"Wallpaper Manager - {e.DisplayName}";
-            _viewModel.StatusMessage = $"Fond d'ecran: {e.DisplayName}";
+            _viewModel.StatusMessage = $"Fond d'écran: {e.DisplayName}";
         });
     }
-
-    protected override void OnStateChanged(EventArgs e)
+    
+    // === DRAG & DROP ===
+    private void Window_DragOver(object sender, DragEventArgs e)
     {
-        base.OnStateChanged(e);
-        
-        // Minimiser dans le tray = fermer la fenêtre pour libérer la RAM
-        if (WindowState == WindowState.Minimized && SettingsService.Current.MinimizeToTray)
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
         {
-            Close(); // Ferme la fenêtre et libère la RAM, l'app continue dans le tray
+            e.Effects = DragDropEffects.Copy;
+            DropOverlay.Visibility = Visibility.Visible;
         }
+        else
+        {
+            e.Effects = DragDropEffects.None;
+        }
+        e.Handled = true;
+    }
+    
+    private async void Window_Drop(object sender, DragEventArgs e)
+    {
+        DropOverlay.Visibility = Visibility.Collapsed;
+        
+        if (e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            var files = (string[])e.Data.GetData(DataFormats.FileDrop);
+            await _viewModel.HandleDroppedFilesAsync(files);
+        }
+    }
+    
+    // === MULTI-SÉLECTION ===
+    private void WallpaperListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ListBox listBox)
+        {
+            _viewModel.UpdateSelection(listBox.SelectedItems);
+        }
+    }
+    
+    // === DOUBLE-CLIC PRÉVISUALISATION ===
+    private void WallpaperItem_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2 && sender is FrameworkElement element && element.DataContext is Wallpaper wallpaper)
+        {
+            OpenPreview(wallpaper);
+            e.Handled = true;
+        }
+    }
+    
+    private void PreviewImage_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (_viewModel.SelectedWallpaper != null)
+        {
+            OpenPreview(_viewModel.SelectedWallpaper);
+        }
+    }
+    
+    // === BOUTON AJOUTER À LA COLLECTION ===
+    private void BtnAddToCollection_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button button && button.ContextMenu != null)
+        {
+            button.ContextMenu.PlacementTarget = button;
+            button.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Top;
+            button.ContextMenu.IsOpen = true;
+        }
+    }
+    
+    private void OpenPreview(Wallpaper wallpaper)
+    {
+        var index = _viewModel.Wallpapers.IndexOf(wallpaper);
+        var previewWindow = new PreviewWindow(_viewModel.Wallpapers, index >= 0 ? index : 0);
+        previewWindow.ApplyRequested += (s, w) =>
+        {
+            if (App.IsInitialized)
+            {
+                if (w.Type == WallpaperType.Static)
+                {
+                    App.RotationService.ApplyWallpaper(w);
+                }
+                else
+                {
+                    App.AnimatedService.Play(w);
+                }
+                _viewModel.StatusMessage = $"Appliqué: {w.DisplayName}";
+            }
+        };
+        previewWindow.Owner = this;
+        previewWindow.ShowDialog();
     }
 
     protected override void OnClosing(CancelEventArgs e)
     {
-        // Si "minimiser dans le tray" est activé, fermer la fenêtre mais garder l'app
         if (SettingsService.Current.MinimizeToTray)
         {
-            // Signaler que la fenêtre n'est plus visible (dans le tray)
             App.SetMainWindowVisible(false);
             
-            // Nettoyer les ressources pour libérer la RAM
             if (App.IsInitialized)
             {
                 App.RotationService.WallpaperChanged -= OnWallpaperChanged;
             }
             _viewModel.Dispose();
             
-            // Forcer le garbage collection pour libérer la mémoire
             GC.Collect();
             GC.WaitForPendingFinalizers();
             
@@ -90,7 +166,6 @@ public partial class MainWindow : Window
             return;
         }
         
-        // Sinon, fermer complètement l'application
         if (App.IsInitialized)
         {
             App.RotationService.WallpaperChanged -= OnWallpaperChanged;
@@ -100,5 +175,4 @@ public partial class MainWindow : Window
         base.OnClosing(e);
         System.Windows.Application.Current.Shutdown();
     }
-    
 }

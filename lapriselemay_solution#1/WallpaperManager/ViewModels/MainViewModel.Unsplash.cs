@@ -110,9 +110,10 @@ public partial class MainViewModel
                 
                 var wallpaper = UnsplashService.CreateWallpaperFromPhoto(photo, localPath);
                 SettingsService.AddWallpaper(wallpaper);
-                Wallpapers.Add(wallpaper);
+                _allWallpapers.Add(wallpaper);
+                ApplyFiltersAndSort();
                 SettingsService.Save();
-                StatusMessage = "Photo téléchargée et ajoutée à la collection";
+                StatusMessage = "Photo téléchargée et ajoutée à la bibliothèque";
             }
             else
             {
@@ -188,55 +189,6 @@ public partial class MainViewModel
         {
             System.Diagnostics.Debug.WriteLine($"Erreur startup: {ex.Message}");
         }
-    }
-    
-    [RelayCommand]
-    private void CreateCollection()
-    {
-        var collection = new WallpaperCollection
-        {
-            Name = $"Collection {Collections.Count + 1}"
-        };
-        SettingsService.AddCollection(collection);
-        Collections.Add(collection);
-        SelectedCollection = collection;
-        SettingsService.Save();
-    }
-    
-    [RelayCommand]
-    private void DeleteCollection()
-    {
-        if (SelectedCollection == null) return;
-        
-        SettingsService.RemoveCollection(SelectedCollection.Id);
-        Collections.Remove(SelectedCollection);
-        SelectedCollection = null;
-        SettingsService.Save();
-    }
-    
-    [RelayCommand]
-    private void AddToCollection()
-    {
-        if (SelectedWallpaper == null || SelectedCollection == null) return;
-        
-        if (!SelectedCollection.WallpaperIds.Contains(SelectedWallpaper.Id))
-        {
-            SelectedCollection.WallpaperIds.Add(SelectedWallpaper.Id);
-            SettingsService.MarkDirty();
-            SettingsService.Save();
-            StatusMessage = "Fond d'écran ajouté à la collection";
-        }
-    }
-    
-    [RelayCommand]
-    private void SetActiveCollection()
-    {
-        if (SelectedCollection == null) return;
-        
-        SettingsService.Current.ActiveCollectionId = SelectedCollection.Id;
-        App.RotationService.RefreshPlaylist();
-        SettingsService.Save();
-        StatusMessage = $"Collection '{SelectedCollection.Name}' activée pour la rotation";
     }
     
     [RelayCommand]

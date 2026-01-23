@@ -217,34 +217,27 @@ public sealed class WallpaperRotationService : IDisposable
         LoadPlaylist();
     }
     
+    /// <summary>
+    /// Définit une playlist personnalisée (pour les collections)
+    /// </summary>
+    public void SetPlaylist(IEnumerable<Wallpaper> wallpapers)
+    {
+        lock (_playlistLock)
+        {
+            _playlist = wallpapers
+                .Where(w => w.Type == WallpaperType.Static)
+                .ToList();
+            _currentIndex = -1;
+        }
+    }
+    
     private void LoadPlaylist()
     {
         lock (_playlistLock)
         {
-            var collectionId = SettingsService.Current.ActiveCollectionId;
-            var wallpapers = SettingsService.Wallpapers;
-            
-            if (!string.IsNullOrEmpty(collectionId))
-            {
-                var collection = SettingsService.GetCollection(collectionId);
-                if (collection != null)
-                {
-                    var wallpaperIds = new HashSet<string>(collection.WallpaperIds);
-                    _playlist = wallpapers
-                        .Where(w => wallpaperIds.Contains(w.Id) && w.Type == WallpaperType.Static)
-                        .ToList();
-                }
-                else
-                {
-                    _playlist = [];
-                }
-            }
-            else
-            {
-                _playlist = wallpapers
-                    .Where(w => w.Type == WallpaperType.Static)
-                    .ToList();
-            }
+            _playlist = SettingsService.Wallpapers
+                .Where(w => w.Type == WallpaperType.Static)
+                .ToList();
             
             // Reset index si playlist change
             if (_currentIndex >= _playlist.Count)

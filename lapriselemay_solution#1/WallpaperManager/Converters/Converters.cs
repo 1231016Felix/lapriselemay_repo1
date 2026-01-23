@@ -36,8 +36,27 @@ public class PathToThumbnailConverter : IValueConverter
         if (!File.Exists(path))
             return null;
         
-        // Utiliser le service de thumbnails avec cache
-        return ThumbnailService.Instance.GetThumbnailSync(path);
+        // Essayer le cache mémoire d'abord
+        var cached = ThumbnailService.Instance.GetThumbnailSync(path);
+        if (cached != null)
+            return cached;
+        
+        // Si pas en cache, charger directement l'image (pour les nouveaux fichiers)
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.UriSource = new Uri(path, UriKind.Absolute);
+            bitmap.DecodePixelWidth = 280;
+            bitmap.EndInit();
+            bitmap.Freeze();
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
@@ -129,7 +148,47 @@ public class CountToVisibilityConverter : IValueConverter
             _ => 0
         };
         
-        return count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        var hasItems = count > 0;
+        var invert = string.Equals(parameter?.ToString(), "Invert", StringComparison.OrdinalIgnoreCase);
+        
+        if (invert) hasItems = !hasItems;
+        
+        return hasItems ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+public class TimeSpanToStringConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is TimeSpan ts)
+            return ts.ToString(@"hh\:mm");
+        return "--:--";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is string s && TimeSpan.TryParse(s, out var ts))
+            return ts;
+        return TimeSpan.Zero;
+    }
+}
+
+public class MultiSelectToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var count = value switch
+        {
+            int i => i,
+            System.Collections.IList list => list.Count,
+            _ => 0
+        };
+        
+        return count > 1 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

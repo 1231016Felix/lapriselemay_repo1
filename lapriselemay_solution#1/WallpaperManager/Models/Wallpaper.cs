@@ -73,16 +73,3 @@ public class Wallpaper
         return $"{size:0.##} {sizes[order]}";
     }
 }
-
-public class WallpaperCollection
-{
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string Name { get; set; } = string.Empty;
-    public string? Description { get; set; }
-    public List<string> WallpaperIds { get; set; } = [];
-    public DateTime CreatedDate { get; set; } = DateTime.Now;
-    public string? CoverImagePath { get; set; }
-    
-    [JsonIgnore]
-    public int Count => WallpaperIds.Count;
-}

@@ -24,7 +24,8 @@ public static class SettingsService
     
     private static AppSettings _current = new();
     private static List<Wallpaper> _wallpapers = [];
-    private static List<WallpaperCollection> _collections = [];
+    private static List<DynamicWallpaper> _dynamicWallpapers = [];
+    private static List<Collection> _collections = [];
     private static volatile bool _isDirty;
     
     public static AppSettings Current
@@ -38,7 +39,12 @@ public static class SettingsService
         get { lock (_lock) return _wallpapers.AsReadOnly(); }
     }
     
-    public static IReadOnlyList<WallpaperCollection> Collections
+    public static IReadOnlyList<DynamicWallpaper> DynamicWallpapers
+    {
+        get { lock (_lock) return _dynamicWallpapers.AsReadOnly(); }
+    }
+    
+    public static IReadOnlyList<Collection> Collections
     {
         get { lock (_lock) return _collections.AsReadOnly(); }
     }
@@ -66,6 +72,7 @@ public static class SettingsService
                     if (data != null)
                     {
                         _wallpapers = data.Wallpapers ?? [];
+                        _dynamicWallpapers = data.DynamicWallpapers ?? [];
                         _collections = data.Collections ?? [];
                     }
                 }
@@ -105,12 +112,16 @@ public static class SettingsService
             lock (_lock)
             {
                 settingsJson = JsonSerializer.Serialize(_current, JsonOptions);
-                var data = new WallpaperData { Wallpapers = _wallpapers, Collections = _collections };
+                var data = new WallpaperData 
+                { 
+                    Wallpapers = _wallpapers,
+                    DynamicWallpapers = _dynamicWallpapers,
+                    Collections = _collections
+                };
                 dataJson = JsonSerializer.Serialize(data, JsonOptions);
                 _isDirty = false;
             }
             
-            // Écrire hors du lock pour éviter de bloquer les autres threads
             File.WriteAllText(SettingsPath, settingsJson);
             File.WriteAllText(DataPath, dataJson);
         }
@@ -134,7 +145,12 @@ public static class SettingsService
             lock (_lock)
             {
                 settingsJson = JsonSerializer.Serialize(_current, JsonOptions);
-                var data = new WallpaperData { Wallpapers = _wallpapers, Collections = _collections };
+                var data = new WallpaperData 
+                { 
+                    Wallpapers = _wallpapers,
+                    DynamicWallpapers = _dynamicWallpapers,
+                    Collections = _collections
+                };
                 dataJson = JsonSerializer.Serialize(data, JsonOptions);
                 _isDirty = false;
             }
@@ -152,6 +168,7 @@ public static class SettingsService
         }
     }
     
+    // === WALLPAPERS ===
     public static void AddWallpaper(Wallpaper wallpaper)
     {
         ArgumentNullException.ThrowIfNull(wallpaper);
@@ -176,13 +193,6 @@ public static class SettingsService
             if (wallpaper != null)
             {
                 _wallpapers.Remove(wallpaper);
-                
-                // Retirer des collections
-                foreach (var collection in _collections)
-                {
-                    collection.WallpaperIds.Remove(id);
-                }
-                
                 _isDirty = true;
             }
         }
@@ -194,15 +204,40 @@ public static class SettingsService
         lock (_lock) return _wallpapers.FirstOrDefault(w => w.Id == id);
     }
     
-    public static WallpaperCollection? GetCollection(string id)
+    // === DYNAMIC WALLPAPERS ===
+    public static void AddDynamicWallpaper(DynamicWallpaper dynamicWallpaper)
     {
-        if (string.IsNullOrEmpty(id)) return null;
-        lock (_lock) return _collections.FirstOrDefault(c => c.Id == id);
+        ArgumentNullException.ThrowIfNull(dynamicWallpaper);
+        
+        lock (_lock)
+        {
+            _dynamicWallpapers.Add(dynamicWallpaper);
+            _isDirty = true;
+        }
     }
     
-    public static void AddCollection(WallpaperCollection collection)
+    public static void RemoveDynamicWallpaper(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return;
+        
+        lock (_lock)
+        {
+            _dynamicWallpapers.RemoveAll(d => d.Id == id);
+            _isDirty = true;
+        }
+    }
+    
+    public static DynamicWallpaper? GetDynamicWallpaper(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return null;
+        lock (_lock) return _dynamicWallpapers.FirstOrDefault(d => d.Id == id);
+    }
+    
+    // === COLLECTIONS ===
+    public static void AddCollection(Collection collection)
     {
         ArgumentNullException.ThrowIfNull(collection);
+        
         lock (_lock)
         {
             _collections.Add(collection);
@@ -213,10 +248,60 @@ public static class SettingsService
     public static void RemoveCollection(string id)
     {
         if (string.IsNullOrEmpty(id)) return;
+        
         lock (_lock)
         {
             _collections.RemoveAll(c => c.Id == id);
             _isDirty = true;
+        }
+    }
+    
+    public static Collection? GetCollection(string id)
+    {
+        if (string.IsNullOrEmpty(id)) return null;
+        lock (_lock) return _collections.FirstOrDefault(c => c.Id == id);
+    }
+    
+    public static void AddWallpaperToCollection(string collectionId, string wallpaperId)
+    {
+        if (string.IsNullOrEmpty(collectionId) || string.IsNullOrEmpty(wallpaperId)) return;
+        
+        lock (_lock)
+        {
+            var collection = _collections.FirstOrDefault(c => c.Id == collectionId);
+            if (collection != null && !collection.WallpaperIds.Contains(wallpaperId))
+            {
+                collection.WallpaperIds.Add(wallpaperId);
+                _isDirty = true;
+            }
+        }
+    }
+    
+    public static void RemoveWallpaperFromCollection(string collectionId, string wallpaperId)
+    {
+        if (string.IsNullOrEmpty(collectionId) || string.IsNullOrEmpty(wallpaperId)) return;
+        
+        lock (_lock)
+        {
+            var collection = _collections.FirstOrDefault(c => c.Id == collectionId);
+            if (collection != null)
+            {
+                collection.WallpaperIds.Remove(wallpaperId);
+                _isDirty = true;
+            }
+        }
+    }
+    
+    public static List<Wallpaper> GetWallpapersInCollection(string collectionId)
+    {
+        if (string.IsNullOrEmpty(collectionId)) return [];
+        
+        lock (_lock)
+        {
+            var collection = _collections.FirstOrDefault(c => c.Id == collectionId);
+            if (collection == null) return [];
+            
+            return _wallpapers.Where(w => collection.WallpaperIds.Contains(w.Id)).ToList();
         }
     }
     
@@ -235,6 +320,7 @@ public static class SettingsService
     private sealed class WallpaperData
     {
         public List<Wallpaper> Wallpapers { get; set; } = [];
-        public List<WallpaperCollection> Collections { get; set; } = [];
+        public List<DynamicWallpaper> DynamicWallpapers { get; set; } = [];
+        public List<Collection> Collections { get; set; } = [];
     }
 }

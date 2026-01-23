@@ -3,15 +3,20 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:WallpaperManager.ViewModels"
         xmlns:conv="clr-namespace:WallpaperManager.Converters"
+        xmlns:sys="clr-namespace:System;assembly=System.Runtime"
         Title="Wallpaper Manager" 
-        Height="650" Width="950"
-        MinHeight="500" MinWidth="750"
+        Height="700" Width="1050"
+        MinHeight="550" MinWidth="850"
         Background="{StaticResource BackgroundBrush}"
+        FontFamily="Segoe UI"
         WindowStartupLocation="CenterScreen"
-        WindowState="Normal"
-        ResizeMode="CanResizeWithGrip"
+        WindowState="Maximized"
+        ResizeMode="CanResize"
         Icon="/Resources/app.ico"
-        Loaded="Window_Loaded">
+        Loaded="Window_Loaded"
+        AllowDrop="True"
+        Drop="Window_Drop"
+        DragOver="Window_DragOver">
     
     <Window.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis"/>
@@ -21,6 +26,7 @@
         <conv:NullToVisibilityConverter x:Key="NullToVis"/>
         <conv:InverseBoolConverter x:Key="InverseBoolConverter"/>
         <conv:CountToVisibilityConverter x:Key="CountToVisibilityConverter"/>
+        <conv:MultiSelectToVisibilityConverter x:Key="MultiSelectToVis"/>
     </Window.Resources>
     
     <Grid>
@@ -38,25 +44,25 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 
-                <!-- Logo/Titre -->
                 <StackPanel Grid.Row="0" Margin="20,20,16,20">
-                    <TextBlock Text="🎨 Wallpaper" FontSize="22" FontWeight="Bold" 
-                               Foreground="{StaticResource TextPrimaryBrush}"/>
-                    <TextBlock Text="Manager" FontSize="22" FontWeight="Light" 
-                               Foreground="{StaticResource PrimaryBrush}" Margin="0,-4,0,0"/>
+                    <TextBlock Text="🎨 Wallpaper" FontSize="22" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                    <TextBlock Text="Manager" FontSize="22" FontWeight="Light" Foreground="{StaticResource PrimaryBrush}" Margin="0,-4,0,0"/>
                 </StackPanel>
                 
-                <!-- Menu -->
                 <StackPanel Grid.Row="1" Margin="12,0,8,0">
                     <RadioButton x:Name="tabLibrary" Content="📚  Bibliothèque" IsChecked="True"
                                  Style="{StaticResource {x:Type ToggleButton}}" Margin="0,4"
                                  Foreground="{StaticResource TextPrimaryBrush}" FontSize="14"
                                  Padding="12,10" HorizontalContentAlignment="Left" Cursor="Hand"/>
-                    <RadioButton x:Name="tabUnsplash" Content="🌐  Unsplash"
+                    <RadioButton x:Name="tabCollections" Content="📂  Collections"
                                  Style="{StaticResource {x:Type ToggleButton}}" Margin="0,4"
                                  Foreground="{StaticResource TextPrimaryBrush}" FontSize="14"
                                  Padding="12,10" HorizontalContentAlignment="Left" Cursor="Hand"/>
-                    <RadioButton x:Name="tabCollections" Content="📁  Collections"
+                    <RadioButton x:Name="tabDynamic" Content="🌅  Dynamiques"
+                                 Style="{StaticResource {x:Type ToggleButton}}" Margin="0,4"
+                                 Foreground="{StaticResource TextPrimaryBrush}" FontSize="14"
+                                 Padding="12,10" HorizontalContentAlignment="Left" Cursor="Hand"/>
+                    <RadioButton x:Name="tabUnsplash" Content="🌐  Unsplash"
                                  Style="{StaticResource {x:Type ToggleButton}}" Margin="0,4"
                                  Foreground="{StaticResource TextPrimaryBrush}" FontSize="14"
                                  Padding="12,10" HorizontalContentAlignment="Left" Cursor="Hand"/>
@@ -67,29 +73,23 @@
                     
                     <Separator Margin="8,16" Background="{StaticResource BorderBrush}"/>
                     
-                    <!-- Contrôles rotation -->
-                    <TextBlock Text="Rotation automatique" FontSize="12" 
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="12,8,12,4"/>
+                    <TextBlock Text="Rotation automatique" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,8,12,4"/>
                     
-                    <ToggleButton IsChecked="{Binding IsRotationEnabled, Mode=TwoWay}" Margin="12,4,8,4"
-                                  Padding="12,8" Cursor="Hand">
+                    <ToggleButton IsChecked="{Binding IsRotationEnabled, Mode=TwoWay}" Margin="12,4,8,4" Padding="12,8" Cursor="Hand">
                         <ToggleButton.Style>
                             <Style TargetType="ToggleButton">
                                 <Setter Property="Template">
                                     <Setter.Value>
                                         <ControlTemplate TargetType="ToggleButton">
-                                            <Border x:Name="border" Background="{StaticResource CardBrush}" 
-                                                    CornerRadius="8" Padding="12,8">
+                                            <Border x:Name="border" Background="{StaticResource CardBrush}" CornerRadius="8" Padding="12,8">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="Auto"/>
                                                     </Grid.ColumnDefinitions>
                                                     <TextBlock x:Name="label" Text="Désactivé" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                                    <Border Grid.Column="1" Width="44" Height="24" CornerRadius="12"
-                                                            Background="{StaticResource BorderBrush}" x:Name="toggle">
-                                                        <Ellipse Width="20" Height="20" Fill="White" 
-                                                                 HorizontalAlignment="Left" Margin="2,0" x:Name="dot"/>
+                                                    <Border Grid.Column="1" Width="44" Height="24" CornerRadius="12" Background="{StaticResource BorderBrush}" x:Name="toggle">
+                                                        <Ellipse Width="20" Height="20" Fill="White" HorizontalAlignment="Left" Margin="2,0" x:Name="dot"/>
                                                     </Border>
                                                 </Grid>
                                             </Border>
@@ -100,9 +100,6 @@
                                                     <Setter TargetName="label" Property="Text" Value="Activé"/>
                                                     <Setter TargetName="label" Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
                                                 </Trigger>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="border" Property="Background" Value="{StaticResource SurfaceBrush}"/>
-                                                </Trigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>
                                     </Setter.Value>
@@ -111,60 +108,112 @@
                         </ToggleButton.Style>
                     </ToggleButton>
                     
-                    <!-- Boutons Précédent/Suivant -->
-                    <TextBlock Text="Changer de fond" FontSize="12" 
-                               Foreground="{StaticResource TextSecondaryBrush}" Margin="12,12,12,4"/>
+                    <TextBlock Text="Changer de fond" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,12,12,4"/>
                     
                     <StackPanel Orientation="Horizontal" Margin="12,4" HorizontalAlignment="Left">
-                        <Button Content="◀" Command="{Binding PreviousWallpaperCommand}" 
-                                Width="36" Height="36" Style="{StaticResource PrimaryButton}"
-                                Padding="0" Margin="0,0,4,0"
-                                ToolTip="Fond d'écran précédent"/>
-                        <Button Content="▶" Command="{Binding NextWallpaperCommand}" 
-                                Width="36" Height="36" Style="{StaticResource PrimaryButton}"
-                                Padding="0"
-                                ToolTip="Fond d'écran suivant"/>
+                        <Button Content="◀" Command="{Binding PreviousWallpaperCommand}" Width="36" Height="36" Style="{StaticResource PrimaryButton}" Padding="0" Margin="0,0,4,0" ToolTip="Précédent"/>
+                        <Button Content="▶" Command="{Binding NextWallpaperCommand}" Width="36" Height="36" Style="{StaticResource PrimaryButton}" Padding="0" ToolTip="Suivant"/>
                     </StackPanel>
                 </StackPanel>
                 
-                <!-- Status -->
-                <Border Grid.Row="2" Background="{StaticResource CardBrush}" Margin="12,8" 
-                        CornerRadius="8" Padding="12,8">
-                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" 
-                               Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                <Border Grid.Row="2" Background="{StaticResource CardBrush}" Margin="12,8" CornerRadius="8" Padding="12,8">
+                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
                 </Border>
             </Grid>
         </Border>
 
         <!-- Contenu principal -->
         <Grid Grid.Column="1" Margin="20">
-            <!-- Bibliothèque -->
+            
+            <!-- BIBLIOTHÈQUE -->
             <Grid Visibility="{Binding IsChecked, ElementName=tabLibrary, Converter={StaticResource BoolToVis}}">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 
-                <!-- Header -->
-                <Grid Grid.Row="0" Margin="0,0,0,16">
+                <Grid Grid.Row="0" Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    
-                    <TextBlock Text="Ma bibliothèque" FontSize="24" FontWeight="Bold" 
-                               Foreground="{StaticResource TextPrimaryBrush}"/>
-                    
-                    <Button Grid.Column="1" Content="+ Ajouter" Style="{StaticResource PrimaryButton}"
-                            Command="{Binding AddWallpapersCommand}"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Ma bibliothèque" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                        <TextBlock FontSize="14" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0">
+                            <Run Text="{Binding FilteredCount, Mode=OneWay}"/>/<Run Text="{Binding TotalCount, Mode=OneWay}"/>
+                        </TextBlock>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="+ Ajouter" Style="{StaticResource PrimaryButton}" Command="{Binding AddWallpapersCommand}"/>
                 </Grid>
                 
-                <!-- Grille de fonds d'écran -->
-                <ListBox Grid.Row="1" ItemsSource="{Binding Wallpapers}" 
-                         SelectedItem="{Binding SelectedWallpaper}"
-                         Background="Transparent" BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <!-- Filtres -->
+                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Padding="6" Margin="0,0,0,12">
+                    <Grid Height="26">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid>
+                            <TextBox x:Name="SearchBox" Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="Background" Value="#1A1A2E"/>
+                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter Property="BorderBrush" Value="#374151"/>
+                                        <Setter Property="BorderThickness" Value="1"/>
+                                        <Setter Property="FontFamily" Value="Segoe UI"/>
+                                        <Setter Property="FontSize" Value="13"/>
+                                        <Setter Property="Padding" Value="8,4"/>
+                                        <Setter Property="VerticalContentAlignment" Value="Center"/>
+                                        <Setter Property="Margin" Value="0,0,8,0"/>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                            <TextBlock Text="🔍 Rechercher..." 
+                                       Foreground="#9CA3AF" 
+                                       FontSize="13" 
+                                       VerticalAlignment="Center" 
+                                       Margin="10,0,0,0" 
+                                       IsHitTestVisible="False"
+                                       Visibility="{Binding Text, ElementName=SearchBox, Converter={StaticResource NullToVis}, ConverterParameter=Invert}"/>
+                        </Grid>
+                        <CheckBox Grid.Column="1" Content="★ Favoris" IsChecked="{Binding FilterFavoritesOnly}" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,12,0" FontSize="13"/>
+                        <ComboBox Grid.Column="2" ItemsSource="{Binding SortOptions}" SelectedItem="{Binding SortBy}" Width="70" Height="26" FontSize="13" Margin="0,0,8,0" Padding="6,2" VerticalContentAlignment="Center"/>
+                        <Button Grid.Column="3" Content="✕" Width="26" Height="26" Padding="0" FontSize="13" Style="{StaticResource PrimaryButton}" Command="{Binding ClearFiltersCommand}" ToolTip="Réinitialiser"/>
+                    </Grid>
+                </Border>
+                
+                <!-- Grille wallpapers -->
+                <ListBox Grid.Row="2" x:Name="WallpaperListBox" ItemsSource="{Binding Wallpapers}" SelectedItem="{Binding SelectedWallpaper}" SelectionMode="Extended" SelectionChanged="WallpaperListBox_SelectionChanged" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="Ajouter à une collection" ItemsSource="{Binding DataContext.Collections, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                                <MenuItem.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock>
+                                            <Run Text="{Binding Icon}"/> <Run Text="{Binding Name}"/>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </MenuItem.ItemTemplate>
+                                <MenuItem.ItemContainerStyle>
+                                    <Style TargetType="MenuItem">
+                                        <Setter Property="Command" Value="{Binding DataContext.AddToCollectionCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                        <Setter Property="CommandParameter" Value="{Binding}"/>
+                                    </Style>
+                                </MenuItem.ItemContainerStyle>
+                            </MenuItem>
+                            <Separator/>
+                            <MenuItem Header="👁️ Prévisualiser" Command="{Binding DataContext.PreviewWallpaperCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                            <MenuItem Header="★ Favoris" Command="{Binding DataContext.ToggleFavoriteSelectedCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                            <MenuItem Header="📂 Ouvrir dans l'explorateur" Command="{Binding DataContext.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                            <Separator/>
+                            <MenuItem Header="🗑️ Supprimer" Command="{Binding DataContext.DeleteSelectedCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
                             <WrapPanel/>
@@ -172,28 +221,20 @@
                     </ListBox.ItemsPanel>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Border Width="180" Height="120" Margin="4" CornerRadius="8"
-                                    Background="{StaticResource CardBrush}" Cursor="Hand">
+                            <Border Width="180" Height="120" Margin="4" CornerRadius="8" Background="{StaticResource CardBrush}" Cursor="Hand" MouseLeftButtonDown="WallpaperItem_MouseLeftButtonDown">
                                 <Grid>
-                                    <Image Source="{Binding FilePath, Converter={StaticResource PathToThumb}}"
-                                           Stretch="UniformToFill"/>
-                                    <Border Background="#80000000" VerticalAlignment="Bottom" 
-                                            CornerRadius="0,0,8,8" Padding="8,4">
+                                    <Image Source="{Binding FilePath, Converter={StaticResource PathToThumb}}" Stretch="UniformToFill"/>
+                                    <Border Background="#80000000" VerticalAlignment="Bottom" CornerRadius="0,0,8,8" Padding="8,4">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="{Binding Type, Converter={StaticResource TypeToIcon}}" 
-                                                       FontSize="12" Margin="0,0,4,0"/>
-                                            <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontSize="11"
-                                                       Foreground="White" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding Type, Converter={StaticResource TypeToIcon}}" FontSize="12" Margin="0,0,4,0"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontSize="11" Foreground="White" TextTrimming="CharacterEllipsis"/>
                                         </Grid>
                                     </Border>
-                                    <Border Background="{StaticResource PrimaryBrush}" 
-                                            HorizontalAlignment="Right" VerticalAlignment="Top"
-                                            CornerRadius="0,8,0,8" Padding="6,2"
-                                            Visibility="{Binding IsFavorite, Converter={StaticResource BoolToVis}}">
+                                    <Border Background="{StaticResource PrimaryBrush}" HorizontalAlignment="Right" VerticalAlignment="Top" CornerRadius="0,8,0,8" Padding="6,2" Visibility="{Binding IsFavorite, Converter={StaticResource BoolToVis}}">
                                         <TextBlock Text="★" Foreground="White" FontSize="10"/>
                                     </Border>
                                 </Grid>
@@ -202,147 +243,109 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
                 
-                <!-- Panneau d'actions -->
-                <Border Grid.Row="2" Style="{StaticResource CardStyle}" Margin="0,16,0,0"
-                        Visibility="{Binding SelectedWallpaper, Converter={StaticResource NullToVis}}">
+                <!-- Actions sélection simple -->
+                <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,12,0,0" Visibility="{Binding SelectedWallpaper, Converter={StaticResource NullToVis}}">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        
-                        <Image Source="{Binding SelectedWallpaper.FilePath, Converter={StaticResource PathToThumb}}"
-                               Width="100" Height="60" Stretch="UniformToFill" Margin="0,0,16,0"/>
-                        
+                        <Image Source="{Binding SelectedWallpaper.FilePath, Converter={StaticResource PathToThumb}}" Width="100" Height="60" Stretch="UniformToFill" Margin="0,0,16,0" Cursor="Hand" MouseLeftButtonDown="PreviewImage_Click"/>
                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding SelectedWallpaper.DisplayName}" FontSize="14" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}"/>
+                            <TextBlock Text="{Binding SelectedWallpaper.DisplayName}" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
                             <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}">
-                                <Run Text="{Binding SelectedWallpaper.Resolution}"/> • 
-                                <Run Text="{Binding SelectedWallpaper.FileSizeFormatted}"/>
+                                <Run Text="{Binding SelectedWallpaper.Resolution}"/> • <Run Text="{Binding SelectedWallpaper.FileSizeFormatted}"/>
                             </TextBlock>
                         </StackPanel>
-                        
                         <StackPanel Grid.Column="2" Orientation="Horizontal">
-                            <Button Content="★" Command="{Binding ToggleFavoriteCommand}"
-                                    Width="36" Height="36" Margin="0,0,8,0"
-                                    Style="{StaticResource PrimaryButton}" Padding="0"
-                                    ToolTip="Ajouter aux favoris"/>
-                            <Button Content="📂" Command="{Binding OpenInExplorerCommand}"
-                                    Width="36" Height="36" Margin="0,0,8,0"
-                                    Style="{StaticResource PrimaryButton}" Padding="0"
-                                    ToolTip="Ouvrir dans l'explorateur"/>
-                            <Button Content="Appliquer" Command="{Binding ApplyWallpaperCommand}"
-                                    Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
-                            <Button Content="🗑️" Command="{Binding RemoveWallpaperCommand}"
-                                    Width="36" Height="36" Background="#EF4444"
-                                    Style="{StaticResource PrimaryButton}" Padding="0"
-                                    ToolTip="Supprimer de la bibliothèque"/>
+                            <Button Content="👁️" Command="{Binding PreviewWallpaperCommand}" Width="36" Height="36" Margin="0,0,8,0" Style="{StaticResource PrimaryButton}" Padding="0" ToolTip="Prévisualiser"/>
+                            <Button Content="★" Command="{Binding ToggleFavoriteCommand}" Width="36" Height="36" Margin="0,0,8,0" Style="{StaticResource PrimaryButton}" Padding="0" ToolTip="Favoris"/>
+                            
+                            <!-- Bouton Ajouter à la collection avec menu déroulant -->
+                            <Button x:Name="BtnAddToCollection" Content="📌" Width="36" Height="36" Margin="0,0,8,0" Style="{StaticResource PrimaryButton}" Padding="0" ToolTip="Ajouter à une collection" Click="BtnAddToCollection_Click">
+                                <Button.ContextMenu>
+                                    <ContextMenu x:Name="CollectionMenu" ItemsSource="{Binding Collections}" Placement="Top">
+                                        <ContextMenu.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock>
+                                                    <Run Text="{Binding Icon}"/> <Run Text="{Binding Name}"/>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </ContextMenu.ItemTemplate>
+                                        <ContextMenu.ItemContainerStyle>
+                                            <Style TargetType="MenuItem">
+                                                <Setter Property="Command" Value="{Binding DataContext.AddToCollectionCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                                <Setter Property="CommandParameter" Value="{Binding}"/>
+                                            </Style>
+                                        </ContextMenu.ItemContainerStyle>
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
+                            
+                            <Button Content="📂" Command="{Binding OpenInExplorerCommand}" Width="36" Height="36" Margin="0,0,8,0" Style="{StaticResource PrimaryButton}" Padding="0" ToolTip="Ouvrir dossier"/>
+                            <Button Content="Appliquer" Command="{Binding ApplyWallpaperCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
+                            <Button Content="🗑️" Command="{Binding RemoveWallpaperCommand}" Width="36" Height="36" Background="#EF4444" Style="{StaticResource PrimaryButton}" Padding="0" ToolTip="Supprimer"/>
                         </StackPanel>
                     </Grid>
                 </Border>
-            </Grid>
-
-            <!-- Unsplash -->
-            <Grid Visibility="{Binding IsChecked, ElementName=tabUnsplash, Converter={StaticResource BoolToVis}}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
                 
-                <TextBlock Text="Unsplash" FontSize="24" FontWeight="Bold" 
-                           Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,16"/>
+                <!-- Actions multi-sélection -->
+                <Border Grid.Row="3" Style="{StaticResource CardStyle}" Margin="0,12,0,0" Background="#1E3A5F" Visibility="{Binding SelectedCount, Converter={StaticResource MultiSelectToVis}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock VerticalAlignment="Center" Foreground="White" FontSize="14">
+                            <Run Text="{Binding SelectedCount, Mode=OneWay}"/> élément(s) sélectionné(s)
+                        </TextBlock>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                            <Button Content="★ Favoris" Command="{Binding ToggleFavoriteSelectedCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
+                            
+                            <!-- Bouton Ajouter à la collection (multi-sélection) -->
+                            <Button x:Name="BtnAddToCollectionMulti" Content="📌 Collection" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" Click="BtnAddToCollection_Click">
+                                <Button.ContextMenu>
+                                    <ContextMenu ItemsSource="{Binding Collections}" Placement="Top">
+                                        <ContextMenu.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock>
+                                                    <Run Text="{Binding Icon}"/> <Run Text="{Binding Name}"/>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </ContextMenu.ItemTemplate>
+                                        <ContextMenu.ItemContainerStyle>
+                                            <Style TargetType="MenuItem">
+                                                <Setter Property="Command" Value="{Binding DataContext.AddToCollectionCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                                <Setter Property="CommandParameter" Value="{Binding}"/>
+                                            </Style>
+                                        </ContextMenu.ItemContainerStyle>
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
+                            
+                            <Button Content="🗑️ Supprimer" Command="{Binding DeleteSelectedCommand}" Style="{StaticResource PrimaryButton}" Background="#EF4444"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
                 
-                <!-- Barre de recherche -->
-                <Grid Grid.Row="1" Margin="0,0,0,16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    
-                    <TextBox Text="{Binding UnsplashSearchQuery, UpdateSourceTrigger=PropertyChanged}"
-                             Style="{StaticResource ModernTextBox}"
-                             Tag="Rechercher sur Unsplash..."/>
-                    
-                    <Button Grid.Column="1" Content="🔍 Rechercher" 
-                            Command="{Binding SearchUnsplashCommand}"
-                            Style="{StaticResource PrimaryButton}" Margin="8,0"/>
-                    
-                    <Button Grid.Column="2" Content="🎲 Aléatoire" 
-                            Command="{Binding LoadRandomUnsplashCommand}"
-                            Style="{StaticResource PrimaryButton}"/>
-                </Grid>
-                
-                <!-- Résultats -->
-                <ListBox Grid.Row="2" ItemsSource="{Binding UnsplashPhotos}"
-                         Background="Transparent" BorderThickness="0"
-                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                    <ListBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel/>
-                        </ItemsPanelTemplate>
-                    </ListBox.ItemsPanel>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <Border Width="220" Height="140" Margin="4" CornerRadius="8"
-                                    Background="{StaticResource CardBrush}" Cursor="Hand">
-                                <Grid>
-                                    <Image Source="{Binding Urls.Small, Converter={StaticResource UrlToImage}}"
-                                           Stretch="UniformToFill"/>
-                                    <Border Background="#80000000" VerticalAlignment="Bottom" 
-                                            CornerRadius="0,0,8,8" Padding="8,6">
-                                        <Grid>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
-                                            <TextBlock Text="{Binding User.Name}" FontSize="11"
-                                                       Foreground="White" TextTrimming="CharacterEllipsis"/>
-                                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,4,0,0">
-                                                <Button Content="⬇️" FontSize="10" Padding="8,2" Margin="0,0,4,0"
-                                                        Command="{Binding DataContext.DownloadUnsplashPhotoCommand, 
-                                                                  RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                        CommandParameter="{Binding}"
-                                                        Style="{StaticResource PrimaryButton}"/>
-                                                <Button Content="Appliquer" FontSize="10" Padding="8,2"
-                                                        Command="{Binding DataContext.DownloadAndApplyUnsplashPhotoCommand, 
-                                                                  RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                                        CommandParameter="{Binding}"
-                                                        Style="{StaticResource PrimaryButton}"/>
-                                            </StackPanel>
-                                        </Grid>
-                                    </Border>
-                                </Grid>
-                            </Border>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-                
-                <!-- Message si pas de clé API -->
-                <Border Grid.Row="2" Style="{StaticResource CardStyle}" 
-                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Visibility="{Binding UnsplashApiKey, Converter={StaticResource NullToVis}, ConverterParameter=Invert}">
-                    <StackPanel>
-                        <TextBlock Text="🔑 Clé API requise" FontSize="16" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Configurez votre clé API Unsplash dans les paramètres" 
-                                   FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"
-                                   HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                <!-- Drop overlay -->
+                <Border Grid.Row="2" x:Name="DropOverlay" Background="#CC1E293B" CornerRadius="12" Visibility="Collapsed">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="📥" FontSize="64" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Déposez vos fichiers ici" FontSize="20" Foreground="White" FontWeight="SemiBold"/>
                     </StackPanel>
                 </Border>
             </Grid>
 
-            <!-- Collections -->
+            <!-- COLLECTIONS -->
             <Grid Visibility="{Binding IsChecked, ElementName=tabCollections, Converter={StaticResource BoolToVis}}">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="250"/>
+                    <ColumnDefinition Width="280"/>
                     <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
                 
@@ -351,24 +354,200 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Text="Collections" FontSize="24" FontWeight="Bold" 
-                               Foreground="{StaticResource TextPrimaryBrush}"/>
-                    <Button Grid.Column="1" Content="+ Nouvelle" Style="{StaticResource PrimaryButton}"
-                            Command="{Binding CreateCollectionCommand}"/>
+                    <StackPanel>
+                        <TextBlock Text="Collections" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Organisez vos fonds d'écran par thème" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="+ Nouvelle collection" Style="{StaticResource PrimaryButton}" Command="{Binding CreateCollectionCommand}"/>
                 </Grid>
                 
                 <!-- Liste des collections -->
                 <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,16,0">
-                    <ListBox ItemsSource="{Binding Collections}" SelectedItem="{Binding SelectedCollection}"
-                             Background="Transparent" BorderThickness="0">
+                    <ListBox ItemsSource="{Binding Collections}" SelectedItem="{Binding SelectedCollection}" Background="Transparent" BorderThickness="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Border Padding="8" Margin="2" CornerRadius="6" Background="{StaticResource SurfaceBrush}">
+                                <Border Padding="12" Margin="2" CornerRadius="8" Background="{StaticResource SurfaceBrush}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding Icon}" FontSize="20" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                            <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}">
+                                                <Run Text="{Binding Count, Mode=OneWay}"/> fond(s) d'écran
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+                
+                <!-- Détail de la collection -->
+                <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource CardStyle}" Visibility="{Binding SelectedCollection, Converter={StaticResource NullToVis}}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        
+                        <!-- En-tête de la collection -->
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <!-- Icône fixe pour Favoris -->
+                            <TextBlock Text="{Binding SelectedCollection.Icon}" FontSize="24" VerticalAlignment="Center" Margin="0,0,12,0"
+                                       Visibility="{Binding IsSelectedCollectionFavorites, Converter={StaticResource BoolToVis}}"/>
+                            
+                            <!-- ComboBox pour les autres collections -->
+                            <ComboBox Width="50" Height="36" SelectedItem="{Binding SelectedCollection.Icon, Mode=TwoWay}" FontSize="20" VerticalContentAlignment="Center" HorizontalContentAlignment="Center" Margin="0,0,8,0"
+                                      Visibility="{Binding CanEditSelectedCollection, Converter={StaticResource BoolToVis}}">
+                                <sys:String>📁</sys:String>
+                                <sys:String>🎨</sys:String>
+                                <sys:String>🌙</sys:String>
+                                <sys:String>☀️</sys:String>
+                                <sys:String>🎮</sys:String>
+                                <sys:String>🏞️</sys:String>
+                                <sys:String>🌊</sys:String>
+                                <sys:String>🔥</sys:String>
+                                <sys:String>❄️</sys:String>
+                                <sys:String>🌸</sys:String>
+                                <sys:String>🍂</sys:String>
+                                <sys:String>⭐</sys:String>
+                                <sys:String>🌄</sys:String>
+                                <sys:String>🌃</sys:String>
+                                <sys:String>🖥️</sys:String>
+                                <sys:String>🎬</sys:String>
+                            </ComboBox>
+                            
+                            <!-- Nom fixe pour Favoris -->
+                            <TextBlock Grid.Column="1" Text="{Binding SelectedCollection.Name}" FontSize="18" FontWeight="SemiBold" 
+                                       Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"
+                                       Visibility="{Binding IsSelectedCollectionFavorites, Converter={StaticResource BoolToVis}}"/>
+                            
+                            <!-- TextBox pour les autres collections -->
+                            <TextBox Grid.Column="1" Text="{Binding SelectedCollection.Name, UpdateSourceTrigger=PropertyChanged}" 
+                                     Style="{StaticResource ModernTextBox}" FontSize="18" FontWeight="SemiBold"
+                                     Visibility="{Binding CanEditSelectedCollection, Converter={StaticResource BoolToVis}}"/>
+                            
+                            <!-- Bouton supprimer (caché pour Favoris) -->
+                            <Button Grid.Column="2" Content="🗑️" Command="{Binding DeleteCollectionCommand}" 
+                                    Background="#EF4444" Style="{StaticResource PrimaryButton}" 
+                                    Width="36" Height="36" Padding="0" Margin="8,0,0,0" 
+                                    ToolTip="Supprimer la collection"
+                                    Visibility="{Binding CanEditSelectedCollection, Converter={StaticResource BoolToVis}}"/>
+                        </Grid>
+                        
+                        <!-- Info -->
+                        <TextBlock Grid.Row="1" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,12">
+                            <Run Text="{Binding CollectionWallpapers.Count, Mode=OneWay}"/> fond(s) d'écran dans cette collection
+                        </TextBlock>
+                        
+                        <!-- Grille des wallpapers de la collection -->
+                        <ListBox Grid.Row="2" ItemsSource="{Binding CollectionWallpapers}" SelectedItem="{Binding SelectedCollectionWallpaper}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Width="160" Height="100" Margin="4" CornerRadius="8" Background="{StaticResource CardBrush}" Cursor="Hand">
+                                        <Grid>
+                                            <Image Source="{Binding FilePath, Converter={StaticResource PathToThumb}}" Stretch="UniformToFill"/>
+                                            <Border Background="#80000000" VerticalAlignment="Bottom" CornerRadius="0,0,8,8" Padding="8,4">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Type, Converter={StaticResource TypeToIcon}}" FontSize="10" Margin="0,0,4,0"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontSize="10" Foreground="White" TextTrimming="CharacterEllipsis"/>
+                                                    <Button Grid.Column="2" Content="✖" FontSize="10" Width="18" Height="18" Padding="0" 
+                                                            Command="{Binding DataContext.RemoveFromCollectionCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                                            CommandParameter="{Binding}" 
+                                                            Background="#EF4444" Style="{StaticResource PrimaryButton}" ToolTip="Retirer"/>
+                                                </Grid>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        
+                        <!-- Actions -->
+                        <Border Grid.Row="3" Margin="0,12,0,0" Visibility="{Binding SelectedCollectionWallpaper, Converter={StaticResource NullToVis}}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Content="👁️ Prévisualiser" Command="{Binding PreviewCollectionWallpaperCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
+                                <Button Content="Appliquer" Command="{Binding ApplyCollectionWallpaperCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
+                                <Button Content="▶ Rotation collection" Command="{Binding StartCollectionRotationCommand}" Style="{StaticResource PrimaryButton}"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- Message si vide -->
+                        <TextBlock Grid.Row="2" Text="Glissez des fonds d'écran depuis la bibliothèque ou utilisez le menu contextuel" 
+                                   Foreground="{StaticResource TextSecondaryBrush}" 
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Visibility="{Binding CollectionWallpapers.Count, Converter={StaticResource CountToVisibilityConverter}, ConverterParameter=Invert}"/>
+                    </Grid>
+                </Border>
+                
+                <!-- Message si aucune collection -->
+                <Border Grid.Row="1" Grid.ColumnSpan="2" Visibility="{Binding SelectedCollection, Converter={StaticResource NullToVis}, ConverterParameter=Invert}">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="📂" FontSize="64" HorizontalAlignment="Center" Opacity="0.5"/>
+                        <TextBlock Text="Sélectionnez ou créez une collection" FontSize="16" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- DYNAMIQUES -->
+            <Grid Visibility="{Binding IsChecked, ElementName=tabDynamic, Converter={StaticResource BoolToVis}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="280"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                
+                <Grid Grid.ColumnSpan="2" Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <TextBlock Text="Wallpapers Dynamiques" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock Text="Changent selon l'heure de la journée" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="+ 2 périodes" Style="{StaticResource PrimaryButton}" Command="{Binding CreateDynamic2PeriodsCommand}" Margin="0,0,8,0" ToolTip="Jour (07:00) / Nuit (19:00)"/>
+                        <Button Content="+ 4 périodes" Style="{StaticResource PrimaryButton}" Command="{Binding CreateDynamic4PeriodsCommand}" Margin="0,0,8,0" ToolTip="Aube (06:00) / Jour (12:00) / Crépuscule (18:00) / Nuit (22:00)"/>
+                        <Button Content="+ 6 périodes" Style="{StaticResource PrimaryButton}" Command="{Binding CreateDynamic6PeriodsCommand}" ToolTip="Aube (05:00) / Matin (08:00) / Midi (12:00) / Après-midi (15:00) / Crépuscule (19:00) / Nuit (22:00)"/>
+                    </StackPanel>
+                </Grid>
+                
+                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,16,0">
+                    <ListBox ItemsSource="{Binding DynamicWallpapers}" SelectedItem="{Binding SelectedDynamicWallpaper}" Background="Transparent" BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="12" Margin="2" CornerRadius="8" Background="{StaticResource SurfaceBrush}">
                                     <StackPanel>
-                                        <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                                        <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
                                         <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}">
-                                            <Run Text="{Binding WallpaperIds.Count, Mode=OneWay}"/> fond(s) d'écran
+                                            <Run Text="{Binding VariantCount, Mode=OneWay}"/> variantes
                                         </TextBlock>
                                     </StackPanel>
                                 </Border>
@@ -377,181 +556,152 @@
                     </ListBox>
                 </Border>
                 
-                <!-- Détails collection -->
-                <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource CardStyle}"
-                        Visibility="{Binding SelectedCollection, Converter={StaticResource NullToVis}}">
+                <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource CardStyle}" Visibility="{Binding SelectedDynamicWallpaper, Converter={StaticResource NullToVis}}">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
-                        
-                        <StackPanel>
-                            <TextBox Text="{Binding SelectedCollection.Name, UpdateSourceTrigger=PropertyChanged}"
-                                     Style="{StaticResource ModernTextBox}" FontSize="18" FontWeight="SemiBold"/>
-                            <TextBox Text="{Binding SelectedCollection.Description, UpdateSourceTrigger=PropertyChanged}"
-                                     Style="{StaticResource ModernTextBox}" Margin="0,8,0,0"
-                                     Tag="Description (optionnel)"/>
-                        </StackPanel>
-                        
-                        <TextBlock Grid.Row="1" Text="Sélectionnez un fond d'écran dans la bibliothèque puis cliquez sur 'Ajouter à la collection'"
-                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"
-                                   VerticalAlignment="Center" HorizontalAlignment="Center" TextWrapping="Wrap"
-                                   TextAlignment="Center" Margin="20"/>
-                        
+                        <TextBox Text="{Binding SelectedDynamicWallpaper.Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" FontSize="18" FontWeight="SemiBold"/>
+                        <ScrollViewer Grid.Row="1" Margin="0,16" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding SelectedDynamicWallpaper.Variants}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource SurfaceBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="70"/>
+                                                    <ColumnDefinition Width="80"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding StartTimeFormatted}" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                                <Border Grid.Column="2" Height="50" CornerRadius="4" Margin="8,0" Background="{StaticResource CardBrush}">
+                                                    <Image Source="{Binding FilePath, Converter={StaticResource PathToThumb}}" Stretch="UniformToFill"/>
+                                                </Border>
+                                                <Button Grid.Column="3" Content="Choisir..." Command="{Binding DataContext.SetVariantImageCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Style="{StaticResource PrimaryButton}" Padding="12,6"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
                         <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="Utiliser pour rotation" Command="{Binding SetActiveCollectionCommand}"
-                                    Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
-                            <Button Content="🗑️ Supprimer" Command="{Binding DeleteCollectionCommand}"
-                                    Background="#EF4444" Style="{StaticResource PrimaryButton}"/>
+                            <Button Content="▶ Activer" Command="{Binding ActivateDynamicWallpaperCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
+                            <Button Content="⏹ Stop" Command="{Binding DeactivateDynamicWallpaperCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
+                            <Button Content="🗑️" Command="{Binding DeleteDynamicWallpaperCommand}" Background="#EF4444" Style="{StaticResource PrimaryButton}" Width="36" Padding="0"/>
                         </StackPanel>
                     </Grid>
                 </Border>
             </Grid>
 
-            <!-- Paramètres -->
-            <ScrollViewer Visibility="{Binding IsChecked, ElementName=tabSettings, Converter={StaticResource BoolToVis}}"
-                          VerticalScrollBarVisibility="Auto">
+            <!-- UNSPLASH -->
+            <Grid Visibility="{Binding IsChecked, ElementName=tabUnsplash, Converter={StaticResource BoolToVis}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Unsplash" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,16"/>
+                <Grid Grid.Row="1" Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox Text="{Binding UnsplashSearchQuery, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Tag="Rechercher..."/>
+                    <Button Grid.Column="1" Content="🔍 Rechercher" Command="{Binding SearchUnsplashCommand}" Style="{StaticResource PrimaryButton}" Margin="8,0"/>
+                    <Button Grid.Column="2" Content="🎲 Aléatoire" Command="{Binding LoadRandomUnsplashCommand}" Style="{StaticResource PrimaryButton}"/>
+                </Grid>
+                <ListBox Grid.Row="2" ItemsSource="{Binding UnsplashPhotos}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Width="220" Height="140" Margin="4" CornerRadius="8" Background="{StaticResource CardBrush}" Cursor="Hand">
+                                <Grid>
+                                    <Image Source="{Binding Urls.Small, Converter={StaticResource UrlToImage}}" Stretch="UniformToFill"/>
+                                    <Border Background="#80000000" VerticalAlignment="Bottom" CornerRadius="0,0,8,8" Padding="8,6">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="{Binding User.Name}" FontSize="11" Foreground="White" TextTrimming="CharacterEllipsis"/>
+                                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,4,0,0">
+                                                <Button Content="⬇️" FontSize="10" Padding="8,2" Margin="0,0,4,0" Command="{Binding DataContext.DownloadUnsplashPhotoCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" Style="{StaticResource PrimaryButton}"/>
+                                                <Button Content="Appliquer" FontSize="10" Padding="8,2" Command="{Binding DataContext.DownloadAndApplyUnsplashPhotoCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" Style="{StaticResource PrimaryButton}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+
+            <!-- PARAMÈTRES -->
+            <ScrollViewer Visibility="{Binding IsChecked, ElementName=tabSettings, Converter={StaticResource BoolToVis}}" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Text="Paramètres" FontSize="24" FontWeight="Bold" 
-                               Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,20"/>
+                    <TextBlock Text="Paramètres" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,20"/>
                     
-                    <!-- Général -->
                     <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
                         <StackPanel>
-                            <TextBlock Text="Général" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            
-                            <CheckBox Content="Démarrer avec Windows" IsChecked="{Binding StartWithWindows}"
-                                      Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
-                            <CheckBox Content="Minimiser dans la barre des tâches" IsChecked="{Binding MinimizeToTray}"
-                                      Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
+                            <TextBlock Text="Général" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <CheckBox Content="Démarrer avec Windows" IsChecked="{Binding StartWithWindows}" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
+                            <CheckBox Content="Minimiser dans la barre des tâches" IsChecked="{Binding MinimizeToTray}" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
                         </StackPanel>
                     </Border>
                     
-                    <!-- Rotation -->
                     <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
                         <StackPanel>
-                            <TextBlock Text="Rotation automatique" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            
+                            <TextBlock Text="Rotation automatique" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
                             <Grid Margin="0,8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="Intervalle (minutes)" Foreground="{StaticResource TextPrimaryBrush}"
-                                           VerticalAlignment="Center"/>
-                                <TextBox Grid.Column="1" Text="{Binding RotationInterval}" Width="80"
-                                         Style="{StaticResource ModernTextBox}" TextAlignment="Center"/>
+                                <TextBlock Text="Intervalle (minutes)" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" Text="{Binding RotationInterval}" Width="80" Style="{StaticResource ModernTextBox}" TextAlignment="Center"/>
                             </Grid>
                         </StackPanel>
                     </Border>
                     
-                    <!-- Unsplash -->
                     <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
                         <StackPanel>
-                            <TextBlock Text="Unsplash API" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            
-                            <TextBlock Text="Clé API (Access Key)" Foreground="{StaticResource TextSecondaryBrush}" 
-                                       FontSize="12" Margin="0,0,0,4"/>
-                            <TextBox Text="{Binding UnsplashApiKey, UpdateSourceTrigger=PropertyChanged}"
-                                     Style="{StaticResource ModernTextBox}"/>
-                            
-                            <TextBlock Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
-                                       TextWrapping="Wrap">
-                                Obtenez une clé gratuite sur unsplash.com/developers
-                            </TextBlock>
+                            <TextBlock Text="Unsplash API" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <TextBlock Text="Clé API (Access Key)" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,0,0,4"/>
+                            <TextBox Text="{Binding UnsplashApiKey, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}"/>
                         </StackPanel>
                     </Border>
                     
-                    <!-- Fonds animés -->
                     <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
                         <StackPanel>
-                            <TextBlock Text="Fonds d'écran animés" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            
-                            <CheckBox Content="Mettre en pause sur batterie" IsChecked="{Binding PauseOnBattery}"
-                                      Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
-                            <TextBlock Text="Économise la batterie en pausant les fonds animés quand débranché" 
-                                       FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="20,0,0,8"/>
-                            
-                            <CheckBox Content="Mettre en pause en plein écran" IsChecked="{Binding PauseOnFullscreen}"
-                                      Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
-                            <TextBlock Text="Pause automatique pendant les jeux et vidéos en plein écran" 
-                                       FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="20,0,0,8"/>
-                            
-                            <Separator Margin="0,8" Background="{StaticResource BorderBrush}"/>
-                            
-                            <Button Content="Arrêter le fond animé actuel" Command="{Binding StopAnimatedWallpaperCommand}"
-                                    Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"/>
-                            
-                            <TextBlock Margin="0,12,0,0" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"
-                                       TextWrapping="Wrap">
-                                Les fonds d'écran vidéo et GIF animés nécessitent VLC Media Player installé.
-                            </TextBlock>
+                            <TextBlock Text="Fonds d'écran animés" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <CheckBox Content="Mettre en pause sur batterie" IsChecked="{Binding PauseOnBattery}" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
+                            <CheckBox Content="Mettre en pause en plein écran" IsChecked="{Binding PauseOnFullscreen}" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
+                            <Button Content="Arrêter le fond animé" Command="{Binding StopAnimatedWallpaperCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,8"/>
                         </StackPanel>
                     </Border>
                     
-                    <!-- À propos -->
                     <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
                         <StackPanel>
-                            <TextBlock Text="À propos" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            <TextBlock Text="Wallpaper Manager v1.0.0" Foreground="{StaticResource TextPrimaryBrush}"/>
-                            <TextBlock Text="Gestionnaire de fonds d'écran avec rotation automatique" 
-                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
-                            <TextBlock Text="© 2025 Felix-Antoine" 
-                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </Border>
-                    
-                    <!-- Maintenance -->
-                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
-                        <StackPanel>
-                            <TextBlock Text="Maintenance" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            
-                            <Button Content="🗑️ Vider le cache des miniatures" 
-                                    Command="{Binding ClearThumbnailCacheCommand}"
-                                    Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"/>
-                            <TextBlock Text="Libère l'espace disque utilisé par les miniatures en cache" 
-                                       FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </Border>
-                    
-                    <!-- Détection des doublons -->
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="Détection des doublons" FontSize="16" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            
-                            <Button Command="{Binding ScanDuplicatesCommand}"
-                                    Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"
-                                    IsEnabled="{Binding IsDuplicateScanRunning, Converter={StaticResource InverseBoolConverter}}">
-                                <Button.Content>
-                                    <TextBlock>
-                                        <Run Text="🔍 Rechercher les doublons"/>
-                                    </TextBlock>
-                                </Button.Content>
-                            </Button>
-                            <TextBlock Text="Analyse les fichiers pour trouver les images identiques (par hash MD5)" 
-                                       FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0"/>
-                            
-                            <!-- Résultats des doublons -->
-                            <ItemsControl ItemsSource="{Binding DuplicateGroups}" Margin="0,16,0,0"
-                                          Visibility="{Binding DuplicateGroups.Count, Converter={StaticResource CountToVisibilityConverter}}">
+                            <TextBlock Text="Maintenance" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <Button Content="🗑️ Vider le cache" Command="{Binding ClearThumbnailCacheCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"/>
+                            <Button Content="🔍 Détecter les doublons" Command="{Binding ScanDuplicatesCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,8,0,0" IsEnabled="{Binding IsDuplicateScanRunning, Converter={StaticResource InverseBoolConverter}}"/>
+                            <ItemsControl ItemsSource="{Binding DuplicateGroups}" Margin="0,16,0,0" Visibility="{Binding DuplicateGroups.Count, Converter={StaticResource CountToVisibilityConverter}}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="{StaticResource SurfaceBrush}" CornerRadius="8" 
-                                                Padding="12" Margin="0,0,0,8">
+                                        <Border Background="{StaticResource SurfaceBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,8">
                                             <StackPanel>
                                                 <TextBlock FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8">
-                                                    <Run Text="{Binding Wallpapers.Count, Mode=OneWay}"/>
-                                                    <Run Text="fichiers identiques •"/>
-                                                    <Run Text="{Binding Resolution}"/>
+                                                    <Run Text="{Binding Wallpapers.Count, Mode=OneWay}"/> fichiers identiques
                                                 </TextBlock>
                                                 <ItemsControl ItemsSource="{Binding Wallpapers}">
                                                     <ItemsControl.ItemTemplate>
@@ -562,29 +712,9 @@
                                                                     <ColumnDefinition Width="*"/>
                                                                     <ColumnDefinition Width="Auto"/>
                                                                 </Grid.ColumnDefinitions>
-                                                                <Image Source="{Binding FilePath, Converter={StaticResource PathToThumb}}"
-                                                                       Width="44" Height="30" Stretch="UniformToFill"
-                                                                       HorizontalAlignment="Left"/>
-                                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="8,0">
-                                                                    <TextBlock Text="{Binding DisplayName}" FontSize="12"
-                                                                               Foreground="{StaticResource TextPrimaryBrush}"
-                                                                               TextTrimming="CharacterEllipsis"/>
-                                                                    <TextBlock Text="{Binding FilePath}" FontSize="10"
-                                                                               Foreground="{StaticResource TextSecondaryBrush}"
-                                                                               TextTrimming="CharacterEllipsis"/>
-                                                                </StackPanel>
-                                                                <StackPanel Grid.Column="2" Orientation="Horizontal">
-                                                                    <Button Content="📂" ToolTip="Ouvrir dans l'explorateur"
-                                                                            Command="{Binding DataContext.OpenInExplorerCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                            CommandParameter="{Binding}"
-                                                                            Style="{StaticResource PrimaryButton}" 
-                                                                            Width="28" Height="28" Padding="0" FontSize="11" Margin="0,0,4,0"/>
-                                                                    <Button Content="Retirer" 
-                                                                            Command="{Binding DataContext.RemoveDuplicateCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                                            CommandParameter="{Binding}"
-                                                                            Style="{StaticResource PrimaryButton}" 
-                                                                            Background="#EF4444" Padding="8,4" FontSize="11"/>
-                                                                </StackPanel>
+                                                                <Image Source="{Binding FilePath, Converter={StaticResource PathToThumb}}" Width="44" Height="30" Stretch="UniformToFill"/>
+                                                                <TextBlock Grid.Column="1" Text="{Binding DisplayName}" FontSize="12" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="8,0" TextTrimming="CharacterEllipsis"/>
+                                                                <Button Grid.Column="2" Content="Retirer" Command="{Binding DataContext.RemoveDuplicateCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Style="{StaticResource PrimaryButton}" Background="#EF4444" Padding="8,4" FontSize="11"/>
                                                             </Grid>
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
@@ -596,17 +726,23 @@
                             </ItemsControl>
                         </StackPanel>
                     </Border>
+                    
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="À propos" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <TextBlock Text="Wallpaper Manager v2.0.0" Foreground="{StaticResource TextPrimaryBrush}"/>
+                            <TextBlock Text="© 2025 Felix-Antoine" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
         </Grid>
         
         <!-- Loading overlay -->
-        <Border Background="#80000000" Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}"
-                Grid.ColumnSpan="2">
+        <Border Background="#80000000" Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" Grid.ColumnSpan="2">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                 <TextBlock Text="⏳" FontSize="48" HorizontalAlignment="Center"/>
-                <TextBlock Text="{Binding StatusMessage}" Foreground="White" FontSize="14" 
-                           HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                <TextBlock Text="{Binding StatusMessage}" Foreground="White" FontSize="14" HorizontalAlignment="Center" Margin="0,8,0,0"/>
             </StackPanel>
         </Border>
     </Grid>

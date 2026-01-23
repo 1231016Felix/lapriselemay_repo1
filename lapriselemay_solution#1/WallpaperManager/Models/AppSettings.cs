@@ -14,7 +14,6 @@ public class AppSettings
     public bool RotationEnabled { get; set; }
     public int RotationIntervalMinutes { get; set; } = 30;
     public bool RandomOrder { get; set; } = true;
-    public string? ActiveCollectionId { get; set; }
     
     // Unsplash
     public string? UnsplashApiKey { get; set; }
