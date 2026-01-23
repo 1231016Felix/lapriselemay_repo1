@@ -16,41 +16,71 @@ public sealed class AnimatedWallpaperService : IDisposable
     private bool _isPlaying;
     private volatile bool _disposed;
     private volatile bool _libVLCInitialized;
+    private volatile bool _libVLCInitializing;
     private readonly Lock _lock = new();
+    private readonly SemaphoreSlim _initSemaphore = new(1, 1);
     
     public event EventHandler<bool>? PlaybackStateChanged;
     public bool IsPlaying => _isPlaying;
     
     public AnimatedWallpaperService()
     {
-        // LibVLC sera initialisé à la demande pour économiser la RAM
+        // Pré-initialiser LibVLC en arrière-plan pour éviter le lag au premier Play
+        _ = InitializeLibVLCAsync();
     }
     
-    private void EnsureLibVLCInitialized()
+    /// <summary>
+    /// Initialise LibVLC de manière asynchrone en arrière-plan
+    /// </summary>
+    private async Task InitializeLibVLCAsync()
     {
-        if (_libVLCInitialized || _disposed) return;
+        if (_libVLCInitialized || _libVLCInitializing || _disposed) return;
         
-        lock (_lock)
+        await _initSemaphore.WaitAsync().ConfigureAwait(false);
+        try
         {
             if (_libVLCInitialized || _disposed) return;
+            _libVLCInitializing = true;
             
-            try
+            await Task.Run(() =>
             {
-                Core.Initialize();
-                _libVLC = new LibVLC(
-                    "--no-audio", 
-                    "--input-repeat=65535", 
-                    "--quiet",
-                    "--no-video-title-show"
-                );
-                _libVLCInitialized = true;
-                System.Diagnostics.Debug.WriteLine("LibVLC initialisé avec succès");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Erreur init LibVLC: {ex.Message}");
-            }
+                try
+                {
+                    Core.Initialize();
+                    lock (_lock)
+                    {
+                        if (_disposed) return;
+                        _libVLC = new LibVLC(
+                            "--no-audio", 
+                            "--input-repeat=65535", 
+                            "--quiet",
+                            "--no-video-title-show"
+                        );
+                        _libVLCInitialized = true;
+                    }
+                    System.Diagnostics.Debug.WriteLine("LibVLC initialisé avec succès (async)");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Erreur init LibVLC: {ex.Message}");
+                }
+            }).ConfigureAwait(false);
         }
+        finally
+        {
+            _libVLCInitializing = false;
+            _initSemaphore.Release();
+        }
+    }
+    
+    /// <summary>
+    /// S'assure que LibVLC est initialisé (attend si nécessaire)
+    /// </summary>
+    private async Task EnsureLibVLCInitializedAsync()
+    {
+        if (_libVLCInitialized && _libVLC != null) return;
+        
+        await InitializeLibVLCAsync().ConfigureAwait(false);
     }
     
     public void Play(Wallpaper wallpaper)
@@ -69,37 +99,75 @@ public sealed class AnimatedWallpaperService : IDisposable
             return;
         }
         
-        EnsureLibVLCInitialized();
-        
-        if (_libVLC == null)
-            return;
-        
-        Stop();
-        
-        // Invalider le cache WorkerW pour s'assurer d'avoir le bon handle
-        DesktopWindowApi.InvalidateCache();
-        
-        System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+        // Lancer l'opération de manière asynchrone pour ne pas bloquer l'UI
+        _ = PlayAsync(wallpaper);
+    }
+    
+    private async Task PlayAsync(Wallpaper wallpaper)
+    {
+        try
         {
-            lock (_lock)
+            // Initialiser LibVLC en arrière-plan si nécessaire
+            await EnsureLibVLCInitializedAsync().ConfigureAwait(false);
+            
+            if (_libVLC == null || _disposed)
+                return;
+            
+            // Arrêter la lecture précédente (sur le thread UI)
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                if (_disposed) return;
-                
-                try
+                StopInternal();
+            }).Task.ConfigureAwait(false);
+            
+            // Invalider le cache WorkerW (peut être fait hors UI)
+            DesktopWindowApi.InvalidateCache();
+            
+            // Créer le média en arrière-plan (opération potentiellement lente)
+            Media? media = null;
+            await Task.Run(() =>
+            {
+                lock (_lock)
                 {
-                    CreateVideoWindow();
-                    SetupMediaPlayer(wallpaper);
+                    if (_disposed || _libVLC == null) return;
+                    media = new Media(_libVLC, wallpaper.FilePath, FromType.FromPath);
+                    media.AddOption(":input-repeat=65535");
+                }
+            }).ConfigureAwait(false);
+            
+            if (media == null || _disposed) return;
+            
+            // Créer la fenêtre et démarrer la lecture sur le thread UI
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                lock (_lock)
+                {
+                    if (_disposed)
+                    {
+                        media.Dispose();
+                        return;
+                    }
                     
-                    _isPlaying = true;
-                    PlaybackStateChanged?.Invoke(this, true);
+                    try
+                    {
+                        _currentMedia = media;
+                        CreateVideoWindow();
+                        SetupMediaPlayer(wallpaper);
+                        
+                        _isPlaying = true;
+                        PlaybackStateChanged?.Invoke(this, true);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Erreur lecture vidéo: {ex.Message}");
+                        CleanupResources();
+                    }
                 }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Erreur lecture vidéo: {ex.Message}");
-                    CleanupResources();
-                }
-            }
-        });
+            }).Task.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Erreur PlayAsync: {ex.Message}");
+        }
     }
 
     private void CreateVideoWindow()
@@ -217,12 +285,8 @@ public sealed class AnimatedWallpaperService : IDisposable
     
     private void SetupMediaPlayer(Wallpaper wallpaper)
     {
-        if (_mediaPlayer == null || _libVLC == null)
+        if (_mediaPlayer == null || _libVLC == null || _currentMedia == null)
             return;
-        
-        _currentMedia?.Dispose();
-        _currentMedia = new Media(_libVLC, wallpaper.FilePath, FromType.FromPath);
-        _currentMedia.AddOption(":input-repeat=65535");
         
         // Configurer VLC pour étirer/couvrir tout l'espace disponible
         _mediaPlayer.Scale = 0; // 0 = auto-scale pour remplir la fenêtre
@@ -244,13 +308,28 @@ public sealed class AnimatedWallpaperService : IDisposable
             _isPlaying = false;
         }
         
-        System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+        // Utiliser BeginInvoke pour ne pas bloquer
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
         {
             lock (_lock)
             {
                 CleanupResources();
             }
         });
+        
+        PlaybackStateChanged?.Invoke(this, false);
+    }
+    
+    /// <summary>
+    /// Version interne de Stop appelée depuis le thread UI
+    /// </summary>
+    private void StopInternal()
+    {
+        lock (_lock)
+        {
+            _isPlaying = false;
+            CleanupResources();
+        }
         
         PlaybackStateChanged?.Invoke(this, false);
     }
@@ -363,5 +442,7 @@ public sealed class AnimatedWallpaperService : IDisposable
             _libVLC = null;
             _libVLCInitialized = false;
         }
+        
+        _initSemaphore.Dispose();
     }
 }
