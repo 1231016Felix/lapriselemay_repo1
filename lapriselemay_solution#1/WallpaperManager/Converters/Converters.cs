@@ -217,3 +217,293 @@ public class WallpaperTypeToVisibilityConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
+
+// === CONVERTERS POUR WALLPAPERS DYNAMIQUES ===
+
+/// <summary>
+/// Convertit un TimeSpan en position sur une timeline (pourcentage)
+/// </summary>
+public class TimeSpanToPositionConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is TimeSpan ts)
+        {
+            return ts.TotalHours / 24.0 * 100.0;
+        }
+        return 0.0;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is double position)
+        {
+            var hours = position / 100.0 * 24.0;
+            return TimeSpan.FromHours(hours);
+        }
+        return TimeSpan.Zero;
+    }
+}
+
+/// <summary>
+/// Convertit un DynamicMode en texte lisible
+/// </summary>
+public class DynamicModeToStringConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return value switch
+        {
+            Models.DynamicMode.Manual => "⏰ Manuel",
+            Models.DynamicMode.SunBased => "☀️ Basé sur le soleil",
+            Models.DynamicMode.WeatherBased => "🌤️ Basé sur la météo",
+            _ => "Manuel"
+        };
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Convertit un DynamicTransitionType en texte lisible
+/// </summary>
+public class DynamicTransitionToStringConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return value switch
+        {
+            Models.DynamicTransitionType.None => "Aucune",
+            Models.DynamicTransitionType.Fade => "Fondu",
+            Models.DynamicTransitionType.Slide => "Glissement",
+            _ => "Aucune"
+        };
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Compare deux valeurs pour l'égalité (pour les indicateurs actifs)
+/// </summary>
+public class EqualityToBoolConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length >= 2)
+        {
+            return Equals(values[0], values[1]);
+        }
+        return false;
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Convertit un booléen HasImage en couleur de bordure
+/// </summary>
+public class HasImageToBorderBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is bool hasImage && hasImage)
+        {
+            return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(34, 197, 94)); // Vert
+        }
+        return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(107, 114, 128)); // Gris
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Convertit un mode DynamicMode en visibilité pour les options solaires
+/// </summary>
+public class SunModeToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is Models.DynamicMode mode)
+        {
+            return mode == Models.DynamicMode.SunBased ? Visibility.Visible : Visibility.Collapsed;
+        }
+        return Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Convertit la latitude/longitude en nom de ville approximatif
+/// </summary>
+public class CoordinatesToCityConverter : IMultiValueConverter
+{
+    private static readonly Dictionary<(double lat, double lon), string> KnownCities = new()
+    {
+        { (45.5, -73.6), "Montréal" },
+        { (48.9, 2.3), "Paris" },
+        { (51.5, -0.1), "Londres" },
+        { (40.7, -74.0), "New York" },
+        { (35.7, 139.7), "Tokyo" },
+        { (34.1, -118.2), "Los Angeles" },
+        { (41.9, 12.5), "Rome" },
+        { (52.5, 13.4), "Berlin" },
+        { (55.8, 37.6), "Moscou" },
+        { (39.9, 116.4), "Pékin" }
+    };
+
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length >= 2 && values[0] is double lat && values[1] is double lon)
+        {
+            // Chercher la ville la plus proche
+            var closest = KnownCities
+                .OrderBy(kv => Math.Abs(kv.Key.lat - lat) + Math.Abs(kv.Key.lon - lon))
+                .FirstOrDefault();
+            
+            var distance = Math.Abs(closest.Key.lat - lat) + Math.Abs(closest.Key.lon - lon);
+            
+            if (distance < 2)
+                return $"📍 {closest.Value}";
+            
+            return $"📍 {lat:F2}°, {lon:F2}°";
+        }
+        return "📍 Position inconnue";
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Convertit le nombre de variantes configurées en texte de progression
+/// </summary>
+public class VariantProgressConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length >= 2 && values[0] is int configured && values[1] is int total)
+        {
+            if (configured == total)
+                return $"✅ {configured}/{total} configurées";
+            if (configured == 0)
+                return $"⚠️ 0/{total} configurées";
+            return $"🔶 {configured}/{total} configurées";
+        }
+        return "Configuration en cours...";
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+
+/// <summary>
+/// Vérifie si un wallpaper dynamique est actuellement actif
+/// </summary>
+public class IsActiveDynamicConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is not string id) return false;
+        
+        try
+        {
+            return App.IsInitialized && App.DynamicService.ActiveWallpaper?.Id == id;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Convertit une position de timeline (0-100%) en position canvas
+/// </summary>
+public class TimelinePositionConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length >= 2 && 
+            values[0] is double position && 
+            values[1] is double containerWidth)
+        {
+            // Position est en pourcentage (0-100), on la convertit en pixels
+            // On soustrait la moitié de la largeur de l'élément (8px pour un cercle de 16px)
+            return (position / 100.0 * containerWidth) - 8;
+        }
+        return 0.0;
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Arrondit un nombre vers le bas (floor)
+/// </summary>
+public class FloorConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is double d)
+            return (int)Math.Floor(d);
+        if (value is float f)
+            return (int)Math.Floor(f);
+        if (value is decimal m)
+            return (int)Math.Floor(m);
+        return 0;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Convertit la fraction d'une heure en minutes (ex: 0.5 -> 30)
+/// </summary>
+public class FractionToMinutesConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is double d)
+        {
+            var fraction = d - Math.Floor(d);
+            return (int)(fraction * 60);
+        }
+        return 0;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
+/// Convertit un TimeSpan en heures décimales pour le slider
+/// </summary>
+public class TimeSpanToDecimalHoursConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is TimeSpan ts)
+            return ts.TotalHours;
+        return 0.0;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is double hours)
+            return TimeSpan.FromHours(hours);
+        return TimeSpan.Zero;
+    }
+}
