@@ -13,6 +13,8 @@ namespace WallpaperManager.ViewModels;
 public partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly UnsplashService _unsplashService;
+    private readonly PexelsService _pexelsService;
+    private readonly PixabayService _pixabayService;
     private CancellationTokenSource? _cts;
     private readonly Lock _ctsLock = new();
     private volatile bool _disposed;
@@ -84,9 +86,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private int _selectedTabIndex;
     
     [ObservableProperty]
-    private string _unsplashApiKey = string.Empty;
-    
-    [ObservableProperty]
     private bool _startWithWindows;
     
     [ObservableProperty]
@@ -98,6 +97,59 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _pauseOnFullscreen = true;
     
+    // === RACCOURCIS CLAVIER ===
+    [ObservableProperty]
+    private bool _hotkeysEnabled = true;
+    
+    [ObservableProperty]
+    private string _hotkeyNext = "Win+Alt+Right";
+    
+    [ObservableProperty]
+    private string _hotkeyPrevious = "Win+Alt+Left";
+    
+    [ObservableProperty]
+    private string _hotkeyFavorite = "Win+Alt+F";
+    
+    [ObservableProperty]
+    private string _hotkeyPause = "Win+Alt+Space";
+    
+    // === TRANSITIONS ===
+    [ObservableProperty]
+    private bool _transitionEnabled = true;
+    
+    [ObservableProperty]
+    private TransitionEffect _selectedTransitionEffect = TransitionEffect.Fade;
+    
+    [ObservableProperty]
+    private int _transitionDuration = 500;
+    
+    public TransitionEffect[] TransitionEffects { get; } = Enum.GetValues<TransitionEffect>();
+    
+    // === CLÉS API ===
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsUnsplashConfigured))]
+    private string _unsplashApiKey = string.Empty;
+    
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPexelsConfigured))]
+    private string _pexelsApiKey = string.Empty;
+    
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPixabayConfigured))]
+    private string _pixabayApiKey = string.Empty;
+    
+    // Propriétés calculées pour l'état des APIs
+    public bool IsUnsplashConfigured => !string.IsNullOrWhiteSpace(UnsplashApiKey);
+    public bool IsPexelsConfigured => !string.IsNullOrWhiteSpace(PexelsApiKey);
+    public bool IsPixabayConfigured => !string.IsNullOrWhiteSpace(PixabayApiKey);
+    
+    // === PEXELS/PIXABAY ===
+    [ObservableProperty]
+    private ObservableCollection<PexelsPhoto> _pexelsPhotos = [];
+    
+    [ObservableProperty]
+    private ObservableCollection<PixabayPhoto> _pixabayPhotos = [];
+    
     public string RotationStatusText => IsRotationEnabled ? "Active" : "Desactive";
     
     public int SelectedCount => SelectedWallpapers.Count;
@@ -107,6 +159,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public MainViewModel()
     {
         _unsplashService = new UnsplashService();
+        _pexelsService = new PexelsService();
+        _pixabayService = new PixabayService();
         SelectedWallpapers.CollectionChanged += (s, e) => OnPropertyChanged(nameof(SelectedCount));
         LoadData();
     }
@@ -122,10 +176,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IsRotationEnabled = SettingsService.Current.RotationEnabled;
         RotationInterval = SettingsService.Current.RotationIntervalMinutes;
         UnsplashApiKey = SettingsService.Current.UnsplashApiKey ?? string.Empty;
+        PexelsApiKey = SettingsService.Current.PexelsApiKey ?? string.Empty;
+        PixabayApiKey = SettingsService.Current.PixabayApiKey ?? string.Empty;
         StartWithWindows = SettingsService.Current.StartWithWindows;
         MinimizeToTray = SettingsService.Current.MinimizeToTray;
         PauseOnBattery = SettingsService.Current.PauseOnBattery;
         PauseOnFullscreen = SettingsService.Current.PauseOnFullscreen;
+        
+        // Raccourcis clavier
+        HotkeysEnabled = SettingsService.Current.HotkeysEnabled;
+        HotkeyNext = SettingsService.Current.HotkeyNextWallpaper;
+        HotkeyPrevious = SettingsService.Current.HotkeyPreviousWallpaper;
+        HotkeyFavorite = SettingsService.Current.HotkeyToggleFavorite;
+        HotkeyPause = SettingsService.Current.HotkeyPauseRotation;
+        
+        // Transitions
+        TransitionEnabled = SettingsService.Current.TransitionEnabled;
+        SelectedTransitionEffect = SettingsService.Current.TransitionEffect;
+        TransitionDuration = SettingsService.Current.TransitionDurationMs;
     }
     
     // === MÉTHODES DE FILTRE ET TRI ===
@@ -827,11 +895,238 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
     
     [RelayCommand]
-    private void ClearThumbnailCache()
+    private async Task ClearThumbnailCacheAsync()
     {
-        ThumbnailService.Instance.ClearAllCache();
-        StatusMessage = "Cache des miniatures vidé";
-        ApplyFiltersAndSort();
+        IsLoading = true;
+        StatusMessage = "Vidage du cache en cours...";
+        
+        try
+        {
+            await ThumbnailService.Instance.ClearAllCacheAsync().ConfigureAwait(true);
+            StatusMessage = "Cache des miniatures vidé";
+            ApplyFiltersAndSort();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Erreur: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+    
+    // === HANDLERS RACCOURCIS CLAVIER ===
+    partial void OnHotkeysEnabledChanged(bool value)
+    {
+        SettingsService.Current.HotkeysEnabled = value;
+        SettingsService.Save();
+        
+        if (App.IsInitialized)
+            App.HotkeyService.ReloadHotkeys();
+        
+        StatusMessage = value ? "Raccourcis clavier activés" : "Raccourcis clavier désactivés";
+    }
+    
+    partial void OnHotkeyNextChanged(string value)
+    {
+        SettingsService.Current.HotkeyNextWallpaper = value;
+        SettingsService.Save();
+        if (App.IsInitialized) App.HotkeyService.ReloadHotkeys();
+    }
+    
+    partial void OnHotkeyPreviousChanged(string value)
+    {
+        SettingsService.Current.HotkeyPreviousWallpaper = value;
+        SettingsService.Save();
+        if (App.IsInitialized) App.HotkeyService.ReloadHotkeys();
+    }
+    
+    partial void OnHotkeyFavoriteChanged(string value)
+    {
+        SettingsService.Current.HotkeyToggleFavorite = value;
+        SettingsService.Save();
+        if (App.IsInitialized) App.HotkeyService.ReloadHotkeys();
+    }
+    
+    partial void OnHotkeyPauseChanged(string value)
+    {
+        SettingsService.Current.HotkeyPauseRotation = value;
+        SettingsService.Save();
+        if (App.IsInitialized) App.HotkeyService.ReloadHotkeys();
+    }
+    
+    // === HANDLERS TRANSITIONS ===
+    partial void OnTransitionEnabledChanged(bool value)
+    {
+        SettingsService.Current.TransitionEnabled = value;
+        SettingsService.Save();
+        StatusMessage = value ? "Transitions activées" : "Transitions désactivées";
+    }
+    
+    partial void OnSelectedTransitionEffectChanged(TransitionEffect value)
+    {
+        SettingsService.Current.TransitionEffect = value;
+        if (App.IsInitialized)
+            App.TransitionService.CurrentEffect = value;
+        SettingsService.Save();
+    }
+    
+    partial void OnTransitionDurationChanged(int value)
+    {
+        SettingsService.Current.TransitionDurationMs = value;
+        if (App.IsInitialized)
+            App.TransitionService.TransitionDuration = TimeSpan.FromMilliseconds(value);
+        SettingsService.Save();
+    }
+    
+    // === HANDLERS CLÉS API ===
+    partial void OnPexelsApiKeyChanged(string value)
+    {
+        SettingsService.Current.PexelsApiKey = value;
+        SettingsService.Save();
+    }
+    
+    partial void OnPixabayApiKeyChanged(string value)
+    {
+        SettingsService.Current.PixabayApiKey = value;
+        SettingsService.Save();
+    }
+    
+    // === COMMANDES PEXELS ===
+    [RelayCommand]
+    private async Task SearchPexelsAsync(string? query)
+    {
+        var searchQuery = query ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(SettingsService.Current.PexelsApiKey))
+        {
+            StatusMessage = "Configurez votre clé API Pexels";
+            return;
+        }
+        
+        IsLoading = true;
+        StatusMessage = "Recherche sur Pexels...";
+        var cancellationToken = ResetCancellationToken();
+        
+        try
+        {
+            var photos = string.IsNullOrWhiteSpace(searchQuery)
+                ? await _pexelsService.GetCuratedPhotosAsync(cancellationToken: cancellationToken)
+                : await _pexelsService.SearchPhotosAsync(searchQuery, cancellationToken: cancellationToken);
+            
+            PexelsPhotos = new ObservableCollection<PexelsPhoto>(photos);
+            StatusMessage = $"{photos.Count} résultat(s) Pexels";
+        }
+        catch (OperationCanceledException) { StatusMessage = "Annulé"; }
+        catch (Exception ex) { StatusMessage = $"Erreur: {ex.Message}"; }
+        finally { IsLoading = false; }
+    }
+    
+    [RelayCommand]
+    private async Task DownloadPexelsPhotoAsync(PexelsPhoto? photo)
+    {
+        if (photo == null) return;
+        
+        StatusMessage = "Téléchargement Pexels...";
+        var progress = new Progress<int>(p => StatusMessage = $"Téléchargement... {p}%");
+        var cancellationToken = ResetCancellationToken();
+        
+        try
+        {
+            var filePath = await _pexelsService.DownloadPhotoAsync(photo, progress, cancellationToken);
+            if (filePath != null)
+            {
+                var wallpaper = PexelsService.CreateWallpaperFromPhoto(photo, filePath);
+                SettingsService.AddWallpaper(wallpaper);
+                _allWallpapers.Add(wallpaper);
+                ApplyFiltersAndSort();
+                SettingsService.Save();
+                if (App.IsInitialized) App.RotationService.RefreshPlaylist();
+                StatusMessage = $"Téléchargé: {wallpaper.DisplayName}";
+            }
+        }
+        catch (Exception ex) { StatusMessage = $"Erreur: {ex.Message}"; }
+    }
+    
+    [RelayCommand]
+    private async Task DownloadAndApplyPexelsPhotoAsync(PexelsPhoto? photo)
+    {
+        if (photo == null) return;
+        await DownloadPexelsPhotoAsync(photo);
+        var wallpaper = _allWallpapers.LastOrDefault();
+        if (wallpaper != null && App.IsInitialized)
+        {
+            App.RotationService.ApplyWallpaper(wallpaper);
+            StatusMessage = $"Appliqué: {wallpaper.DisplayName}";
+        }
+    }
+    
+    // === COMMANDES PIXABAY ===
+    [RelayCommand]
+    private async Task SearchPixabayAsync(string? query)
+    {
+        var searchQuery = query ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(SettingsService.Current.PixabayApiKey))
+        {
+            StatusMessage = "Configurez votre clé API Pixabay";
+            return;
+        }
+        
+        IsLoading = true;
+        StatusMessage = "Recherche sur Pixabay...";
+        var cancellationToken = ResetCancellationToken();
+        
+        try
+        {
+            var photos = string.IsNullOrWhiteSpace(searchQuery)
+                ? await _pixabayService.GetPopularPhotosAsync(cancellationToken: cancellationToken)
+                : await _pixabayService.SearchPhotosAsync(searchQuery, cancellationToken: cancellationToken);
+            
+            PixabayPhotos = new ObservableCollection<PixabayPhoto>(photos);
+            StatusMessage = $"{photos.Count} résultat(s) Pixabay";
+        }
+        catch (OperationCanceledException) { StatusMessage = "Annulé"; }
+        catch (Exception ex) { StatusMessage = $"Erreur: {ex.Message}"; }
+        finally { IsLoading = false; }
+    }
+    
+    [RelayCommand]
+    private async Task DownloadPixabayPhotoAsync(PixabayPhoto? photo)
+    {
+        if (photo == null) return;
+        
+        StatusMessage = "Téléchargement Pixabay...";
+        var progress = new Progress<int>(p => StatusMessage = $"Téléchargement... {p}%");
+        var cancellationToken = ResetCancellationToken();
+        
+        try
+        {
+            var filePath = await _pixabayService.DownloadPhotoAsync(photo, progress, cancellationToken);
+            if (filePath != null)
+            {
+                var wallpaper = PixabayService.CreateWallpaperFromPhoto(photo, filePath);
+                SettingsService.AddWallpaper(wallpaper);
+                _allWallpapers.Add(wallpaper);
+                ApplyFiltersAndSort();
+                SettingsService.Save();
+                if (App.IsInitialized) App.RotationService.RefreshPlaylist();
+                StatusMessage = $"Téléchargé: {wallpaper.DisplayName}";
+            }
+        }
+        catch (Exception ex) { StatusMessage = $"Erreur: {ex.Message}"; }
+    }
+    
+    [RelayCommand]
+    private async Task DownloadAndApplyPixabayPhotoAsync(PixabayPhoto? photo)
+    {
+        if (photo == null) return;
+        await DownloadPixabayPhotoAsync(photo);
+        var wallpaper = _allWallpapers.LastOrDefault();
+        if (wallpaper != null && App.IsInitialized)
+        {
+            App.RotationService.ApplyWallpaper(wallpaper);
+            StatusMessage = $"Appliqué: {wallpaper.DisplayName}";
+        }
     }
     
     public void Dispose()
@@ -847,5 +1142,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         
         _unsplashService.Dispose();
+        _pexelsService.Dispose();
+        _pixabayService.Dispose();
     }
 }

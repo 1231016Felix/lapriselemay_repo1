@@ -194,3 +194,26 @@ public class MultiSelectToVisibilityConverter : IValueConverter
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         => throw new NotSupportedException();
 }
+
+public class WallpaperTypeToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is Models.WallpaperType type)
+        {
+            var targetType2 = parameter?.ToString()?.ToLowerInvariant() ?? "video";
+            
+            return targetType2 switch
+            {
+                "video" => type == Models.WallpaperType.Video ? Visibility.Visible : Visibility.Collapsed,
+                "animated" => type == Models.WallpaperType.Animated ? Visibility.Visible : Visibility.Collapsed,
+                "static" => type == Models.WallpaperType.Static ? Visibility.Visible : Visibility.Collapsed,
+                _ => Visibility.Collapsed
+            };
+        }
+        return Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}

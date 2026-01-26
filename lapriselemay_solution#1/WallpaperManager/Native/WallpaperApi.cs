@@ -16,6 +16,20 @@ public static partial class WallpaperApi
     
     public static void SetWallpaper(string path, WallpaperStyle style = WallpaperStyle.Fill)
     {
+        SetWallpaperInternal(path, style, broadcastChange: true);
+    }
+    
+    /// <summary>
+    /// Applique un fond d'écran sans envoyer de message de changement à Explorer.
+    /// Utilisé pendant les transitions pour éviter le scintillement des icônes.
+    /// </summary>
+    public static void SetWallpaperSilent(string path, WallpaperStyle style = WallpaperStyle.Fill)
+    {
+        SetWallpaperInternal(path, style, broadcastChange: false);
+    }
+    
+    private static void SetWallpaperInternal(string path, WallpaperStyle style, bool broadcastChange)
+    {
         ArgumentException.ThrowIfNullOrEmpty(path);
         
         lock (_lock)
@@ -37,7 +51,13 @@ public static partial class WallpaperApi
             }
             
             // Appliquer le fond d'écran
-            SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, path, SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+            // SPIF_SENDCHANGE cause un rafraîchissement d'Explorer qui peut faire scintiller les icônes
+            int flags = SPIF_UPDATEINIFILE;
+            if (broadcastChange)
+            {
+                flags |= SPIF_SENDCHANGE;
+            }
+            SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, path, flags);
         }
     }
     

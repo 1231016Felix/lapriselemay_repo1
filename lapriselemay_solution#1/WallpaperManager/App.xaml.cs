@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Windows;
 using Microsoft.Win32;
+using WallpaperManager.Models;
 using WallpaperManager.Services;
 using WallpaperManager.Views;
 using Application = System.Windows.Application;
@@ -20,6 +21,8 @@ public partial class App : Application
     private static AnimatedWallpaperService? _animatedService;
     private static DynamicWallpaperService? _dynamicService;
     private static SystemMonitorService? _systemMonitorService;
+    private static HotkeyService? _hotkeyService;
+    private static TransitionService? _transitionService;
     private static bool _isInitialized;
     private static bool _mainWindowVisible;
 
@@ -83,7 +86,60 @@ public partial class App : Application
         _animatedService = new AnimatedWallpaperService();
         _dynamicService = new DynamicWallpaperService();
         _systemMonitorService = new SystemMonitorService();
+        _hotkeyService = new HotkeyService();
+        _transitionService = new TransitionService
+        {
+            CurrentEffect = SettingsService.Current.TransitionEffect,
+            TransitionDuration = TimeSpan.FromMilliseconds(SettingsService.Current.TransitionDurationMs)
+        };
+        
+        // Connecter le service de transition au service de rotation
+        _rotationService.SetTransitionService(_transitionService);
+        
+        // Connecter l'événement pour les wallpapers animés/vidéo dans la rotation
+        _rotationService.AnimatedWallpaperRequested += OnAnimatedWallpaperRequested;
+        
+        // Connecter les raccourcis clavier globaux
+        _hotkeyService.NextWallpaperRequested += (_, _) => _rotationService?.Next();
+        _hotkeyService.PreviousWallpaperRequested += (_, _) => _rotationService?.Previous();
+        _hotkeyService.ToggleFavoriteRequested += OnToggleFavoriteHotkey;
+        _hotkeyService.TogglePauseRequested += OnTogglePauseHotkey;
+        
         _isInitialized = true;
+    }
+    
+    private static void OnAnimatedWallpaperRequested(object? sender, Wallpaper wallpaper)
+    {
+        System.Diagnostics.Debug.WriteLine($"Animation demandée par rotation: {wallpaper.DisplayName}");
+        _animatedService?.Play(wallpaper);
+    }
+    
+    private static void OnToggleFavoriteHotkey(object? sender, EventArgs e)
+    {
+        var currentWallpaper = _rotationService?.CurrentWallpaper;
+        if (currentWallpaper == null) return;
+        
+        currentWallpaper.IsFavorite = !currentWallpaper.IsFavorite;
+        SettingsService.MarkDirty();
+        SettingsService.Save();
+        
+        System.Diagnostics.Debug.WriteLine($"Hotkey Favoris: {currentWallpaper.DisplayName} = {currentWallpaper.IsFavorite}");
+    }
+    
+    private static void OnTogglePauseHotkey(object? sender, EventArgs e)
+    {
+        if (_rotationService == null) return;
+        
+        if (_rotationService.IsRunning)
+        {
+            _rotationService.Pause();
+            System.Diagnostics.Debug.WriteLine("Hotkey: Rotation en pause");
+        }
+        else
+        {
+            _rotationService.Resume();
+            System.Diagnostics.Debug.WriteLine("Hotkey: Rotation reprise");
+        }
     }
 
     private static void ConfigureSystemMonitoring()
@@ -116,10 +172,26 @@ public partial class App : Application
             MainWindow = mainWindow;
             mainWindow.Show();
             _mainWindowVisible = true;
+            
+            // Initialiser les raccourcis clavier avec la fenêtre
+            _hotkeyService?.Initialize(mainWindow);
         }
         else
         {
             _mainWindowVisible = false;
+            
+            // Créer une fenêtre cachée pour les raccourcis clavier
+            var hiddenWindow = new Window
+            {
+                Width = 0,
+                Height = 0,
+                WindowStyle = WindowStyle.None,
+                ShowInTaskbar = false,
+                ShowActivated = false
+            };
+            hiddenWindow.Show();
+            hiddenWindow.Hide();
+            _hotkeyService?.Initialize(hiddenWindow);
         }
     }
 
@@ -169,6 +241,20 @@ public partial class App : Application
         // Se désabonner des événements système
         SystemEvents.PowerModeChanged -= OnPowerModeChanged;
         
+        // Disposer le service de raccourcis clavier
+        if (_hotkeyService != null)
+        {
+            _hotkeyService.Dispose();
+            _hotkeyService = null;
+        }
+        
+        // Disposer le service de transition
+        if (_transitionService != null)
+        {
+            _transitionService.Dispose();
+            _transitionService = null;
+        }
+        
         // Arrêter et disposer le monitoring système
         if (_systemMonitorService != null)
         {
@@ -190,6 +276,7 @@ public partial class App : Application
         // Disposer les services de wallpaper
         if (_rotationService != null)
         {
+            _rotationService.AnimatedWallpaperRequested -= OnAnimatedWallpaperRequested;
             _rotationService.Stop();
             _rotationService.Dispose();
             _rotationService = null;
@@ -342,6 +429,26 @@ public partial class App : Application
             if (!_isInitialized || _dynamicService == null)
                 throw new InvalidOperationException("App non initialisée");
             return _dynamicService;
+        }
+    }
+    
+    public static HotkeyService HotkeyService
+    {
+        get
+        {
+            if (!_isInitialized || _hotkeyService == null)
+                throw new InvalidOperationException("App non initialisée");
+            return _hotkeyService;
+        }
+    }
+    
+    public static TransitionService TransitionService
+    {
+        get
+        {
+            if (!_isInitialized || _transitionService == null)
+                throw new InvalidOperationException("App non initialisée");
+            return _transitionService;
         }
     }
     

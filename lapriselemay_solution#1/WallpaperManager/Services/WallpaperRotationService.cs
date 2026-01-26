@@ -16,12 +16,21 @@ public sealed class WallpaperRotationService : IDisposable
     private bool _isPaused;
     private bool _disposed;
     
+    // Service de transition (injecté depuis App.cs)
+    private TransitionService? _transitionService;
+    
     // Pour préserver le temps restant lors de pause/resume
     private DateTime _lastTickTime;
     private double _remainingTimeMs;
     
     public event EventHandler<Wallpaper>? WallpaperChanged;
     public event EventHandler<bool>? RotationStateChanged;
+    
+    /// <summary>
+    /// Événement déclenché quand un wallpaper animé/vidéo doit être appliqué.
+    /// L'appelant doit gérer l'application via AnimatedWallpaperService.
+    /// </summary>
+    public event EventHandler<Wallpaper>? AnimatedWallpaperRequested;
     
     public bool IsRunning => _timer.Enabled && !_isPaused;
     
@@ -54,12 +63,20 @@ public sealed class WallpaperRotationService : IDisposable
         {
             if (_disposed) return;
             
-            LoadPlaylist();
-            
+            // Ne charger la playlist par défaut que si on n'a pas de playlist personnalisée
             int playlistCount;
             lock (_playlistLock)
             {
                 playlistCount = _playlist.Count;
+            }
+            
+            if (playlistCount == 0)
+            {
+                LoadPlaylist();
+                lock (_playlistLock)
+                {
+                    playlistCount = _playlist.Count;
+                }
             }
             
             if (playlistCount == 0)
@@ -82,6 +99,13 @@ public sealed class WallpaperRotationService : IDisposable
         {
             _timer.Stop();
             _isPaused = false;
+        }
+        
+        // Réinitialiser le mode playlist personnalisée
+        lock (_playlistLock)
+        {
+            _playlist.Clear();
+            _currentIndex = -1;
         }
         
         RotationStateChanged?.Invoke(this, false);
@@ -186,6 +210,18 @@ public sealed class WallpaperRotationService : IDisposable
         ApplyCurrentWallpaper();
     }
     
+    /// <summary>
+    /// Définit le service de transition à utiliser.
+    /// </summary>
+    public void SetTransitionService(TransitionService? service)
+    {
+        _transitionService = service;
+    }
+    
+    /// <summary>
+    /// Applique un wallpaper statique directement avec effet de transition optionnel.
+    /// Pour les wallpapers animés/vidéo, utiliser l'événement AnimatedWallpaperRequested.
+    /// </summary>
     public void ApplyWallpaper(Wallpaper wallpaper)
     {
         ArgumentNullException.ThrowIfNull(wallpaper);
@@ -195,14 +231,47 @@ public sealed class WallpaperRotationService : IDisposable
         
         try
         {
-            var style = ConvertFitToStyle(wallpaper.Fit);
-            WallpaperApi.SetWallpaper(wallpaper.FilePath, style);
-            WallpaperChanged?.Invoke(this, wallpaper);
+            // Utiliser la transition si disponible et activée
+            if (_transitionService != null && _transitionService.IsEnabled)
+            {
+                _ = ApplyWallpaperWithTransitionAsync(wallpaper);
+            }
+            else
+            {
+                ApplyWallpaperDirect(wallpaper);
+            }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Erreur application wallpaper: {ex.Message}");
         }
+    }
+    
+    private async Task ApplyWallpaperWithTransitionAsync(Wallpaper wallpaper)
+    {
+        try
+        {
+            await _transitionService!.TransitionToAsync(wallpaper.FilePath, () =>
+            {
+                // Utiliser SetWallpaperSilent pendant la transition pour éviter
+                // le scintillement des icônes causé par SPIF_SENDCHANGE
+                var style = ConvertFitToStyle(wallpaper.Fit);
+                WallpaperApi.SetWallpaperSilent(wallpaper.FilePath, style);
+                WallpaperChanged?.Invoke(this, wallpaper);
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Erreur transition: {ex.Message}");
+            ApplyWallpaperDirect(wallpaper);
+        }
+    }
+    
+    private void ApplyWallpaperDirect(Wallpaper wallpaper)
+    {
+        var style = ConvertFitToStyle(wallpaper.Fit);
+        WallpaperApi.SetWallpaper(wallpaper.FilePath, style);
+        WallpaperChanged?.Invoke(this, wallpaper);
     }
     
     public void SetInterval(int minutes)
@@ -218,23 +287,26 @@ public sealed class WallpaperRotationService : IDisposable
     }
     
     /// <summary>
-    /// Définit une playlist personnalisée (pour les collections)
+    /// Définit une playlist personnalisée (pour les collections).
+    /// Supporte tous les types de wallpapers (statiques, animés, vidéo).
     /// </summary>
     public void SetPlaylist(IEnumerable<Wallpaper> wallpapers)
     {
         lock (_playlistLock)
         {
-            _playlist = wallpapers
-                .Where(w => w.Type == WallpaperType.Static)
-                .ToList();
+            // Accepter tous les types de wallpapers pour les collections
+            _playlist = wallpapers.ToList();
             _currentIndex = -1;
         }
+        
+        System.Diagnostics.Debug.WriteLine($"Playlist définie: {_playlist.Count} wallpapers (tous types)");
     }
     
     private void LoadPlaylist()
     {
         lock (_playlistLock)
         {
+            // La playlist par défaut ne contient que les statiques
             _playlist = SettingsService.Wallpapers
                 .Where(w => w.Type == WallpaperType.Static)
                 .ToList();
@@ -248,9 +320,21 @@ public sealed class WallpaperRotationService : IDisposable
     private void ApplyCurrentWallpaper()
     {
         var wallpaper = CurrentWallpaper;
-        if (wallpaper != null)
+        if (wallpaper == null) return;
+        
+        switch (wallpaper.Type)
         {
-            ApplyWallpaper(wallpaper);
+            case WallpaperType.Static:
+                ApplyWallpaper(wallpaper);
+                break;
+                
+            case WallpaperType.Animated:
+            case WallpaperType.Video:
+                // Déléguer aux abonnés (typiquement App.cs qui a accès à AnimatedWallpaperService)
+                System.Diagnostics.Debug.WriteLine($"Demande wallpaper animé: {wallpaper.DisplayName}");
+                AnimatedWallpaperRequested?.Invoke(this, wallpaper);
+                WallpaperChanged?.Invoke(this, wallpaper);
+                break;
         }
     }
     

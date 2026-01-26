@@ -31,6 +31,7 @@ public class Wallpaper
     public DateTime AddedDate { get; set; } = DateTime.Now;
     public bool IsFavorite { get; set; }
     public string? UnsplashId { get; set; }
+    public string? SourceId { get; set; }  // ID unique de la source (pexels_123, pixabay_456, etc.)
     public string? Author { get; set; }
     public string? AuthorUrl { get; set; }
     public int Width { get; set; }

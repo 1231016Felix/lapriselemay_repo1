@@ -4,6 +4,7 @@
         xmlns:vm="clr-namespace:WallpaperManager.ViewModels"
         xmlns:conv="clr-namespace:WallpaperManager.Converters"
         xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+        xmlns:controls="clr-namespace:WallpaperManager.Controls"
         Title="Wallpaper Manager" 
         Height="700" Width="1050"
         MinHeight="550" MinWidth="850"
@@ -21,8 +22,10 @@
     <Window.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis"/>
         <conv:PathToThumbnailConverter x:Key="PathToThumb"/>
+        <conv:AsyncThumbnailConverter x:Key="AsyncThumb"/>
         <conv:UnsplashUrlToImageConverter x:Key="UrlToImage"/>
         <conv:WallpaperTypeToIconConverter x:Key="TypeToIcon"/>
+        <conv:WallpaperTypeToVisibilityConverter x:Key="TypeToVis"/>
         <conv:NullToVisibilityConverter x:Key="NullToVis"/>
         <conv:InverseBoolConverter x:Key="InverseBoolConverter"/>
         <conv:CountToVisibilityConverter x:Key="CountToVisibilityConverter"/>
@@ -49,72 +52,123 @@
                     <TextBlock Text="Manager" FontSize="22" FontWeight="Light" Foreground="{StaticResource PrimaryBrush}" Margin="0,-4,0,0"/>
                 </StackPanel>
                 
-                <StackPanel Grid.Row="1" Margin="12,0,8,0">
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="12,0,8,0">
                     <RadioButton x:Name="tabLibrary" Content="📚  Bibliothèque" IsChecked="True"
-                                 Style="{StaticResource {x:Type ToggleButton}}" Margin="0,4"
-                                 Foreground="{StaticResource TextPrimaryBrush}" FontSize="14"
-                                 Padding="12,10" HorizontalContentAlignment="Left" Cursor="Hand"/>
+                                 Style="{StaticResource NavTabStyle}" Margin="0,4"/>
                     <RadioButton x:Name="tabCollections" Content="📂  Collections"
-                                 Style="{StaticResource {x:Type ToggleButton}}" Margin="0,4"
-                                 Foreground="{StaticResource TextPrimaryBrush}" FontSize="14"
-                                 Padding="12,10" HorizontalContentAlignment="Left" Cursor="Hand"/>
+                                 Style="{StaticResource NavTabStyle}" Margin="0,4"/>
                     <RadioButton x:Name="tabDynamic" Content="🌅  Dynamiques"
-                                 Style="{StaticResource {x:Type ToggleButton}}" Margin="0,4"
-                                 Foreground="{StaticResource TextPrimaryBrush}" FontSize="14"
-                                 Padding="12,10" HorizontalContentAlignment="Left" Cursor="Hand"/>
-                    <RadioButton x:Name="tabUnsplash" Content="🌐  Unsplash"
-                                 Style="{StaticResource {x:Type ToggleButton}}" Margin="0,4"
-                                 Foreground="{StaticResource TextPrimaryBrush}" FontSize="14"
-                                 Padding="12,10" HorizontalContentAlignment="Left" Cursor="Hand"/>
+                                 Style="{StaticResource NavTabStyle}" Margin="0,4"/>
+                    
+                    <Separator Margin="8,12" Background="{StaticResource BorderBrush}"/>
+                    <TextBlock Text="SOURCES EN LIGNE" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,0,0,4" FontWeight="SemiBold"/>
+                    
+                    <RadioButton x:Name="tabUnsplash" Style="{StaticResource NavTabStyle}" Margin="0,4">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🌐  Unsplash"/>
+                            <Ellipse Width="8" Height="8" Margin="8,0,0,0" VerticalAlignment="Center">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="#EF4444"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsUnsplashConfigured}" Value="True">
+                                                <Setter Property="Fill" Value="#22C55E"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="tabPexels" Style="{StaticResource NavTabStyle}" Margin="0,4">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📷  Pexels"/>
+                            <Ellipse Width="8" Height="8" Margin="8,0,0,0" VerticalAlignment="Center">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="#EF4444"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPexelsConfigured}" Value="True">
+                                                <Setter Property="Fill" Value="#22C55E"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton x:Name="tabPixabay" Style="{StaticResource NavTabStyle}" Margin="0,4">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🖼️  Pixabay"/>
+                            <Ellipse Width="8" Height="8" Margin="8,0,0,0" VerticalAlignment="Center">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="#EF4444"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPixabayConfigured}" Value="True">
+                                                <Setter Property="Fill" Value="#22C55E"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                        </StackPanel>
+                    </RadioButton>
+                    
+                    <Separator Margin="8,12" Background="{StaticResource BorderBrush}"/>
+                    
                     <RadioButton x:Name="tabSettings" Content="⚙️  Paramètres"
-                                 Style="{StaticResource {x:Type ToggleButton}}" Margin="0,4"
-                                 Foreground="{StaticResource TextPrimaryBrush}" FontSize="14"
-                                 Padding="12,10" HorizontalContentAlignment="Left" Cursor="Hand"/>
+                                 Style="{StaticResource NavTabStyle}" Margin="0,4"/>
                     
                     <Separator Margin="8,16" Background="{StaticResource BorderBrush}"/>
                     
-                    <TextBlock Text="Rotation automatique" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,8,12,4"/>
-                    
-                    <ToggleButton IsChecked="{Binding IsRotationEnabled, Mode=TwoWay}" Margin="12,4,8,4" Padding="12,8" Cursor="Hand">
-                        <ToggleButton.Style>
-                            <Style TargetType="ToggleButton">
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="ToggleButton">
-                                            <Border x:Name="border" Background="{StaticResource CardBrush}" CornerRadius="8" Padding="12,8">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBlock x:Name="label" Text="Désactivé" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                                    <Border Grid.Column="1" Width="44" Height="24" CornerRadius="12" Background="{StaticResource BorderBrush}" x:Name="toggle">
-                                                        <Ellipse Width="20" Height="20" Fill="White" HorizontalAlignment="Left" Margin="2,0" x:Name="dot"/>
-                                                    </Border>
-                                                </Grid>
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsChecked" Value="True">
-                                                    <Setter TargetName="toggle" Property="Background" Value="{StaticResource PrimaryBrush}"/>
-                                                    <Setter TargetName="dot" Property="HorizontalAlignment" Value="Right"/>
-                                                    <Setter TargetName="label" Property="Text" Value="Activé"/>
-                                                    <Setter TargetName="label" Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </ToggleButton.Style>
-                    </ToggleButton>
-                    
-                    <TextBlock Text="Changer de fond" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,12,12,4"/>
-                    
-                    <StackPanel Orientation="Horizontal" Margin="12,4" HorizontalAlignment="Left">
-                        <Button Content="◀" Command="{Binding PreviousWallpaperCommand}" Width="36" Height="36" Style="{StaticResource PrimaryButton}" Padding="0" Margin="0,0,4,0" ToolTip="Précédent"/>
-                        <Button Content="▶" Command="{Binding NextWallpaperCommand}" Width="36" Height="36" Style="{StaticResource PrimaryButton}" Padding="0" ToolTip="Suivant"/>
+                    <!-- Section visible uniquement sur l'onglet Bibliothèque -->
+                    <StackPanel Visibility="{Binding IsChecked, ElementName=tabLibrary, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="Rotation automatique" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,8,12,4"/>
+                        
+                        <ToggleButton IsChecked="{Binding IsRotationEnabled, Mode=TwoWay}" Margin="12,4,8,4" Padding="12,8" Cursor="Hand">
+                            <ToggleButton.Style>
+                                <Style TargetType="ToggleButton">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border x:Name="border" Background="{StaticResource CardBrush}" CornerRadius="8" Padding="12,8">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock x:Name="label" Text="Désactivé" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                        <Border Grid.Column="1" Width="44" Height="24" CornerRadius="12" Background="{StaticResource BorderBrush}" x:Name="toggle">
+                                                            <Ellipse Width="20" Height="20" Fill="White" HorizontalAlignment="Left" Margin="2,0" x:Name="dot"/>
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter TargetName="toggle" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+                                                        <Setter TargetName="dot" Property="HorizontalAlignment" Value="Right"/>
+                                                        <Setter TargetName="label" Property="Text" Value="Activé"/>
+                                                        <Setter TargetName="label" Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ToggleButton.Style>
+                        </ToggleButton>
+                        
+                        <TextBlock Text="Changer de fond" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,12,12,4"/>
+                        
+                        <StackPanel Orientation="Horizontal" Margin="12,4" HorizontalAlignment="Left">
+                            <Button Content="◀" Command="{Binding PreviousWallpaperCommand}" Width="36" Height="36" Style="{StaticResource PrimaryButton}" Padding="0" Margin="0,0,4,0" ToolTip="Précédent"/>
+                            <Button Content="▶" Command="{Binding NextWallpaperCommand}" Width="36" Height="36" Style="{StaticResource PrimaryButton}" Padding="0" ToolTip="Suivant"/>
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
+                </ScrollViewer>
                 
                 <Border Grid.Row="2" Background="{StaticResource CardBrush}" Margin="12,8" CornerRadius="8" Padding="12,8">
                     <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
@@ -187,8 +241,13 @@
                     </Grid>
                 </Border>
                 
-                <!-- Grille wallpapers -->
-                <ListBox Grid.Row="2" x:Name="WallpaperListBox" ItemsSource="{Binding Wallpapers}" SelectedItem="{Binding SelectedWallpaper}" SelectionMode="Extended" SelectionChanged="WallpaperListBox_SelectionChanged" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <!-- Grille wallpapers avec virtualisation -->
+                <ListBox Grid.Row="2" x:Name="WallpaperListBox" ItemsSource="{Binding Wallpapers}" SelectedItem="{Binding SelectedWallpaper}" SelectionMode="Extended" SelectionChanged="WallpaperListBox_SelectionChanged" Background="Transparent" BorderThickness="0"
+                         VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling"
+                         VirtualizingPanel.ScrollUnit="Pixel"
+                         ScrollViewer.IsDeferredScrollingEnabled="True"
+                         ScrollViewer.CanContentScroll="True">
                     <ListBox.ContextMenu>
                         <ContextMenu>
                             <MenuItem Header="Ajouter à une collection" ItemsSource="{Binding DataContext.Collections, RelativeSource={RelativeSource AncestorType=ContextMenu}}">
@@ -216,14 +275,23 @@
                     </ListBox.ContextMenu>
                     <ListBox.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <WrapPanel/>
+                            <controls:VirtualizingWrapPanel ItemWidth="188" ItemHeight="128" ItemMargin="4"/>
                         </ItemsPanelTemplate>
                     </ListBox.ItemsPanel>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Border Width="180" Height="120" Margin="4" CornerRadius="8" Background="{StaticResource CardBrush}" Cursor="Hand" MouseLeftButtonDown="WallpaperItem_MouseLeftButtonDown">
+                            <Border Width="180" Height="120" CornerRadius="8" Background="{StaticResource CardBrush}" Cursor="Hand" MouseLeftButtonDown="WallpaperItem_MouseLeftButtonDown">
                                 <Grid>
-                                    <Image Source="{Binding FilePath, Converter={StaticResource PathToThumb}}" Stretch="UniformToFill"/>
+                                    <Image Source="{Binding FilePath, Converter={StaticResource AsyncThumb}}" Stretch="UniformToFill"/>
+                                    
+                                    <!-- Icône play au centre pour les vidéos -->
+                                    <Border Background="#60000000" CornerRadius="50" Width="40" Height="40"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                                            Visibility="{Binding Type, Converter={StaticResource TypeToVis}, ConverterParameter=Video}">
+                                        <TextBlock Text="▶" FontSize="18" Foreground="White" 
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" Margin="2,0,0,0"/>
+                                    </Border>
+                                    
                                     <Border Background="#80000000" VerticalAlignment="Bottom" CornerRadius="0,0,8,8" Padding="8,4">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
@@ -465,6 +533,15 @@
                                     <Border Width="160" Height="100" Margin="4" CornerRadius="8" Background="{StaticResource CardBrush}" Cursor="Hand">
                                         <Grid>
                                             <Image Source="{Binding FilePath, Converter={StaticResource PathToThumb}}" Stretch="UniformToFill"/>
+                                            
+                                            <!-- Icône play au centre pour les vidéos -->
+                                            <Border Background="#60000000" CornerRadius="50" Width="36" Height="36"
+                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                    Visibility="{Binding Type, Converter={StaticResource TypeToVis}, ConverterParameter=Video}">
+                                                <TextBlock Text="▶" FontSize="16" Foreground="White" 
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" Margin="2,0,0,0"/>
+                                            </Border>
+                                            
                                             <Border Background="#80000000" VerticalAlignment="Bottom" CornerRadius="0,0,8,8" Padding="8,4">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
@@ -486,13 +563,23 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
                         
-                        <!-- Actions -->
-                        <Border Grid.Row="3" Margin="0,12,0,0" Visibility="{Binding SelectedCollectionWallpaper, Converter={StaticResource NullToVis}}">
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                <Button Content="👁️ Prévisualiser" Command="{Binding PreviewCollectionWallpaperCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
-                                <Button Content="Appliquer" Command="{Binding ApplyCollectionWallpaperCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
-                                <Button Content="▶ Rotation collection" Command="{Binding StartCollectionRotationCommand}" Style="{StaticResource PrimaryButton}"/>
-                            </StackPanel>
+                        <!-- Bouton Rotation collection (toujours visible quand collection sélectionnée) -->
+                        <Border Grid.Row="3" Margin="0,12,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                
+                                <!-- Actions quand un wallpaper est sélectionné -->
+                                <StackPanel Orientation="Horizontal" Visibility="{Binding SelectedCollectionWallpaper, Converter={StaticResource NullToVis}}">
+                                    <Button Content="👁️ Prévisualiser" Command="{Binding PreviewCollectionWallpaperCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
+                                    <Button Content="Appliquer" Command="{Binding ApplyCollectionWallpaperCommand}" Style="{StaticResource PrimaryButton}"/>
+                                </StackPanel>
+                                
+                                <!-- Bouton rotation toujours visible à droite -->
+                                <Button Grid.Column="1" Content="▶ Rotation collection" Command="{Binding StartCollectionRotationCommand}" Style="{StaticResource PrimaryButton}"/>
+                            </Grid>
                         </Border>
                         
                         <!-- Message si vide -->
@@ -646,6 +733,104 @@
                 </ListBox>
             </Grid>
 
+            <!-- PEXELS -->
+            <Grid Visibility="{Binding IsChecked, ElementName=tabPexels, Converter={StaticResource BoolToVis}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Pexels" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,16"/>
+                <Grid Grid.Row="1" Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="PexelsSearchBox" Style="{StaticResource ModernTextBox}" Tag="Rechercher sur Pexels..."/>
+                    <Button Grid.Column="1" Content="🔍 Rechercher" Command="{Binding SearchPexelsCommand}" CommandParameter="{Binding Text, ElementName=PexelsSearchBox}" Style="{StaticResource PrimaryButton}" Margin="8,0"/>
+                    <Button Grid.Column="2" Content="⭐ Populaires" Command="{Binding SearchPexelsCommand}" Style="{StaticResource PrimaryButton}"/>
+                </Grid>
+                <ListBox Grid.Row="2" ItemsSource="{Binding PexelsPhotos}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Width="220" Height="140" Margin="4" CornerRadius="8" Background="{StaticResource CardBrush}" Cursor="Hand">
+                                <Grid>
+                                    <Image Source="{Binding Src.Medium, Converter={StaticResource UrlToImage}}" Stretch="UniformToFill"/>
+                                    <Border Background="#80000000" VerticalAlignment="Bottom" CornerRadius="0,0,8,8" Padding="8,6">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="{Binding Photographer}" FontSize="11" Foreground="White" TextTrimming="CharacterEllipsis"/>
+                                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,4,0,0">
+                                                <Button Content="⬇️" FontSize="10" Padding="8,2" Margin="0,0,4,0" Command="{Binding DataContext.DownloadPexelsPhotoCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" Style="{StaticResource PrimaryButton}"/>
+                                                <Button Content="Appliquer" FontSize="10" Padding="8,2" Command="{Binding DataContext.DownloadAndApplyPexelsPhotoCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" Style="{StaticResource PrimaryButton}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+
+            <!-- PIXABAY -->
+            <Grid Visibility="{Binding IsChecked, ElementName=tabPixabay, Converter={StaticResource BoolToVis}}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Text="Pixabay" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,16"/>
+                <Grid Grid.Row="1" Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="PixabaySearchBox" Style="{StaticResource ModernTextBox}" Tag="Rechercher sur Pixabay..."/>
+                    <Button Grid.Column="1" Content="🔍 Rechercher" Command="{Binding SearchPixabayCommand}" CommandParameter="{Binding Text, ElementName=PixabaySearchBox}" Style="{StaticResource PrimaryButton}" Margin="8,0"/>
+                    <Button Grid.Column="2" Content="⭐ Populaires" Command="{Binding SearchPixabayCommand}" Style="{StaticResource PrimaryButton}"/>
+                </Grid>
+                <ListBox Grid.Row="2" ItemsSource="{Binding PixabayPhotos}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Width="220" Height="140" Margin="4" CornerRadius="8" Background="{StaticResource CardBrush}" Cursor="Hand">
+                                <Grid>
+                                    <Image Source="{Binding PreviewUrl, Converter={StaticResource UrlToImage}}" Stretch="UniformToFill"/>
+                                    <Border Background="#80000000" VerticalAlignment="Bottom" CornerRadius="0,0,8,8" Padding="8,6">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="{Binding User}" FontSize="11" Foreground="White" TextTrimming="CharacterEllipsis"/>
+                                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,4,0,0">
+                                                <Button Content="⬇️" FontSize="10" Padding="8,2" Margin="0,0,4,0" Command="{Binding DataContext.DownloadPixabayPhotoCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" Style="{StaticResource PrimaryButton}"/>
+                                                <Button Content="Appliquer" FontSize="10" Padding="8,2" Command="{Binding DataContext.DownloadAndApplyPixabayPhotoCommand, RelativeSource={RelativeSource AncestorType=ListBox}}" CommandParameter="{Binding}" Style="{StaticResource PrimaryButton}"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+
             <!-- PARAMÈTRES -->
             <ScrollViewer Visibility="{Binding IsChecked, ElementName=tabSettings, Converter={StaticResource BoolToVis}}" VerticalScrollBarVisibility="Auto">
                 <StackPanel>
@@ -673,11 +858,93 @@
                         </StackPanel>
                     </Border>
                     
+                    <!-- Raccourcis clavier -->
                     <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
                         <StackPanel>
-                            <TextBlock Text="Unsplash API" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            <TextBlock Text="Clé API (Access Key)" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,0,0,4"/>
+                            <TextBlock Text="⌨️ Raccourcis clavier" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <CheckBox Content="Activer les raccourcis globaux" IsChecked="{Binding HotkeysEnabled}" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
+                            
+                            <Grid Margin="0,8" IsEnabled="{Binding HotkeysEnabled}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="150"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Fond d'écran suivant" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" Text="{Binding HotkeyNext, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" TextAlignment="Center"/>
+                            </Grid>
+                            
+                            <Grid Margin="0,8" IsEnabled="{Binding HotkeysEnabled}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="150"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Fond d'écran précédent" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" Text="{Binding HotkeyPrevious, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" TextAlignment="Center"/>
+                            </Grid>
+                            
+                            <Grid Margin="0,8" IsEnabled="{Binding HotkeysEnabled}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="150"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Ajouter aux favoris" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" Text="{Binding HotkeyFavorite, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" TextAlignment="Center"/>
+                            </Grid>
+                            
+                            <Grid Margin="0,8" IsEnabled="{Binding HotkeysEnabled}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="150"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Pause/Reprise rotation" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" Text="{Binding HotkeyPause, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" TextAlignment="Center"/>
+                            </Grid>
+                            
+                            <Button Content="🔄 Appliquer les raccourcis" Command="{Binding ReloadHotkeysCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,8"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Transitions -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="✨ Effets de transition" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <CheckBox Content="Activer les effets de transition" IsChecked="{Binding TransitionEnabled}" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
+                            
+                            <Grid Margin="0,8" IsEnabled="{Binding TransitionEnabled}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="150"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Type de transition" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding TransitionEffects}" SelectedItem="{Binding SelectedTransitionEffect}" Height="32"/>
+                            </Grid>
+                            
+                            <Grid Margin="0,8" IsEnabled="{Binding TransitionEnabled}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="150"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Durée (ms)" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" Text="{Binding TransitionDuration}" Style="{StaticResource ModernTextBox}" TextAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- APIs -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="🔑 Clés API (Sources en ligne)" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            
+                            <TextBlock Text="Unsplash (Access Key)" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,8,0,4"/>
                             <TextBox Text="{Binding UnsplashApiKey, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}"/>
+                            
+                            <TextBlock Text="Pexels (API Key)" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,12,0,4"/>
+                            <TextBox Text="{Binding PexelsApiKey, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}"/>
+                            
+                            <TextBlock Text="Pixabay (API Key)" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,12,0,4"/>
+                            <TextBox Text="{Binding PixabayApiKey, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}"/>
+                            
+                            <TextBlock Text="Obtenez vos clés gratuitement sur unsplash.com, pexels.com et pixabay.com" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,8,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
                     
@@ -693,7 +960,7 @@
                     <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
                         <StackPanel>
                             <TextBlock Text="Maintenance" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            <Button Content="🗑️ Vider le cache" Command="{Binding ClearThumbnailCacheCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"/>
+                            <Button Content="🗑️ Vider le cache" Command="{Binding ClearThumbnailCacheAsyncCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left"/>
                             <Button Content="🔍 Détecter les doublons" Command="{Binding ScanDuplicatesCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,8,0,0" IsEnabled="{Binding IsDuplicateScanRunning, Converter={StaticResource InverseBoolConverter}}"/>
                             <ItemsControl ItemsSource="{Binding DuplicateGroups}" Margin="0,16,0,0" Visibility="{Binding DuplicateGroups.Count, Converter={StaticResource CountToVisibilityConverter}}">
                                 <ItemsControl.ItemTemplate>
@@ -730,7 +997,7 @@
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="À propos" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            <TextBlock Text="Wallpaper Manager v2.0.0" Foreground="{StaticResource TextPrimaryBrush}"/>
+                            <TextBlock Text="Wallpaper Manager v2.1.0" Foreground="{StaticResource TextPrimaryBrush}"/>
                             <TextBlock Text="© 2025 Felix-Antoine" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
                         </StackPanel>
                     </Border>

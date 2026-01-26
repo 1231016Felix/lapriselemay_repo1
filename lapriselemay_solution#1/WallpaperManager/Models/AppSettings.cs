@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json.Serialization;
+using WallpaperManager.Services;
 
 namespace WallpaperManager.Models;
 
@@ -21,6 +22,12 @@ public class AppSettings
     public bool UnsplashAutoDownload { get; set; }
     public int UnsplashCacheCount { get; set; } = 20;
     
+    // Pexels
+    public string? PexelsApiKey { get; set; }
+    
+    // Pixabay
+    public string? PixabayApiKey { get; set; }
+    
     // Fonds animés
     public bool AnimatedWallpaperEnabled { get; set; }
     public int AnimatedVolume { get; set; }
@@ -38,9 +45,16 @@ public class AppSettings
     }
     
     // Raccourcis clavier
-    public string HotkeyNextWallpaper { get; set; } = "Ctrl+Alt+Right";
-    public string HotkeyPreviousWallpaper { get; set; } = "Ctrl+Alt+Left";
-    public string HotkeyPauseRotation { get; set; } = "Ctrl+Alt+Space";
+    public bool HotkeysEnabled { get; set; } = true;
+    public string HotkeyNextWallpaper { get; set; } = "Win+Alt+Right";
+    public string HotkeyPreviousWallpaper { get; set; } = "Win+Alt+Left";
+    public string HotkeyToggleFavorite { get; set; } = "Win+Alt+F";
+    public string HotkeyPauseRotation { get; set; } = "Win+Alt+Space";
+    
+    // Transitions
+    public bool TransitionEnabled { get; set; } = true;
+    public TransitionEffect TransitionEffect { get; set; } = TransitionEffect.Fade;
+    public int TransitionDurationMs { get; set; } = 500;
     
     // État de la fenêtre (pour restaurer après redémarrage)
     public bool WasInTrayOnLastExit { get; set; }

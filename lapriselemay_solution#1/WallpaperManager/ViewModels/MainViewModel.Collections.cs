@@ -368,6 +368,9 @@ public partial class MainViewModel
         App.RotationService.SetPlaylist(wallpapers);
         App.RotationService.Start();
         
+        // Appliquer immédiatement le premier wallpaper
+        App.RotationService.Next();
+        
         IsRotationEnabled = true;
         StatusMessage = $"Rotation démarrée avec '{SelectedCollection.Name}' ({wallpapers.Count} fonds)";
     }
