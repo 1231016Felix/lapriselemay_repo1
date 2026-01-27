@@ -174,6 +174,7 @@ public sealed class DynamicWallpaperService : IDisposable
                     "heure dorée" or "golden hour" => sunTimes.GoldenHourPM,
                     "coucher" or "coucher du soleil" or "sunset" => sunTimes.Sunset,
                     "crépuscule" or "dusk" => sunTimes.Dusk,
+                    "nuit" or "night" => sunTimes.Dusk.Add(TimeSpan.FromHours(1)),
                     _ => variant.StartTime // Garder l'heure existante si pas de correspondance
                 };
             }

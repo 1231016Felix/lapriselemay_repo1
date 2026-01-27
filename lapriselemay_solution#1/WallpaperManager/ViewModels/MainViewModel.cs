@@ -916,6 +916,108 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
     
+    [RelayCommand]
+    private async Task ResyncLibraryAsync()
+    {
+        if (IsLoading) return;
+        
+        IsLoading = true;
+        StatusMessage = "Resynchronisation de la bibliothèque...";
+        
+        var cancellationToken = ResetCancellationToken();
+        var addedCount = 0;
+        var removedCount = 0;
+        
+        try
+        {
+            var targetFolder = SettingsService.Current.WallpaperFolder;
+            
+            if (string.IsNullOrEmpty(targetFolder) || !Directory.Exists(targetFolder))
+            {
+                StatusMessage = "Dossier cible introuvable ou non configuré";
+                return;
+            }
+            
+            var validExtensions = new[] { ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".mp4", ".webm", ".avi", ".mkv" };
+            
+            // Créer un HashSet des chemins existants pour une recherche rapide
+            var existingPaths = new HashSet<string>(_allWallpapers.Select(w => w.FilePath), StringComparer.OrdinalIgnoreCase);
+            
+            // Scanner le dossier pour les nouveaux fichiers
+            var filesInFolder = Directory.GetFiles(targetFolder, "*.*", SearchOption.AllDirectories)
+                .Where(f => validExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
+                .ToList();
+            
+            var filesInFolderSet = new HashSet<string>(filesInFolder, StringComparer.OrdinalIgnoreCase);
+            
+            // Trouver les nouveaux fichiers (dans le dossier mais pas dans la bibliothèque)
+            var newFiles = filesInFolder.Where(f => !existingPaths.Contains(f)).ToList();
+            
+            // Trouver les fichiers supprimés (dans la bibliothèque mais plus dans le dossier)
+            var removedWallpapers = _allWallpapers
+                .Where(w => w.FilePath.StartsWith(targetFolder, StringComparison.OrdinalIgnoreCase) && !filesInFolderSet.Contains(w.FilePath))
+                .ToList();
+            
+            // Supprimer les wallpapers qui n'existent plus
+            foreach (var wallpaper in removedWallpapers)
+            {
+                if (cancellationToken.IsCancellationRequested) break;
+                
+                SettingsService.RemoveWallpaper(wallpaper.Id);
+                _allWallpapers.Remove(wallpaper);
+                removedCount++;
+            }
+            
+            // Ajouter les nouveaux fichiers
+            foreach (var file in newFiles)
+            {
+                if (cancellationToken.IsCancellationRequested) break;
+                
+                StatusMessage = $"Ajout: {Path.GetFileName(file)}...";
+                
+                var wallpaper = await CreateWallpaperFromFileAsync(file).ConfigureAwait(true);
+                if (wallpaper != null)
+                {
+                    SettingsService.AddWallpaper(wallpaper);
+                    _allWallpapers.Add(wallpaper);
+                    addedCount++;
+                }
+            }
+            
+            if (addedCount > 0 || removedCount > 0)
+            {
+                ApplyFiltersAndSort();
+                SettingsService.Save();
+                
+                if (App.IsInitialized)
+                    App.RotationService.RefreshPlaylist();
+            }
+            
+            // Message de résultat
+            var messages = new List<string>();
+            if (addedCount > 0) messages.Add($"{addedCount} ajouté(s)");
+            if (removedCount > 0) messages.Add($"{removedCount} retiré(s)");
+            
+            StatusMessage = messages.Count > 0
+                ? $"Resync terminée: {string.Join(", ", messages)}"
+                : "Bibliothèque à jour - aucun changement";
+        }
+        catch (OperationCanceledException)
+        {
+            StatusMessage = "Resynchronisation annulée";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Erreur resync: {ex.Message}";
+        }
+        finally
+        {
+            IsLoading = false;
+            OnPropertyChanged(nameof(TotalCount));
+            OnPropertyChanged(nameof(FilteredCount));
+        }
+    }
+    
     // === HANDLERS RACCOURCIS CLAVIER ===
     partial void OnHotkeysEnabledChanged(bool value)
     {

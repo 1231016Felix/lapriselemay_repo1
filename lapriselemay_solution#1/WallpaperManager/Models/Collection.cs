@@ -1,9 +1,20 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 
 namespace WallpaperManager.Models;
 
+/// <summary>
+/// Représente une collection de fonds d'écran regroupés par l'utilisateur.
+/// </summary>
 public class Collection : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
+    
+    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    
     public string Id { get; set; } = Guid.NewGuid().ToString();
     
     private string _name = "Nouvelle collection";
@@ -15,7 +26,7 @@ public class Collection : INotifyPropertyChanged
             if (_name != value)
             {
                 _name = value;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Name)));
+                OnPropertyChanged();
             }
         }
     }
@@ -29,20 +40,105 @@ public class Collection : INotifyPropertyChanged
             if (_icon != value)
             {
                 _icon = value;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Icon)));
+                OnPropertyChanged();
             }
         }
     }
     
-    public string? Description { get; set; }
+    private string? _description;
+    public string? Description
+    {
+        get => _description;
+        set
+        {
+            if (_description != value)
+            {
+                _description = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+    
     public DateTime CreatedDate { get; set; } = DateTime.Now;
     
+    private List<string> _wallpaperIds = [];
+    
     /// <summary>
-    /// Liste des IDs de wallpapers dans cette collection
+    /// Liste des IDs de wallpapers dans cette collection.
     /// </summary>
-    public List<string> WallpaperIds { get; set; } = [];
+    public List<string> WallpaperIds
+    {
+        get => _wallpaperIds;
+        set
+        {
+            _wallpaperIds = value ?? [];
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(Count));
+            OnPropertyChanged(nameof(IsEmpty));
+        }
+    }
     
-    public int Count => WallpaperIds.Count;
+    /// <summary>
+    /// Nombre de wallpapers dans la collection.
+    /// </summary>
+    [JsonIgnore]
+    public int Count => _wallpaperIds.Count;
     
-    public event PropertyChangedEventHandler? PropertyChanged;
+    /// <summary>
+    /// Indique si la collection est vide.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsEmpty => _wallpaperIds.Count == 0;
+    
+    /// <summary>
+    /// Texte formaté du nombre d'éléments.
+    /// </summary>
+    [JsonIgnore]
+    public string CountText => Count switch
+    {
+        0 => "Vide",
+        1 => "1 fond d'écran",
+        _ => $"{Count} fonds d'écran"
+    };
+    
+    /// <summary>
+    /// Ajoute un wallpaper à la collection s'il n'y est pas déjà.
+    /// </summary>
+    /// <returns>True si ajouté, false si déjà présent</returns>
+    public bool AddWallpaper(string wallpaperId)
+    {
+        if (string.IsNullOrEmpty(wallpaperId) || _wallpaperIds.Contains(wallpaperId))
+            return false;
+        
+        _wallpaperIds.Add(wallpaperId);
+        OnPropertyChanged(nameof(Count));
+        OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(CountText));
+        return true;
+    }
+    
+    /// <summary>
+    /// Retire un wallpaper de la collection.
+    /// </summary>
+    /// <returns>True si retiré, false si non trouvé</returns>
+    public bool RemoveWallpaper(string wallpaperId)
+    {
+        if (string.IsNullOrEmpty(wallpaperId))
+            return false;
+        
+        var removed = _wallpaperIds.Remove(wallpaperId);
+        if (removed)
+        {
+            OnPropertyChanged(nameof(Count));
+            OnPropertyChanged(nameof(IsEmpty));
+            OnPropertyChanged(nameof(CountText));
+        }
+        return removed;
+    }
+    
+    /// <summary>
+    /// Vérifie si un wallpaper est dans la collection.
+    /// </summary>
+    public bool Contains(string wallpaperId)
+        => !string.IsNullOrEmpty(wallpaperId) && _wallpaperIds.Contains(wallpaperId);
 }

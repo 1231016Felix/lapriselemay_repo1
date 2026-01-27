@@ -256,7 +256,6 @@ public class DynamicModeToStringConverter : IValueConverter
         {
             Models.DynamicMode.Manual => "⏰ Manuel",
             Models.DynamicMode.SunBased => "☀️ Basé sur le soleil",
-            Models.DynamicMode.WeatherBased => "🌤️ Basé sur la météo",
             _ => "Manuel"
         };
     }

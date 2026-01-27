@@ -271,7 +271,7 @@ public partial class App : Application
         // Sauvegarder l'état de la fenêtre pour le prochain démarrage
         SettingsService.Current.WasInTrayOnLastExit = !_mainWindowVisible;
         
-        try { SettingsService.Save(); } catch { }
+        SettingsService.Shutdown();
         
         // Disposer les services de wallpaper
         if (_rotationService != null)

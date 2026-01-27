@@ -13,9 +13,7 @@ public enum DynamicMode
     /// <summary>Heures fixes définies manuellement</summary>
     Manual,
     /// <summary>Basé sur le lever/coucher du soleil</summary>
-    SunBased,
-    /// <summary>Basé sur la météo actuelle</summary>
-    WeatherBased
+    SunBased
 }
 
 /// <summary>
@@ -63,7 +61,7 @@ public class DynamicWallpaper : INotifyPropertyChanged
     public DynamicMode Mode 
     { 
         get => _mode; 
-        set { _mode = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsSunBased)); OnPropertyChanged(nameof(IsWeatherBased)); } 
+        set { _mode = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsSunBased)); } 
     }
     
     /// <summary>
@@ -119,9 +117,6 @@ public class DynamicWallpaper : INotifyPropertyChanged
     
     [JsonIgnore]
     public bool IsSunBased => Mode == DynamicMode.SunBased;
-    
-    [JsonIgnore]
-    public bool IsWeatherBased => Mode == DynamicMode.WeatherBased;
     
     [JsonIgnore]
     public int ConfiguredVariantCount => Variants.Count(v => v.Exists);

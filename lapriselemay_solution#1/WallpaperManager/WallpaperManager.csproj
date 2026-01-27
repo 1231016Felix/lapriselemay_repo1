@@ -24,6 +24,9 @@
     <!-- System Tray (version centralisée) -->
     <PackageReference Include="H.NotifyIcon.Wpf" />
     
+    <!-- Injection de dépendances -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    
     <!-- LibVLC pour vidéos (versions centralisées) -->
     <PackageReference Include="LibVLCSharp" />
     <PackageReference Include="LibVLCSharp.WPF" />

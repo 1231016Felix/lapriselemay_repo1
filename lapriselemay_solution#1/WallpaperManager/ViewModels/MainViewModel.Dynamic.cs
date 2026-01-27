@@ -401,23 +401,23 @@ public partial class MainViewModel
             Description = "Change selon le lever/coucher du soleil"
         };
         
-        // Calculer les heures approximatives du soleil pour aujourd'hui
-        var (sunrise, sunset) = CalculateSunTimes(dynamic.Latitude, dynamic.Longitude, DateTime.Today);
+        // Utiliser SunCalculatorService pour des calculs précis
+        var sunTimes = SunCalculatorService.CalculateToday(dynamic.Latitude, dynamic.Longitude);
         
-        // Créer les variantes basées sur le soleil
-        dynamic.Variants.Add(new TimeVariant { StartTime = sunrise.AddHours(-1).TimeOfDay, Label = "Aube" });
-        dynamic.Variants.Add(new TimeVariant { StartTime = sunrise.TimeOfDay, Label = "Lever" });
-        dynamic.Variants.Add(new TimeVariant { StartTime = TimeSpan.FromHours(12), Label = "Midi" });
-        dynamic.Variants.Add(new TimeVariant { StartTime = sunset.AddHours(-0.5).TimeOfDay, Label = "Coucher" });
-        dynamic.Variants.Add(new TimeVariant { StartTime = sunset.TimeOfDay, Label = "Crépuscule" });
-        dynamic.Variants.Add(new TimeVariant { StartTime = sunset.AddHours(1).TimeOfDay, Label = "Nuit" });
+        // Créer les variantes basées sur le soleil avec des labels cohérents
+        dynamic.Variants.Add(new TimeVariant { StartTime = sunTimes.Dawn, Label = "Aube" });
+        dynamic.Variants.Add(new TimeVariant { StartTime = sunTimes.Sunrise, Label = "Lever" });
+        dynamic.Variants.Add(new TimeVariant { StartTime = sunTimes.SolarNoon, Label = "Midi" });
+        dynamic.Variants.Add(new TimeVariant { StartTime = sunTimes.Sunset, Label = "Coucher" });
+        dynamic.Variants.Add(new TimeVariant { StartTime = sunTimes.Dusk, Label = "Crépuscule" });
+        dynamic.Variants.Add(new TimeVariant { StartTime = sunTimes.Dusk.Add(TimeSpan.FromHours(1)), Label = "Nuit" });
         
         SettingsService.AddDynamicWallpaper(dynamic);
         DynamicWallpapers.Add(dynamic);
         SelectedDynamicWallpaper = dynamic;
         SettingsService.Save();
         
-        StatusMessage = $"Wallpaper soleil créé - Lever: {sunrise:HH:mm}, Coucher: {sunset:HH:mm}";
+        StatusMessage = $"Wallpaper soleil créé - Lever: {sunTimes.Sunrise:hh\\:mm}, Coucher: {sunTimes.Sunset:hh\\:mm}";
     }
     
     /// <summary>
@@ -432,21 +432,23 @@ public partial class MainViewModel
             return;
         }
         
-        var (sunrise, sunset) = CalculateSunTimes(
+        // Utiliser SunCalculatorService pour des calculs précis
+        var sunTimes = SunCalculatorService.CalculateToday(
             SelectedDynamicWallpaper.Latitude, 
-            SelectedDynamicWallpaper.Longitude, 
-            DateTime.Today);
+            SelectedDynamicWallpaper.Longitude);
         
-        // Mettre à jour les variantes selon leur label
+        // Mettre à jour les variantes selon leur label (même mapping que DynamicWallpaperService)
         foreach (var variant in SelectedDynamicWallpaper.Variants)
         {
-            variant.StartTime = variant.Label switch
+            variant.StartTime = variant.Label?.ToLowerInvariant() switch
             {
-                "Aube" => sunrise.AddHours(-1).TimeOfDay,
-                "Lever" => sunrise.TimeOfDay,
-                "Coucher" => sunset.AddHours(-0.5).TimeOfDay,
-                "Crépuscule" => sunset.TimeOfDay,
-                "Nuit" => sunset.AddHours(1).TimeOfDay,
+                "aube" or "dawn" => sunTimes.Dawn,
+                "lever" or "lever du soleil" or "sunrise" => sunTimes.Sunrise,
+                "midi" or "noon" => sunTimes.SolarNoon,
+                "heure dorée" or "golden hour" => sunTimes.GoldenHourPM,
+                "coucher" or "coucher du soleil" or "sunset" => sunTimes.Sunset,
+                "crépuscule" or "dusk" => sunTimes.Dusk,
+                "nuit" or "night" => sunTimes.Dusk.Add(TimeSpan.FromHours(1)),
                 _ => variant.StartTime
             };
         }
@@ -460,46 +462,8 @@ public partial class MainViewModel
             App.DynamicService.Refresh();
         }
         
-        StatusMessage = $"Heures recalculées - Lever: {sunrise:HH:mm}, Coucher: {sunset:HH:mm}";
+        StatusMessage = $"Heures recalculées - Lever: {sunTimes.Sunrise:hh\\:mm}, Coucher: {sunTimes.Sunset:hh\\:mm}";
     }
-    
-    /// <summary>
-    /// Calcul simplifié des heures de lever/coucher du soleil
-    /// </summary>
-    private static (DateTime sunrise, DateTime sunset) CalculateSunTimes(double latitude, double longitude, DateTime date)
-    {
-        // Algorithme simplifié basé sur l'équation du temps
-        var dayOfYear = date.DayOfYear;
-        var latRad = latitude * Math.PI / 180.0;
-        
-        // Déclinaison solaire
-        var declination = 23.45 * Math.Sin(2 * Math.PI * (284 + dayOfYear) / 365.0) * Math.PI / 180.0;
-        
-        // Angle horaire au lever/coucher
-        var cosHourAngle = -Math.Tan(latRad) * Math.Tan(declination);
-        cosHourAngle = Math.Clamp(cosHourAngle, -1.0, 1.0);
-        var hourAngle = Math.Acos(cosHourAngle) * 180.0 / Math.PI;
-        
-        // Conversion en heures
-        var solarNoon = 12.0 - longitude / 15.0; // Correction de longitude (approximatif)
-        var sunriseHours = solarNoon - hourAngle / 15.0;
-        var sunsetHours = solarNoon + hourAngle / 15.0;
-        
-        // Correction pour le fuseau horaire local (approximatif)
-        var tzOffset = TimeZoneInfo.Local.GetUtcOffset(date).TotalHours;
-        sunriseHours += tzOffset + longitude / 15.0;
-        sunsetHours += tzOffset + longitude / 15.0;
-        
-        // Limiter aux heures valides
-        sunriseHours = Math.Clamp(sunriseHours, 4.0, 10.0);
-        sunsetHours = Math.Clamp(sunsetHours, 16.0, 22.0);
-        
-        var sunrise = date.Date.AddHours(sunriseHours);
-        var sunset = date.Date.AddHours(sunsetHours);
-        
-        return (sunrise, sunset);
-    }
-    
     // === RAFRAÎCHISSEMENT UI ===
     
     /// <summary>
