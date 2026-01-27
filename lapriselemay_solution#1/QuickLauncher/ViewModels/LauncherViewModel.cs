@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Timers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickLauncher.Models;
@@ -16,9 +17,11 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private readonly IndexingService _indexingService;
     private readonly FileWatcherService? _fileWatcherService;
     private readonly AliasService _aliasService;
+    private readonly System.Timers.Timer _debounceTimer;
     private AppSettings _settings;
     private CancellationTokenSource? _searchCts;
     private bool _disposed;
+    private string _pendingSearchText = string.Empty;
     
     private static readonly FrozenDictionary<string, AppSystemCommand> AppCommands = 
         new Dictionary<string, AppSystemCommand>(StringComparer.OrdinalIgnoreCase)
@@ -93,6 +96,11 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             _fileWatcherService?.Start();
         };
         
+        // Initialiser le timer de debouncing
+        _debounceTimer = new System.Timers.Timer(Constants.SearchDebounceMs);
+        _debounceTimer.AutoReset = false;
+        _debounceTimer.Elapsed += OnDebounceTimerElapsed;
+        
         // Initialiser le FileWatcher
         try
         {
@@ -105,7 +113,26 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         }
     }
 
-    partial void OnSearchTextChanged(string value) => UpdateResults();
+    partial void OnSearchTextChanged(string value)
+    {
+        // Stocker le texte en attente et redémarrer le timer de debouncing
+        _pendingSearchText = value;
+        _debounceTimer.Stop();
+        _debounceTimer.Start();
+    }
+    
+    private void OnDebounceTimerElapsed(object? sender, ElapsedEventArgs e)
+    {
+        // Exécuter la mise à jour sur le thread UI
+        System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+        {
+            // Vérifier que le texte n'a pas changé pendant le debounce
+            if (_pendingSearchText == SearchText)
+            {
+                UpdateResultsInternal();
+            }
+        });
+    }
     
     partial void OnSelectedIndexChanged(int value)
     {
@@ -171,6 +198,12 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     }
     
     private void UpdateResults()
+    {
+        // Appel direct sans debouncing (utilisé pour les rafraîchissements forcés)
+        UpdateResultsInternal();
+    }
+    
+    private void UpdateResultsInternal()
     {
         // Annuler toute recherche précédente
         _searchCts?.Cancel();
@@ -1132,6 +1165,8 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         _disposed = true;
         
+        _debounceTimer.Stop();
+        _debounceTimer.Dispose();
         _searchCts?.Cancel();
         _searchCts?.Dispose();
         _fileWatcherService?.Dispose();

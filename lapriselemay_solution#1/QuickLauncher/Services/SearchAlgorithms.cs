@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using QuickLauncher.Models;
 
 namespace QuickLauncher.Services;
 
@@ -139,9 +140,15 @@ public static class SearchAlgorithms
     #endregion
 
     #region Fuzzy Matching Amélioré
+    
+    /// <summary>
+    /// Instance des poids par défaut utilisée lorsqu'aucun poids n'est fourni.
+    /// </summary>
+    private static readonly ScoringWeights DefaultWeights = new();
 
     /// <summary>
     /// Effectue un fuzzy match amélioré avec scoring détaillé.
+    /// Utilise les poids par défaut.
     /// </summary>
     /// <param name="query">Requête de recherche</param>
     /// <param name="target">Texte cible</param>
@@ -149,8 +156,24 @@ public static class SearchAlgorithms
     /// <returns>Score de correspondance (0 = pas de match, plus c'est haut mieux c'est)</returns>
     public static int CalculateFuzzyScore(string query, string target, int useCount = 0)
     {
+        return CalculateFuzzyScore(query, target, useCount, DefaultWeights);
+    }
+    
+    /// <summary>
+    /// Effectue un fuzzy match amélioré avec scoring détaillé et poids configurables.
+    /// </summary>
+    /// <param name="query">Requête de recherche</param>
+    /// <param name="target">Texte cible</param>
+    /// <param name="useCount">Nombre d'utilisations (pour le scoring)</param>
+    /// <param name="weights">Poids de scoring configurables</param>
+    /// <returns>Score de correspondance (0 = pas de match, plus c'est haut mieux c'est)</returns>
+    public static int CalculateFuzzyScore(string query, string target, int useCount, ScoringWeights weights)
+    {
         if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(target))
             return 0;
+        
+        // Utiliser les poids par défaut si null
+        weights ??= DefaultWeights;
 
         var queryLower = query.ToLowerInvariant();
         var targetLower = target.ToLowerInvariant();
@@ -161,36 +184,36 @@ public static class SearchAlgorithms
         // 1. Correspondance exacte (score maximum)
         if (targetLower == queryLower)
         {
-            score = 1000;
+            score = weights.ExactMatch;
         }
         // 2. Commence par la requête
         else if (targetLower.StartsWith(queryLower))
         {
-            score = 800 + (queryLower.Length * 10); // Bonus pour les correspondances plus longues
+            score = weights.StartsWith + (queryLower.Length * 10); // Bonus pour les correspondances plus longues
         }
         // 3. Contient la requête
         else if (targetLower.Contains(queryLower))
         {
             var index = targetLower.IndexOf(queryLower);
-            score = 600 - (index * 5); // Pénalité si la correspondance est plus loin
+            score = weights.Contains - (index * 5); // Pénalité si la correspondance est plus loin
         }
         // 4. Match par initiales (ex: "vs" -> "Visual Studio")
         else if (MatchesInitials(queryLower, targetLower))
         {
-            score = 500;
+            score = weights.InitialsMatch;
         }
         // 5. Match par sous-séquence (tous les caractères présents dans l'ordre)
-        else if (IsSubsequenceMatch(queryLower, targetLower, out var matchScore))
+        else if (IsSubsequenceMatch(queryLower, targetLower, weights, out var matchScore))
         {
-            score = 300 + matchScore;
+            score = weights.SubsequenceMatch + matchScore;
         }
         // 6. Similarité de Levenshtein (pour les fautes de frappe)
         else
         {
             var similarity = LevenshteinSimilarity(queryLower, targetLower);
-            if (similarity >= 0.6) // Seuil minimum de 60% de similarité
+            if (similarity >= weights.FuzzyMatchThreshold)
             {
-                score = (int)(similarity * 250);
+                score = (int)(similarity * weights.FuzzyMatchMultiplier);
             }
             else if (queryLower.Length >= 3)
             {
@@ -199,18 +222,18 @@ public static class SearchAlgorithms
                 foreach (var word in words)
                 {
                     var wordSimilarity = LevenshteinSimilarity(queryLower, word);
-                    if (wordSimilarity >= 0.7)
+                    if (wordSimilarity >= weights.FuzzyMatchThreshold + 0.1) // Seuil légèrement plus élevé pour les mots partiels
                     {
-                        score = Math.Max(score, (int)(wordSimilarity * 200));
+                        score = Math.Max(score, (int)(wordSimilarity * weights.FuzzyMatchMultiplier * 0.8));
                     }
                 }
             }
         }
 
-        // 7. Bonus basé sur la fréquence d'utilisation (max 100 points)
+        // 7. Bonus basé sur la fréquence d'utilisation
         if (score > 0 && useCount > 0)
         {
-            score += Math.Min(useCount * 5, 100);
+            score += Math.Min(useCount * weights.UsageBonusPerUse, weights.MaxUsageBonus);
         }
 
         // 8. Bonus pour les mots qui matchent exactement
@@ -223,7 +246,7 @@ public static class SearchAlgorithms
             {
                 if (targetWords.Any(tw => tw == qWord))
                 {
-                    score += 50;
+                    score += weights.ExactWordBonus;
                 }
             }
         }
@@ -262,8 +285,18 @@ public static class SearchAlgorithms
     /// <summary>
     /// Vérifie si la requête est une sous-séquence du texte cible.
     /// Ex: "vsc" -> "Visual Studio Code"
+    /// Utilise les poids par défaut.
     /// </summary>
     private static bool IsSubsequenceMatch(string query, string target, out int matchScore)
+    {
+        return IsSubsequenceMatch(query, target, DefaultWeights, out matchScore);
+    }
+    
+    /// <summary>
+    /// Vérifie si la requête est une sous-séquence du texte cible avec poids configurables.
+    /// Ex: "vsc" -> "Visual Studio Code"
+    /// </summary>
+    private static bool IsSubsequenceMatch(string query, string target, ScoringWeights weights, out int matchScore)
     {
         matchScore = 0;
         var queryIndex = 0;
@@ -280,7 +313,7 @@ public static class SearchAlgorithms
                 if (i == lastMatchIndex + 1)
                 {
                     consecutiveMatches++;
-                    matchScore += consecutiveMatches * 10;
+                    matchScore += consecutiveMatches * weights.ConsecutiveMatchBonus;
                 }
                 else
                 {
@@ -290,7 +323,7 @@ public static class SearchAlgorithms
                 // Bonus si le match est au début d'un mot
                 if (i == 0 || !char.IsLetterOrDigit(target[i - 1]))
                 {
-                    matchScore += 20;
+                    matchScore += weights.WordBoundaryBonus;
                 }
                 
                 lastMatchIndex = i;

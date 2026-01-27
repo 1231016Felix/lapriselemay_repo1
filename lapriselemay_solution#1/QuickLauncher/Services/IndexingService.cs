@@ -412,10 +412,10 @@ public sealed partial class IndexingService : IDisposable
             .ToList();
     }
     
-    private static int CalculateScore(string query, SearchResult item)
+    private int CalculateScore(string query, SearchResult item)
     {
-        // Utiliser le nouvel algorithme de fuzzy matching avec Levenshtein
-        return SearchAlgorithms.CalculateFuzzyScore(query, item.Name, item.UseCount);
+        // Utiliser le nouvel algorithme de fuzzy matching avec Levenshtein et les poids configurables
+        return SearchAlgorithms.CalculateFuzzyScore(query, item.Name, item.UseCount, _settings.ScoringWeights);
     }
     
     [GeneratedRegex(@"^[\d\s\+\-\*\/\(\)\.\,\^]+$")]

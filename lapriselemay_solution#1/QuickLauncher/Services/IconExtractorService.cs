@@ -96,6 +96,24 @@ public static class IconExtractorService
     private const int MaxCacheSize = 500;
     private static bool _persistentCacheInitialized;
     #endregion
+    
+    #region Circuit Breaker
+    /// <summary>
+    /// Chemins ayant échoué récemment avec leur timestamp d'échec.
+    /// Évite de réessayer des chemins problématiques pendant une période de cooldown.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, DateTime> _failedPaths = new();
+    
+    /// <summary>
+    /// Durée pendant laquelle un chemin ayant échoué est ignoré.
+    /// </summary>
+    private static readonly TimeSpan FailedPathCooldown = TimeSpan.FromMinutes(5);
+    
+    /// <summary>
+    /// Nombre maximum d'échecs à conserver en mémoire.
+    /// </summary>
+    private const int MaxFailedPathsCount = 1000;
+    #endregion
 
     /// <summary>
     /// Initialise le cache persistant. Doit être appelé au démarrage.
@@ -113,6 +131,13 @@ public static class IconExtractorService
             return null;
 
         var cacheKey = $"{path}_{(largeIcon ? "L" : "S")}";
+        
+        // 0. Vérifier le circuit breaker - ignorer les chemins ayant échoué récemment
+        if (IsPathInCooldown(path))
+        {
+            Debug.WriteLine($"[IconExtractor] Circuit breaker: skipping {path} (in cooldown)");
+            return null;
+        }
         
         // 1. Cache mémoire rapide
         if (_iconCache.TryGetValue(cacheKey, out var cachedIcon))
@@ -223,8 +248,16 @@ public static class IconExtractorService
         catch (Exception ex)
         {
             Debug.WriteLine($"[IconExtractor] Error for '{path}': {ex.Message}");
+            // Enregistrer l'échec dans le circuit breaker
+            RecordFailure(path);
         }
 
+        // Si pas d'icône trouvée, enregistrer l'échec pour éviter les tentatives répétées
+        if (icon == null)
+        {
+            RecordFailure(path);
+        }
+        
         _iconCache.TryAdd(cacheKey, icon);
         
         // 3. Sauvegarder dans le cache persistant pour les prochains démarrages
@@ -746,6 +779,76 @@ public static class IconExtractorService
 
     public static void ClearCache() => _iconCache.Clear();
     public static int CacheCount => _iconCache.Count;
+    
+    #region Circuit Breaker Methods
+    
+    /// <summary>
+    /// Vérifie si un chemin est en période de cooldown après un échec.
+    /// </summary>
+    private static bool IsPathInCooldown(string path)
+    {
+        if (_failedPaths.TryGetValue(path, out var failedAt))
+        {
+            if (DateTime.UtcNow - failedAt < FailedPathCooldown)
+            {
+                return true;
+            }
+            
+            // Cooldown expiré, retirer du dictionnaire
+            _failedPaths.TryRemove(path, out _);
+        }
+        return false;
+    }
+    
+    /// <summary>
+    /// Enregistre un échec d'extraction d'icône pour un chemin.
+    /// </summary>
+    private static void RecordFailure(string path)
+    {
+        // Nettoyage périodique si le dictionnaire est trop grand
+        if (_failedPaths.Count > MaxFailedPathsCount)
+        {
+            CleanupExpiredFailures();
+        }
+        
+        _failedPaths[path] = DateTime.UtcNow;
+        Debug.WriteLine($"[IconExtractor] Circuit breaker: recorded failure for {path}");
+    }
+    
+    /// <summary>
+    /// Nettoie les entrées expirées du circuit breaker.
+    /// </summary>
+    private static void CleanupExpiredFailures()
+    {
+        var now = DateTime.UtcNow;
+        var expiredPaths = _failedPaths
+            .Where(kv => now - kv.Value >= FailedPathCooldown)
+            .Select(kv => kv.Key)
+            .ToList();
+        
+        foreach (var path in expiredPaths)
+        {
+            _failedPaths.TryRemove(path, out _);
+        }
+        
+        Debug.WriteLine($"[IconExtractor] Circuit breaker: cleaned up {expiredPaths.Count} expired entries");
+    }
+    
+    /// <summary>
+    /// Réinitialise le circuit breaker (utile pour les tests ou le redémarrage).
+    /// </summary>
+    public static void ResetCircuitBreaker()
+    {
+        _failedPaths.Clear();
+        Debug.WriteLine("[IconExtractor] Circuit breaker reset");
+    }
+    
+    /// <summary>
+    /// Nombre de chemins actuellement en cooldown.
+    /// </summary>
+    public static int FailedPathsCount => _failedPaths.Count;
+    
+    #endregion
 }
 
 public enum StockIconType { Folder, Document, Application, Search, Help, Settings }

@@ -91,6 +91,9 @@ public sealed class AppSettings
     
     // === Alias activés ===
     public bool EnableAliases { get; set; } = true;
+    
+    // === Poids de scoring configurables ===
+    public ScoringWeights ScoringWeights { get; set; } = new();
 
     private static List<string> GetDefaultIndexedFolders() =>
     [
@@ -434,6 +437,112 @@ public sealed class SystemControlCommand
         IsEnabled = IsEnabled,
         RequiresArgument = RequiresArgument,
         ArgumentHint = ArgumentHint
+    };
+}
+
+/// <summary>
+/// Poids configurables pour l'algorithme de scoring de recherche.
+/// Permet aux utilisateurs de personnaliser l'importance relative des différents types de correspondance.
+/// </summary>
+public sealed class ScoringWeights
+{
+    /// <summary>
+    /// Score pour une correspondance exacte (nom == requête).
+    /// </summary>
+    public int ExactMatch { get; set; } = 1000;
+    
+    /// <summary>
+    /// Score de base lorsque le nom commence par la requête.
+    /// </summary>
+    public int StartsWith { get; set; } = 800;
+    
+    /// <summary>
+    /// Score de base lorsque le nom contient la requête.
+    /// </summary>
+    public int Contains { get; set; } = 600;
+    
+    /// <summary>
+    /// Score pour une correspondance par initiales (ex: "vs" -> "Visual Studio").
+    /// </summary>
+    public int InitialsMatch { get; set; } = 500;
+    
+    /// <summary>
+    /// Score de base pour une correspondance par sous-séquence.
+    /// </summary>
+    public int SubsequenceMatch { get; set; } = 300;
+    
+    /// <summary>
+    /// Multiplicateur maximum pour la similarité de Levenshtein (fuzzy matching).
+    /// Le score final est: similarity * FuzzyMatchMultiplier
+    /// </summary>
+    public int FuzzyMatchMultiplier { get; set; } = 250;
+    
+    /// <summary>
+    /// Score maximum ajouté pour la fréquence d'utilisation.
+    /// </summary>
+    public int MaxUsageBonus { get; set; } = 100;
+    
+    /// <summary>
+    /// Points ajoutés par utilisation (plafonné par MaxUsageBonus).
+    /// </summary>
+    public int UsageBonusPerUse { get; set; } = 5;
+    
+    /// <summary>
+    /// Bonus pour un mot de la requête correspondant exactement à un mot du résultat.
+    /// </summary>
+    public int ExactWordBonus { get; set; } = 50;
+    
+    /// <summary>
+    /// Seuil minimum de similarité pour le fuzzy matching (0.0 à 1.0).
+    /// </summary>
+    public double FuzzyMatchThreshold { get; set; } = 0.6;
+    
+    /// <summary>
+    /// Bonus pour les correspondances de caractères consécutifs dans les sous-séquences.
+    /// </summary>
+    public int ConsecutiveMatchBonus { get; set; } = 10;
+    
+    /// <summary>
+    /// Bonus lorsqu'une correspondance est au début d'un mot.
+    /// </summary>
+    public int WordBoundaryBonus { get; set; } = 20;
+    
+    /// <summary>
+    /// Réinitialise tous les poids aux valeurs par défaut.
+    /// </summary>
+    public void ResetToDefaults()
+    {
+        ExactMatch = 1000;
+        StartsWith = 800;
+        Contains = 600;
+        InitialsMatch = 500;
+        SubsequenceMatch = 300;
+        FuzzyMatchMultiplier = 250;
+        MaxUsageBonus = 100;
+        UsageBonusPerUse = 5;
+        ExactWordBonus = 50;
+        FuzzyMatchThreshold = 0.6;
+        ConsecutiveMatchBonus = 10;
+        WordBoundaryBonus = 20;
+    }
+    
+    /// <summary>
+    /// Crée une copie des poids.
+    /// </summary>
+    public ScoringWeights Clone() => new()
+    {
+        ExactMatch = ExactMatch,
+        StartsWith = StartsWith,
+        Contains = Contains,
+        InitialsMatch = InitialsMatch,
+        SubsequenceMatch = SubsequenceMatch,
+        FuzzyMatchMultiplier = FuzzyMatchMultiplier,
+        MaxUsageBonus = MaxUsageBonus,
+        UsageBonusPerUse = UsageBonusPerUse,
+        ExactWordBonus = ExactWordBonus,
+        FuzzyMatchThreshold = FuzzyMatchThreshold,
+        ConsecutiveMatchBonus = ConsecutiveMatchBonus,
+        WordBoundaryBonus = WordBoundaryBonus
     };
 }
 
