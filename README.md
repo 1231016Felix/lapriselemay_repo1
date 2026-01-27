@@ -1,6 +1,6 @@
 ***English description at the end***
 
-# Salut, moi c'est Félix-Antoine 👋
+# Je suis Félix-Antoine 👋
 
 Étudiant en informatique au Cégep, passionné par le développement logiciel et la résolution de problèmes.
 
