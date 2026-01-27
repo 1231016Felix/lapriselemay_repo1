@@ -12,6 +12,7 @@
 #include <thread>
 #include <mutex>
 #include <format>
+#include <algorithm>
 #include "Cleaner.h"
 
 // DirectX 11 globals
@@ -25,11 +26,15 @@ static TempCleaner::Cleaner g_cleaner;
 static TempCleaner::CleaningOptions g_options;
 static bool g_isRunning = false;
 static bool g_showSettings = false;
-static bool g_showErrors = false;  // Afficher la fenetre d'erreurs
+static bool g_showErrors = false;
+static bool g_showEstimate = false;
+static bool g_startCleaningRequested = false;  // Flag pour éviter deadlock
+static bool g_showDismWarning = false;  // Avertissement DISM
 static int g_progress = 0;
 static std::wstring g_statusText = L"Pret";
 static std::wstring g_resultText;
-static std::vector<TempCleaner::ErrorInfo> g_errorDetails;  // Details des erreurs
+static std::vector<TempCleaner::ErrorInfo> g_errorDetails;
+static TempCleaner::CleaningEstimate g_estimate;
 static std::mutex g_mutex;
 
 // Forward declarations
@@ -63,7 +68,6 @@ std::wstring FormatBytes(uint64_t bytes) {
 void SetupImGuiStyle() {
     ImGuiStyle& style = ImGui::GetStyle();
     
-    // Coins arrondis
     style.WindowRounding = 8.0f;
     style.ChildRounding = 6.0f;
     style.FrameRounding = 6.0f;
@@ -72,12 +76,10 @@ void SetupImGuiStyle() {
     style.GrabRounding = 6.0f;
     style.TabRounding = 6.0f;
     
-    // Padding
     style.WindowPadding = ImVec2(15, 15);
     style.FramePadding = ImVec2(12, 8);
     style.ItemSpacing = ImVec2(10, 10);
     
-    // Couleurs - Theme sombre moderne
     ImVec4* colors = style.Colors;
     colors[ImGuiCol_WindowBg] = ImVec4(0.10f, 0.10f, 0.12f, 1.00f);
     colors[ImGuiCol_ChildBg] = ImVec4(0.14f, 0.14f, 0.16f, 1.00f);
@@ -134,7 +136,7 @@ void StartCleaning() {
             if (stats.errors > 0) {
                 g_resultText += std::format(L"\n({} erreurs)", stats.errors);
                 g_errorDetails = std::move(stats.errorDetails);
-                g_showErrors = true;  // Afficher automatiquement la fenetre d'erreurs
+                g_showErrors = true;
             }
             g_statusText = L"Termine!";
             g_progress = 100;
@@ -156,16 +158,48 @@ void StartCleaning() {
     }).detach();
 }
 
+void StartEstimate() {
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        g_isRunning = true;
+        g_progress = 0;
+        g_statusText = L"Analyse en cours...";
+        g_estimate = {};
+    }
+
+    std::thread([]() {
+        try {
+            auto callback = [](const std::wstring& status, int progress) {
+                std::lock_guard<std::mutex> lock(g_mutex);
+                g_statusText = status;
+                g_progress = progress;
+            };
+
+            auto est = g_cleaner.estimate(g_options, callback);
+
+            std::lock_guard<std::mutex> lock(g_mutex);
+            g_estimate = std::move(est);
+            g_statusText = L"Analyse terminee!";
+            g_progress = 100;
+            g_isRunning = false;
+            g_showEstimate = true;
+        } catch (...) {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            g_statusText = L"Erreur d'analyse";
+            g_progress = 100;
+            g_isRunning = false;
+        }
+    }).detach();
+}
+
 void StopCleaning() {
     g_cleaner.stop();
     g_statusText = L"Arret en cours...";
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
-    // Charger les options
     g_options = TempCleaner::Cleaner::loadOptions();
 
-    // Creer la fenetre
     HINSTANCE hInst = GetModuleHandle(nullptr);
     WNDCLASSEXW wc = { sizeof(wc), CS_CLASSDC, WndProc, 0L, 0L, 
                        hInst, 
@@ -177,7 +211,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     
     HWND hwnd = CreateWindowW(wc.lpszClassName, L"TempCleaner", 
                               WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_THICKFRAME,
-                              100, 100, 450, 550, nullptr, nullptr, wc.hInstance, nullptr);
+                              100, 100, 500, 600, nullptr, nullptr, wc.hInstance, nullptr);
 
     if (!CreateDeviceD3D(hwnd)) {
         CleanupDeviceD3D();
@@ -188,14 +222,12 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
 
-    // Setup ImGui
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.IniFilename = nullptr; // Pas de fichier ini
+    io.IniFilename = nullptr;
     
-    // Charger une police plus grande
     io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 18.0f);
     
     SetupImGuiStyle();
@@ -203,7 +235,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
 
-    // Boucle principale
     bool done = false;
     while (!done) {
         MSG msg;
@@ -219,7 +250,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
 
-        // Fenetre principale (plein ecran dans la fenetre)
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(io.DisplaySize);
         ImGui::Begin("TempCleaner", nullptr, 
@@ -234,22 +264,40 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         ImGui::Spacing();
         ImGui::Spacing();
 
-        // Bouton principal
-        float buttonWidth = 280.0f;
-        float buttonHeight = 50.0f;
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth() - buttonWidth) * 0.5f);
+        // Boutons principaux
+        float buttonWidth = 200.0f;
+        float buttonHeight = 45.0f;
+        float totalWidth = buttonWidth * 2 + 10;
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth() - totalWidth) * 0.5f);
         
         if (g_isRunning) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.70f, 0.25f, 0.25f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.80f, 0.30f, 0.30f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.90f, 0.35f, 0.35f, 1.0f));
-            if (ImGui::Button("Arreter", ImVec2(buttonWidth, buttonHeight))) {
+            if (ImGui::Button("Arreter", ImVec2(totalWidth, buttonHeight))) {
                 StopCleaning();
             }
             ImGui::PopStyleColor(3);
         } else {
-            if (ImGui::Button("Demarrer le nettoyage", ImVec2(buttonWidth, buttonHeight))) {
-                StartCleaning();
+            // Bouton Analyser
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.35f, 0.50f, 0.70f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.40f, 0.55f, 0.75f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.45f, 0.60f, 0.80f, 1.0f));
+            if (ImGui::Button("Analyser", ImVec2(buttonWidth, buttonHeight))) {
+                StartEstimate();
+            }
+            ImGui::PopStyleColor(3);
+            
+            ImGui::SameLine();
+            
+            // Bouton Nettoyer
+            if (ImGui::Button("Nettoyer", ImVec2(buttonWidth, buttonHeight))) {
+                // Vérifier si DISM est activé
+                if (g_options.cleanComponentStore) {
+                    g_showDismWarning = true;
+                } else {
+                    StartCleaning();
+                }
             }
         }
 
@@ -267,8 +315,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         ImGui::Spacing();
 
         // Barre de progression
-        ImGui::SetCursorPosX((ImGui::GetWindowWidth() - buttonWidth) * 0.5f);
-        ImGui::ProgressBar(g_progress / 100.0f, ImVec2(buttonWidth, 8), "");
+        ImGui::SetCursorPosX((ImGui::GetWindowWidth() - totalWidth) * 0.5f);
+        ImGui::ProgressBar(g_progress / 100.0f, ImVec2(totalWidth, 8), "");
 
         ImGui::Spacing();
         ImGui::Spacing();
@@ -279,7 +327,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
             if (!g_resultText.empty()) {
                 std::string result = WideToUtf8(g_resultText);
                 
-                // Centrer le texte multiligne
                 std::istringstream stream(result);
                 std::string line;
                 while (std::getline(stream, line)) {
@@ -287,7 +334,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                     ImGui::Text("%s", line.c_str());
                 }
                 
-                // Bouton pour voir les details des erreurs
                 if (!g_errorDetails.empty()) {
                     ImGui::Spacing();
                     float errBtnWidth = 150.0f;
@@ -303,7 +349,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
             }
         }
 
-        // Bouton parametres en bas
+        // Bouton parametres en bas a gauche
         ImGui::SetCursorPos(ImVec2(15, ImGui::GetWindowHeight() - 45));
         if (ImGui::Button("Parametres", ImVec2(100, 30))) {
             g_showSettings = true;
@@ -313,14 +359,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
 
         // Fenetre parametres
         if (g_showSettings) {
-            ImGui::SetNextWindowSize(ImVec2(340, 420));
+            ImGui::SetNextWindowSize(ImVec2(380, 480));
             ImGui::Begin("Parametres", &g_showSettings, ImGuiWindowFlags_NoResize);
             
-            // Reduire l'espacement pour cette fenetre
-            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 6));
+            ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 5));
             
             if (ImGui::BeginTabBar("SettingsTabs")) {
-                // Onglet Nettoyage de base
+                // Onglet Base
                 if (ImGui::BeginTabItem("Base")) {
                     ImGui::Checkbox("Temp utilisateur (%TEMP%)", &g_options.cleanUserTemp);
                     ImGui::Checkbox("Temp Windows", &g_options.cleanWindowsTemp);
@@ -331,9 +376,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                     ImGui::EndTabItem();
                 }
                 
-                // Onglet Nettoyage avance
-                if (ImGui::BeginTabItem("Avance")) {
-                    ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "Necessite les droits admin");
+                // Onglet Systeme
+                if (ImGui::BeginTabItem("Systeme")) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "Necessite droits admin");
                     ImGui::Checkbox("Cache Windows Update", &g_options.cleanWindowsUpdate);
                     ImGui::Checkbox("Logs systeme", &g_options.cleanSystemLogs);
                     ImGui::Checkbox("Crash dumps", &g_options.cleanCrashDumps);
@@ -341,23 +386,71 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                     ImGui::Checkbox("Delivery Optimization", &g_options.cleanDeliveryOptimization);
                     ImGui::Checkbox("Windows Installer cache", &g_options.cleanWindowsInstaller);
                     ImGui::Checkbox("Cache polices", &g_options.cleanFontCache);
-                    ImGui::EndTabItem();
-                }
-                
-                // Onglet Systeme supplementaire
-                if (ImGui::BeginTabItem("Systeme")) {
+                    ImGui::Separator();
                     ImGui::Checkbox("Cache DNS", &g_options.cleanDnsCache);
                     ImGui::Checkbox("Raccourcis casses", &g_options.cleanBrokenShortcuts);
                     ImGui::Checkbox("Cache Windows Store", &g_options.cleanWindowsStoreCache);
                     ImGui::Checkbox("Presse-papiers", &g_options.cleanClipboard);
                     ImGui::Checkbox("Fichiers Chkdsk", &g_options.cleanChkdskFiles);
                     ImGui::Checkbox("Cache reseau / IIS", &g_options.cleanNetworkCache);
+                    ImGui::EndTabItem();
+                }
+                
+                // Onglet Developpement
+                if (ImGui::BeginTabItem("Dev")) {
+                    ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Caches de build");
+                    ImGui::Checkbox("npm cache", &g_options.cleanNpmCache);
+                    ImGui::Checkbox("pip cache (Python)", &g_options.cleanPipCache);
+                    ImGui::Checkbox("Cargo cache (Rust)", &g_options.cleanCargoCache);
+                    ImGui::Checkbox("Go cache", &g_options.cleanGoCache);
                     ImGui::Separator();
-                    ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "Danger:");
+                    ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "IDE");
+                    ImGui::Checkbox("Visual Studio cache", &g_options.cleanVSCache);
+                    ImGui::Checkbox("VS Code cache", &g_options.cleanVSCodeCache);
+                    ImGui::Separator();
+                    ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.4f, 1.0f), "Attention: rebuild requis");
+                    ImGui::Checkbox("NuGet packages", &g_options.cleanNuGetCache);
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Supprime tous les packages NuGet.\nIls seront re-telecharges au prochain build.");
+                    }
+                    ImGui::Checkbox("Gradle/Maven cache", &g_options.cleanGradleMavenCache);
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Supprime le cache Java.\nPeut etre volumineux (plusieurs Go).");
+                    }
+                    ImGui::EndTabItem();
+                }
+                
+                // Onglet GPU/Browser
+                if (ImGui::BeginTabItem("GPU")) {
+                    ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Cache GPU");
+                    ImGui::Checkbox("Shader cache (NVIDIA/AMD/Intel)", &g_options.cleanShaderCache);
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Cache DirectX, OpenGL, Vulkan.\nSera regenere au lancement des jeux/apps.");
+                    }
+                    ImGui::Separator();
+                    ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Navigateurs (etendu)");
+                    ImGui::Checkbox("IndexedDB, Service Workers, etc.", &g_options.cleanBrowserExtended);
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Donnees hors-ligne des sites web.\nVous serez deconnecte de certains sites.");
+                    }
+                    ImGui::EndTabItem();
+                }
+                
+                // Onglet Danger
+                if (ImGui::BeginTabItem("Danger")) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "Options risquees!");
+                    ImGui::Spacing();
+                    
                     ImGui::Checkbox("Windows.old", &g_options.cleanWindowsOld);
                     if (ImGui::IsItemHovered()) {
                         ImGui::SetTooltip("Supprime l'ancienne installation Windows.\nImpossible de revenir en arriere!");
                     }
+                    
+                    ImGui::Checkbox("Component Store (WinSxS)", &g_options.cleanComponentStore);
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("Nettoie le Component Store avec DISM.\nPeut prendre plusieurs minutes.\nLibere 1-10 Go typiquement.");
+                    }
+                    
                     ImGui::EndTabItem();
                 }
                 
@@ -376,16 +469,136 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                 g_showSettings = false;
             }
             
-            ImGui::PopStyleVar(); // Restaurer l'espacement
+            ImGui::PopStyleVar();
             ImGui::End();
         }
 
-        // Fenetre des erreurs (popup modale centree)
+        // Fenetre estimation (copie locale pour éviter de garder le mutex pendant le rendu)
+        bool showEstimateLocal = false;
+        TempCleaner::CleaningEstimate estimateLocal;
+        {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            showEstimateLocal = g_showEstimate && g_estimate.totalSize > 0;
+            if (showEstimateLocal) {
+                estimateLocal = g_estimate;
+            }
+        }
+        
+        if (showEstimateLocal) {
+            ImVec2 popupSize(420, 380);
+            ImVec2 popupPos((io.DisplaySize.x - popupSize.x) * 0.5f, 
+                           (io.DisplaySize.y - popupSize.y) * 0.5f);
+            ImGui::SetNextWindowPos(popupPos, ImGuiCond_Always);
+            ImGui::SetNextWindowSize(popupSize, ImGuiCond_Always);
+            
+            ImGui::Begin("Estimation", &g_showEstimate, 
+                ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+            
+            // Total
+            std::string totalStr = WideToUtf8(FormatBytes(estimateLocal.totalSize));
+            std::string filesStr = std::format("{} fichiers", estimateLocal.totalFiles);
+            ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.6f, 1.0f), "Total estimé: %s", totalStr.c_str());
+            ImGui::TextDisabled("%s", filesStr.c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+            
+            // Liste par catégorie (triée par taille décroissante)
+            if (ImGui::BeginChild("EstimateList", ImVec2(0, -45), true)) {
+                // Trier les catégories par taille
+                auto sortedCategories = estimateLocal.categories;
+                std::sort(sortedCategories.begin(), sortedCategories.end(),
+                    [](const auto& a, const auto& b) { return a.size > b.size; });
+                
+                for (const auto& cat : sortedCategories) {
+                    if (cat.size == 0) continue;
+                    
+                    std::string catName = WideToUtf8(cat.name);
+                    std::string catSize = WideToUtf8(FormatBytes(cat.size));
+                    std::string catFiles = std::format("({} fichiers)", cat.fileCount);
+                    
+                    // Barre de proportion
+                    float proportion = static_cast<float>(cat.size) / static_cast<float>(estimateLocal.totalSize);
+                    
+                    ImGui::Text("%s", catName.c_str());
+                    ImGui::SameLine(200);
+                    ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.6f, 1.0f), "%s", catSize.c_str());
+                    ImGui::SameLine(300);
+                    ImGui::TextDisabled("%s", catFiles.c_str());
+                    
+                    // Petite barre de progression
+                    ImGui::ProgressBar(proportion, ImVec2(-1, 4), "");
+                    ImGui::Spacing();
+                }
+            }
+            ImGui::EndChild();
+            
+            // Boutons
+            float btnWidth = 120.0f;
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth() - btnWidth * 2 - 10) * 0.5f);
+            
+            if (ImGui::Button("Nettoyer", ImVec2(btnWidth, 32))) {
+                g_showEstimate = false;
+                // Vérifier si DISM est activé
+                if (g_options.cleanComponentStore) {
+                    g_showDismWarning = true;
+                } else {
+                    g_startCleaningRequested = true;
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Fermer", ImVec2(btnWidth, 32))) {
+                g_showEstimate = false;
+            }
+            
+            ImGui::End();
+        }
+
+        // Traiter la demande de nettoyage (en dehors du mutex)
+        if (g_startCleaningRequested) {
+            g_startCleaningRequested = false;
+            StartCleaning();
+        }
+
+        // Popup d'avertissement DISM
+        if (g_showDismWarning) {
+            ImVec2 popupSize(380, 200);
+            ImVec2 popupPos((io.DisplaySize.x - popupSize.x) * 0.5f, 
+                           (io.DisplaySize.y - popupSize.y) * 0.5f);
+            ImGui::SetNextWindowPos(popupPos, ImGuiCond_Always);
+            ImGui::SetNextWindowSize(popupSize, ImGuiCond_Always);
+            
+            ImGui::Begin("Attention", &g_showDismWarning, 
+                ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+            
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "Component Store (WinSxS) active");
+            ImGui::Spacing();
+            ImGui::TextWrapped("Le nettoyage du Component Store utilise DISM et peut prendre 2 a 5 minutes.");
+            ImGui::Spacing();
+            ImGui::TextWrapped("L'interface peut sembler figee pendant ce temps. Vous pouvez annuler avec le bouton Arreter.");
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+            
+            float btnWidth = 100.0f;
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth() - btnWidth * 2 - 10) * 0.5f);
+            
+            if (ImGui::Button("Continuer", ImVec2(btnWidth, 30))) {
+                g_showDismWarning = false;
+                g_startCleaningRequested = true;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Annuler", ImVec2(btnWidth, 30))) {
+                g_showDismWarning = false;
+            }
+            
+            ImGui::End();
+        }
+
+        // Fenetre des erreurs
         {
             std::lock_guard<std::mutex> lock(g_mutex);
             if (g_showErrors && !g_errorDetails.empty()) {
-                // Centrer la popup dans la fenetre principale
-                ImVec2 popupSize(400, 320);
+                ImVec2 popupSize(420, 340);
                 ImVec2 popupPos((io.DisplaySize.x - popupSize.x) * 0.5f, 
                                (io.DisplaySize.y - popupSize.y) * 0.5f);
                 ImGui::SetNextWindowPos(popupPos, ImGuiCond_Always);
@@ -394,19 +607,16 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                 ImGui::Begin("Rapport d'erreurs", &g_showErrors, 
                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
                 
-                // Resume
                 std::string summary = std::format("{} erreur(s)", g_errorDetails.size());
                 ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", summary.c_str());
                 ImGui::Separator();
                 ImGui::Spacing();
                 
-                // Liste scrollable des erreurs
                 if (ImGui::BeginChild("ErrorList", ImVec2(0, -40), true)) {
                     std::wstring currentCategory;
                     for (size_t i = 0; i < g_errorDetails.size(); i++) {
                         const auto& error = g_errorDetails[i];
                         
-                        // Afficher l'en-tete de categorie si elle change
                         if (error.category != currentCategory) {
                             currentCategory = error.category;
                             if (i > 0) ImGui::Spacing();
@@ -414,22 +624,18 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                             ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "[%s]", cat.c_str());
                         }
                         
-                        // Extraire le nom du fichier seulement
                         std::string fullPath = WideToUtf8(error.filePath);
                         std::string fileName = fullPath;
                         size_t lastSlash = fullPath.find_last_of("\\/");
                         if (lastSlash != std::string::npos) {
                             fileName = fullPath.substr(lastSlash + 1);
                         }
-                        // Tronquer si trop long
                         if (fileName.length() > 45) {
                             fileName = fileName.substr(0, 42) + "...";
                         }
                         
-                        // Ligne 1: nom du fichier
                         ImGui::BulletText("%s", fileName.c_str());
                         
-                        // Ligne 2: cause de l'erreur (indentee)
                         std::string errorMsg = WideToUtf8(error.errorMessage);
                         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0f);
                         ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.6f, 1.0f), "%s", errorMsg.c_str());
@@ -437,7 +643,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                 }
                 ImGui::EndChild();
                 
-                // Bouton Fermer
                 float buttonWidth = 100.0f;
                 ImGui::SetCursorPosX((ImGui::GetWindowWidth() - buttonWidth) * 0.5f);
                 if (ImGui::Button("Fermer", ImVec2(buttonWidth, 30))) {
@@ -458,7 +663,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         g_pSwapChain->Present(1, 0);
     }
 
-    // Cleanup
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();

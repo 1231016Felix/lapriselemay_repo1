@@ -23,9 +23,22 @@ namespace TempCleaner {
         std::vector<ErrorInfo> errorDetails;  // Liste détaillée des erreurs
     };
 
+    // Structure pour l'estimation avant nettoyage
+    struct CategoryEstimate {
+        std::wstring name;
+        uint64_t size = 0;
+        uint64_t fileCount = 0;
+    };
+
+    struct CleaningEstimate {
+        uint64_t totalSize = 0;
+        uint64_t totalFiles = 0;
+        std::vector<CategoryEstimate> categories;
+    };
+
     // Options de nettoyage
     struct CleaningOptions {
-        // Nettoyage de base
+        // === Nettoyage de base ===
         bool cleanUserTemp = true;
         bool cleanWindowsTemp = true;
         bool cleanPrefetch = false;
@@ -33,7 +46,7 @@ namespace TempCleaner {
         bool cleanRecycleBin = false;
         bool cleanBrowserCache = false;
         
-        // Nettoyage système avancé
+        // === Nettoyage système avancé ===
         bool cleanWindowsUpdate = false;
         bool cleanSystemLogs = false;
         bool cleanCrashDumps = false;
@@ -42,7 +55,7 @@ namespace TempCleaner {
         bool cleanWindowsInstaller = false;
         bool cleanFontCache = false;
         
-        // Nouvelles options Windows
+        // === Options Windows supplémentaires ===
         bool cleanDnsCache = false;
         bool cleanBrokenShortcuts = false;
         bool cleanWindowsOld = false;
@@ -50,6 +63,25 @@ namespace TempCleaner {
         bool cleanClipboard = false;
         bool cleanChkdskFiles = false;
         bool cleanNetworkCache = false;
+        
+        // === NOUVEAU: Caches de développement ===
+        bool cleanNpmCache = false;
+        bool cleanPipCache = false;
+        bool cleanNuGetCache = false;
+        bool cleanGradleMavenCache = false;
+        bool cleanCargoCache = false;
+        bool cleanGoCache = false;
+        
+        // === NOUVEAU: Visual Studio ===
+        bool cleanVSCache = false;
+        bool cleanVSCodeCache = false;
+        
+        // === NOUVEAU: Shader/GPU Cache ===
+        bool cleanShaderCache = false;
+        
+        // === NOUVEAU: Système profond ===
+        bool cleanComponentStore = false;
+        bool cleanBrowserExtended = false;
     };
 
     // Callback pour le progrès
@@ -62,6 +94,9 @@ namespace TempCleaner {
 
         // Lance le nettoyage (retourne les stats)
         CleaningStats clean(const CleaningOptions& options, ProgressCallback progressCallback = nullptr);
+
+        // Estime la taille à nettoyer sans supprimer
+        CleaningEstimate estimate(const CleaningOptions& options, ProgressCallback progressCallback = nullptr);
 
         // Arrête le nettoyage en cours
         void stop();
@@ -84,7 +119,7 @@ namespace TempCleaner {
         void cleanEventLogs(CleaningStats& stats);
         void cleanWithCommand(const std::wstring& command, CleaningStats& stats);
         
-        // Nouvelles méthodes de nettoyage
+        // Méthodes de nettoyage Windows
         void flushDnsCache(CleaningStats& stats);
         void cleanBrokenShortcuts(CleaningStats& stats);
         void cleanWindowsOld(CleaningStats& stats);
@@ -93,8 +128,29 @@ namespace TempCleaner {
         void cleanChkdskFiles(CleaningStats& stats);
         void cleanNetworkCache(CleaningStats& stats);
         
+        // NOUVEAU: Méthodes de nettoyage développement
+        void cleanNpmCache(CleaningStats& stats);
+        void cleanPipCache(CleaningStats& stats);
+        void cleanNuGetCache(CleaningStats& stats);
+        void cleanGradleMavenCache(CleaningStats& stats);
+        void cleanCargoCache(CleaningStats& stats);
+        void cleanGoCache(CleaningStats& stats);
+        void cleanVSCache(CleaningStats& stats);
+        void cleanVSCodeCache(CleaningStats& stats);
+        
+        // NOUVEAU: Shader cache
+        void cleanShaderCache(CleaningStats& stats);
+        
+        // NOUVEAU: Système profond
+        void cleanComponentStore(CleaningStats& stats);
+        void cleanBrowserExtended(CleaningStats& stats);
+        
         // Helper pour les raccourcis
         bool isShortcutBroken(const std::filesystem::path& shortcutPath);
+        
+        // Helper pour l'estimation
+        CategoryEstimate estimateDirectory(const std::filesystem::path& path, const std::wstring& name);
+        CategoryEstimate estimateDirectories(const std::vector<std::filesystem::path>& paths, const std::wstring& name);
         
         // Récupère les chemins des dossiers
         std::filesystem::path getUserTempPath() const;
@@ -114,6 +170,22 @@ namespace TempCleaner {
         std::vector<std::filesystem::path> getShortcutFolders() const;
         std::vector<std::filesystem::path> getChkdskFilePaths() const;
         std::vector<std::filesystem::path> getNetworkCachePaths() const;
+        
+        // NOUVEAU: Chemins de développement
+        std::vector<std::filesystem::path> getNpmCachePaths() const;
+        std::vector<std::filesystem::path> getPipCachePaths() const;
+        std::vector<std::filesystem::path> getNuGetCachePaths() const;
+        std::vector<std::filesystem::path> getGradleMavenCachePaths() const;
+        std::vector<std::filesystem::path> getCargoCachePaths() const;
+        std::vector<std::filesystem::path> getGoCachePaths() const;
+        std::vector<std::filesystem::path> getVSCachePaths() const;
+        std::vector<std::filesystem::path> getVSCodeCachePaths() const;
+        
+        // NOUVEAU: Shader cache
+        std::vector<std::filesystem::path> getShaderCachePaths() const;
+        
+        // NOUVEAU: Browser extended
+        std::vector<std::filesystem::path> getBrowserExtendedPaths() const;
     };
 
 } // namespace TempCleaner
