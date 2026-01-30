@@ -104,6 +104,14 @@ namespace TempCleaner {
         // Vérifie si un nettoyage est en cours
         bool isRunning() const;
 
+        // Purge la mémoire vive (retourne les stats: mémoire libérée, processus traités)
+        struct MemoryPurgeStats {
+            uint64_t memoryFreed = 0;
+            uint32_t processesOptimized = 0;
+            uint32_t processesFailed = 0;
+        };
+        static MemoryPurgeStats purgeMemory();
+
         // Sauvegarde/charge les options
         static void saveOptions(const CleaningOptions& options);
         static CleaningOptions loadOptions();

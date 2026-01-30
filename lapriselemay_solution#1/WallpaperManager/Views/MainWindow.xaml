@@ -66,6 +66,8 @@
                                  Style="{StaticResource NavTabStyle}" Margin="0,4"/>
                     <RadioButton x:Name="tabDynamic" Content="🌅  Dynamiques"
                                  Style="{StaticResource NavTabStyle}" Margin="0,4"/>
+                    <RadioButton x:Name="tabWidgets" Content="🖥️  Widgets"
+                                 Style="{StaticResource NavTabStyle}" Margin="0,4"/>
                     
                     <Separator Margin="8,12" Background="{StaticResource BorderBrush}"/>
                     <TextBlock Text="SOURCES EN LIGNE" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,0,0,4" FontWeight="SemiBold"/>
@@ -133,13 +135,13 @@
                     <StackPanel Visibility="{Binding IsChecked, ElementName=tabLibrary, Converter={StaticResource BoolToVis}}">
                         <TextBlock Text="Rotation automatique" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,8,12,4"/>
                         
-                        <ToggleButton IsChecked="{Binding IsRotationEnabled, Mode=TwoWay}" Margin="12,4,8,4" Padding="12,8" Cursor="Hand">
+                        <ToggleButton IsChecked="{Binding IsRotationEnabled, Mode=TwoWay}" IsEnabled="{Binding IsRotationToggleEnabled}" Margin="12,4,8,4" Padding="12,8" Cursor="Hand">
                             <ToggleButton.Style>
                                 <Style TargetType="ToggleButton">
                                     <Setter Property="Template">
                                         <Setter.Value>
                                             <ControlTemplate TargetType="ToggleButton">
-                                                <Border x:Name="border" Background="{StaticResource CardBrush}" CornerRadius="8" Padding="12,8">
+                                                <Border x:Name="border" Background="{StaticResource CardBrush}" CornerRadius="8" Padding="12,8" Opacity="1">
                                                     <Grid>
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
@@ -158,6 +160,11 @@
                                                         <Setter TargetName="label" Property="Text" Value="Activé"/>
                                                         <Setter TargetName="label" Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
                                                     </Trigger>
+                                                    <Trigger Property="IsEnabled" Value="False">
+                                                        <Setter TargetName="border" Property="Opacity" Value="0.5"/>
+                                                        <Setter TargetName="label" Property="Text" Value="Bloqué"/>
+                                                        <Setter TargetName="label" Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+                                                    </Trigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>
                                         </Setter.Value>
@@ -165,6 +172,11 @@
                                 </Style>
                             </ToggleButton.Style>
                         </ToggleButton>
+                        
+                        <!-- Avertissement rotation intelligente active -->
+                        <TextBlock Text="⚠️ Rotation intelligente active" FontSize="10" Foreground="#F59E0B" Margin="12,2,12,0" TextWrapping="Wrap"
+                                   Visibility="{Binding SmartRotationEnabled, Converter={StaticResource BoolToVis}}"
+                                   ToolTip="Désactivez la rotation intelligente dans l'onglet Dynamiques pour réactiver la rotation automatique"/>
                         
                         <TextBlock Text="Changer de fond" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,12,12,4"/>
                         
@@ -605,358 +617,231 @@
                 </Border>
             </Grid>
 
-            <!-- DYNAMIQUES -->
-            <Grid Visibility="{Binding IsChecked, ElementName=tabDynamic, Converter={StaticResource BoolToVis}}">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="300"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                
-                <!-- En-tête -->
-                <Grid Grid.ColumnSpan="2" Margin="0,0,0,16">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel>
-                        <TextBlock Text="🌅 Wallpapers Dynamiques" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}"/>
-                        <TextBlock Text="Changent automatiquement selon l'heure ou le soleil" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
-                    </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal">
-                        <Button Content="Import" Style="{StaticResource PrimaryButton}" Command="{Binding ImportDynamicWallpaperCommand}" Margin="0,0,8,0" Padding="12,8" ToolTip="Importer un pack"/>
-                        <Button Content="+ 2" Style="{StaticResource PrimaryButton}" Command="{Binding CreateDynamic2PeriodsCommand}" Width="50" Margin="0,0,4,0" ToolTip="Jour/Nuit"/>
-                        <Button Content="+ 4" Style="{StaticResource PrimaryButton}" Command="{Binding CreateDynamic4PeriodsCommand}" Width="50" Margin="0,0,4,0" ToolTip="4 périodes"/>
-                        <Button Content="+ 6" Style="{StaticResource PrimaryButton}" Command="{Binding CreateDynamic6PeriodsCommand}" Width="50" Margin="0,0,4,0" ToolTip="6 périodes"/>
-                        <Button Content="Soleil" Style="{StaticResource PrimaryButton}" Command="{Binding CreateSunBasedDynamicCommand}" Padding="12,8" ToolTip="Basé sur lever/coucher du soleil"/>
-                    </StackPanel>
-                </Grid>
-                
-                <!-- Liste des wallpapers dynamiques -->
-                <Border Grid.Row="1" Style="{StaticResource CardStyle}" Margin="0,0,16,0">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        <ListBox ItemsSource="{Binding DynamicWallpapers}" SelectedItem="{Binding SelectedDynamicWallpaper}" Background="Transparent" BorderThickness="0">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Padding="12" Margin="2" CornerRadius="8" Cursor="Hand">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Id, Converter={StaticResource IsActiveDynamicConverter}}" Value="True">
-                                                        <Setter Property="Background" Value="#1E3A5F"/>
-                                                        <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
-                                                        <Setter Property="BorderThickness" Value="2"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="50"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            
-                                            <!-- Preview thumbnail -->
-                                            <Border Width="44" Height="32" CornerRadius="4" Background="{StaticResource CardBrush}">
-                                                <Image Source="{Binding PreviewPath, Converter={StaticResource PathToThumb}}" Stretch="UniformToFill"/>
-                                            </Border>
-                                            
-                                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                                    <!-- Badge mode -->
-                                                    <Border Background="{StaticResource PrimaryBrush}" CornerRadius="4" Padding="4,1" Margin="6,0,0,0" VerticalAlignment="Center"
-                                                            Visibility="{Binding IsSunBased, Converter={StaticResource BoolToVis}}">
-                                                        <TextBlock Text="☀️" FontSize="9"/>
-                                                    </Border>
-                                                </StackPanel>
-                                                <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}">
-                                                    <Run Text="{Binding ConfigurationStatus, Mode=OneWay}"/>
-                                                </TextBlock>
-                                            </StackPanel>
-                                            
-                                            <!-- Indicateur actif -->
-                                            <Border Grid.Column="2" Width="10" Height="10" CornerRadius="5" VerticalAlignment="Center"
-                                                    Visibility="{Binding Id, Converter={StaticResource IsActiveDynamicConverter}}">
-                                                <Border.Style>
-                                                    <Style TargetType="Border">
-                                                        <Setter Property="Background" Value="#22C55E"/>
-                                                    </Style>
-                                                </Border.Style>
-                                            </Border>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        
-                        <!-- Message si liste vide -->
-                        <TextBlock Grid.Row="0" Text="Aucun wallpaper dynamique" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" 
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   Visibility="{Binding DynamicWallpapers.Count, Converter={StaticResource CountToVisibilityConverter}, ConverterParameter=Invert}"/>
+            <!-- DYNAMIQUES - Rotation Intelligente -->
+            <ScrollViewer Visibility="{Binding IsChecked, ElementName=tabDynamic, Converter={StaticResource BoolToVis}}" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="0,0,20,0">
+                    <!-- En-tête -->
+                    <Grid Margin="0,0,0,20">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="🌓 Rotation Intelligente" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                            <TextBlock Text="Change automatiquement de fond d'écran selon l'heure et la luminosité" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        </StackPanel>
+                        <ToggleButton Grid.Column="1" IsChecked="{Binding SmartRotationEnabled, Mode=TwoWay}" Padding="12,8" Cursor="Hand" VerticalAlignment="Center">
+                            <ToggleButton.Style>
+                                <Style TargetType="ToggleButton">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border Width="60" Height="32" CornerRadius="16" Background="{StaticResource BorderBrush}" x:Name="toggle">
+                                                    <Ellipse Width="26" Height="26" Fill="White" HorizontalAlignment="Left" Margin="3,0" x:Name="dot"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter TargetName="toggle" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+                                                        <Setter TargetName="dot" Property="HorizontalAlignment" Value="Right"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ToggleButton.Style>
+                        </ToggleButton>
                     </Grid>
-                </Border>
-                
-                <!-- Panneau de configuration -->
-                <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource CardStyle}" Visibility="{Binding SelectedDynamicWallpaper, Converter={StaticResource NullToVis}}">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-                        
-                        <!-- En-tête: Nom et options -->
-                        <Grid Margin="0,0,0,12">
+                    
+                    <!-- Période actuelle -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                        <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBox Text="{Binding SelectedDynamicWallpaper.Name, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" FontSize="18" FontWeight="SemiBold"/>
-                            <Button Grid.Column="1" Content="Export" Command="{Binding ExportDynamicWallpaperCommand}" Style="{StaticResource PrimaryButton}" Padding="10,6" Margin="8,0,0,0" ToolTip="Exporter"/>
-                            <Button Grid.Column="2" Content="Copier" Command="{Binding DuplicateDynamicWallpaperCommand}" Style="{StaticResource PrimaryButton}" Padding="10,6" Margin="8,0,0,0" ToolTip="Dupliquer"/>
-                        </Grid>
-                        
-                        <!-- Options: Mode, Transition -->
-                        <WrapPanel Grid.Row="1" Margin="0,0,0,12" Orientation="Horizontal">
-                            <StackPanel Orientation="Horizontal" Margin="0,0,16,4">
-                                <TextBlock Text="Mode:" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <ComboBox ItemsSource="{Binding DynamicModes}" SelectedItem="{Binding SelectedDynamicWallpaper.Mode}" Height="28" MinWidth="100"/>
-                            </StackPanel>
-                            
-                            <StackPanel Orientation="Horizontal" Margin="0,0,16,4">
-                                <TextBlock Text="Transition:" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <ComboBox ItemsSource="{Binding DynamicTransitionTypes}" SelectedItem="{Binding SelectedDynamicWallpaper.TransitionType}" Height="28" MinWidth="80"/>
-                            </StackPanel>
-                            
-                            <StackPanel Orientation="Horizontal" Margin="0,0,16,4">
-                                <TextBlock Text="Durée:" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBox Text="{Binding SelectedDynamicWallpaper.TransitionDuration}" Style="{StaticResource ModernTextBox}" Height="28" Width="60"/>
-                            </StackPanel>
-                            
-                            <!-- Bouton recalculer pour mode Soleil -->
-                            <Button Content="Recalculer" Command="{Binding RecalculateSunTimesCommand}" Style="{StaticResource PrimaryButton}" Padding="10,6"
-                                    Visibility="{Binding SelectedDynamicWallpaper.IsSunBased, Converter={StaticResource BoolToVis}}"/>
-                        </WrapPanel>
-                        
-                        <!-- Timeline visuelle 24h -->
-                        <Border Grid.Row="2" Background="{StaticResource SurfaceBrush}" CornerRadius="8" Padding="12,8" Margin="0,0,0,12">
-                            <Grid Height="40">
-                                <!-- Fond gradient jour/nuit -->
-                                <Border CornerRadius="4" ClipToBounds="True">
-                                    <Border.Background>
-                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                                            <GradientStop Color="#1a1a2e" Offset="0"/>
-                                            <GradientStop Color="#1a1a2e" Offset="0.2"/>
-                                            <GradientStop Color="#4a69bd" Offset="0.25"/>
-                                            <GradientStop Color="#f6b93b" Offset="0.35"/>
-                                            <GradientStop Color="#87ceeb" Offset="0.5"/>
-                                            <GradientStop Color="#f6b93b" Offset="0.75"/>
-                                            <GradientStop Color="#4a69bd" Offset="0.85"/>
-                                            <GradientStop Color="#1a1a2e" Offset="0.9"/>
-                                            <GradientStop Color="#1a1a2e" Offset="1"/>
-                                        </LinearGradientBrush>
-                                    </Border.Background>
-                                </Border>
-                                
-                                <!-- Marqueurs d'heures -->
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="0h" Foreground="White" FontSize="9" HorizontalAlignment="Left" VerticalAlignment="Bottom" Opacity="0.7"/>
-                                    <TextBlock Grid.Column="1" Text="6h" Foreground="White" FontSize="9" HorizontalAlignment="Left" VerticalAlignment="Bottom" Opacity="0.7"/>
-                                    <TextBlock Grid.Column="2" Text="12h" Foreground="White" FontSize="9" HorizontalAlignment="Left" VerticalAlignment="Bottom" Opacity="0.7"/>
-                                    <TextBlock Grid.Column="3" Text="18h" Foreground="White" FontSize="9" HorizontalAlignment="Left" VerticalAlignment="Bottom" Opacity="0.7"/>
-                                    <TextBlock Grid.Column="3" Text="24h" Foreground="White" FontSize="9" HorizontalAlignment="Right" VerticalAlignment="Bottom" Opacity="0.7"/>
-                                </Grid>
-                                
-                                <!-- Indicateurs de variantes (cercles sur la timeline) -->
-                                <ItemsControl ItemsSource="{Binding SelectedDynamicWallpaper.Variants}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <Canvas/>
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemContainerStyle>
-                                        <Style TargetType="ContentPresenter">
-                                            <Setter Property="Canvas.Left">
-                                                <Setter.Value>
-                                                    <MultiBinding Converter="{StaticResource TimelinePositionConverter}">
-                                                        <Binding Path="TimelinePosition"/>
-                                                        <Binding Path="ActualWidth" RelativeSource="{RelativeSource AncestorType=ItemsControl}"/>
-                                                    </MultiBinding>
-                                                </Setter.Value>
-                                            </Setter>
-                                            <Setter Property="Canvas.Top" Value="5"/>
-                                        </Style>
-                                    </ItemsControl.ItemContainerStyle>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Ellipse Width="16" Height="16" Stroke="White" StrokeThickness="2" ToolTip="{Binding Label}" Cursor="Hand">
-                                                <Ellipse.Style>
-                                                    <Style TargetType="Ellipse">
-                                                        <Setter Property="Fill" Value="#EF4444"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding Exists}" Value="True">
-                                                                <Setter Property="Fill" Value="#22C55E"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Ellipse.Style>
-                                            </Ellipse>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </Grid>
-                        </Border>
-                        
-                        <!-- Liste des variantes avec édition -->
-                        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
                             <StackPanel>
-                                <!-- Bouton ajouter variante -->
-                                <Button Content="+ Ajouter une période" Command="{Binding AddVariantCommand}" Style="{StaticResource PrimaryButton}" 
-                                        HorizontalAlignment="Left" Margin="0,0,0,8"/>
-                                
-                                <ItemsControl ItemsSource="{Binding SelectedDynamicWallpaper.Variants}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Background="{StaticResource SurfaceBrush}" CornerRadius="8" Padding="12,8" Margin="0,0,0,8">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="80"/>
-                                                        <ColumnDefinition Width="80"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    
-                                                    <!-- Heure (ComboBox) -->
-                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                        <ComboBox ItemsSource="{Binding AvailableHours}" SelectedItem="{Binding StartHour}" Width="45" Height="26"/>
-                                                        <TextBlock Text=":" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="2,0"/>
-                                                        <ComboBox ItemsSource="{Binding AvailableMinutes}" SelectedItem="{Binding StartMinute}" Width="45" Height="26"/>
-                                                    </StackPanel>
-                                                    
-                                                    <!-- Label éditable -->
-                                                    <TextBox Grid.Column="1" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" 
-                                                             Height="26" Margin="8,0,0,0" FontSize="11"/>
-                                                    
-                                                    <!-- Aperçu image -->
-                                                    <Border Grid.Column="2" Height="45" CornerRadius="4" Margin="8,0" Background="{StaticResource CardBrush}" Cursor="Hand"
-                                                            ToolTip="Cliquer pour prévisualiser">
-                                                        <Border.InputBindings>
-                                                            <MouseBinding MouseAction="LeftClick" 
-                                                                          Command="{Binding DataContext.PreviewVariantCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                                                          CommandParameter="{Binding}"/>
-                                                        </Border.InputBindings>
-                                                        <Grid>
-                                                            <Image Source="{Binding FilePath, Converter={StaticResource PathToThumb}}" Stretch="UniformToFill"/>
-                                                            <TextBlock Text="?" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.5" Foreground="{StaticResource TextSecondaryBrush}"
-                                                                       Visibility="{Binding HasImage, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"/>
-                                                        </Grid>
-                                                    </Border>
-                                                    
-                                                    <!-- Nom du fichier -->
-                                                    <TextBlock Grid.Column="3" Text="{Binding FileName}" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" 
-                                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
-                                                    
-                                                    <!-- Actions -->
-                                                    <StackPanel Grid.Column="4" Orientation="Horizontal">
-                                                        <Button Content="..." Command="{Binding DataContext.SetVariantImageCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                                                CommandParameter="{Binding}" Style="{StaticResource PrimaryButton}" Width="30" Height="26" Padding="0" FontSize="10" ToolTip="Choisir fichier"/>
-                                                        <Button Content="Bib" Command="{Binding DataContext.SetVariantFromLibraryCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                                                CommandParameter="{Binding}" Style="{StaticResource PrimaryButton}" Width="30" Height="26" Padding="0" FontSize="10" Margin="4,0,0,0" ToolTip="Depuis bibliothèque"/>
-                                                        <Button Content="X" Command="{Binding DataContext.RemoveVariantCommand, RelativeSource={RelativeSource AncestorType=Window}}" 
-                                                                CommandParameter="{Binding}" Background="#EF4444" Style="{StaticResource PrimaryButton}" Width="26" Height="26" Padding="0" FontSize="10" Margin="4,0,0,0" ToolTip="Supprimer période"/>
-                                                    </StackPanel>
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                <TextBlock Text="Période actuelle" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Text="{Binding CurrentPeriodName}" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
                             </StackPanel>
-                        </ScrollViewer>
-                        
-                        <!-- Prévisualisation par heure -->
-                        <Border Grid.Row="4" Background="{StaticResource SurfaceBrush}" CornerRadius="8" Padding="12" Margin="0,12,0,0">
+                            <Button Grid.Column="1" Content="▶ Appliquer un fond aléatoire" Command="{Binding ApplyRandomFromCurrentPeriodCommand}" Style="{StaticResource PrimaryButton}" Padding="16,10"/>
+                        </Grid>
+                    </Border>
+                    
+                    <!-- Compteurs de catégories -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="Répartition de votre bibliothèque" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,16"/>
                             <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="12" Margin="0,0,4,0">
+                                    <StackPanel HorizontalAlignment="Center">
+                                        <TextBlock Text="🌙" FontSize="24" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding DarkCount}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Sombres" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="12" Margin="4,0">
+                                    <StackPanel HorizontalAlignment="Center">
+                                        <TextBlock Text="⚖️" FontSize="24" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding NeutralCount}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Neutres" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="12" Margin="4,0">
+                                    <StackPanel HorizontalAlignment="Center">
+                                        <TextBlock Text="☀️" FontSize="24" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding LightCount}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Clairs" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="3" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="12" Margin="4,0">
+                                    <StackPanel HorizontalAlignment="Center">
+                                        <TextBlock Text="🎬" FontSize="24" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding AnimatedCount}" FontSize="28" FontWeight="Bold" Foreground="#8B5CF6" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Animés" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="4" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="12" Margin="4,0,0,0">
+                                    <StackPanel HorizontalAlignment="Center">
+                                        <TextBlock Text="❓" FontSize="24" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding UnanalyzedCount}" FontSize="28" FontWeight="Bold" Foreground="#F59E0B" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="Non analysés" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Analyse de luminosité -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="🔍 Analyse de luminosité" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <TextBlock Text="Analysez vos images pour détecter automatiquement leur luminosité (sombre, neutre, clair). Cette analyse permet à la rotation intelligente de choisir les bons fonds d'écran selon l'heure." 
+                                       FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,16"/>
+                            
+                            <!-- Boutons d'analyse -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <Button Content="🔍 Analyser les nouvelles images" Command="{Binding AnalyzeBrightnessCommand}" Style="{StaticResource PrimaryButton}" Padding="16,10" Margin="0,0,12,0" IsEnabled="{Binding IsAnalyzingBrightness, Converter={StaticResource InverseBoolConverter}}"/>
+                                <Button Content="🔄 Tout réanalyser" Command="{Binding ReanalyzeAllBrightnessCommand}" Style="{StaticResource PrimaryButton}" Padding="16,10" IsEnabled="{Binding IsAnalyzingBrightness, Converter={StaticResource InverseBoolConverter}}"/>
+                            </StackPanel>
+                            
+                            <!-- Barre de progression de l'analyse -->
+                            <StackPanel Visibility="{Binding IsAnalyzingBrightness, Converter={StaticResource BoolToVis}}">
+                                <ProgressBar Value="{Binding BrightnessAnalysisProgress}" Maximum="100" Height="10" Foreground="{StaticResource PrimaryBrush}" Background="{StaticResource SurfaceBrush}"/>
+                                <TextBlock Text="{Binding BrightnessAnalysisStatus}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Configuration des horaires -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="⏰ Configuration des périodes" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <TextBlock Text="Définissez les heures de début de chaque période. Les fonds d'écran correspondants seront automatiquement sélectionnés." 
+                                       FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,16"/>
+                            
+                            <!-- Timeline visuelle -->
+                            <Border Background="{StaticResource SurfaceBrush}" CornerRadius="8" Padding="12,8" Margin="0,0,0,16" Height="50">
+                                <Grid>
+                                    <!-- Fond gradient jour/nuit -->
+                                    <Border CornerRadius="4" ClipToBounds="True">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                <GradientStop Color="#1a1a2e" Offset="0"/>
+                                                <GradientStop Color="#1a1a2e" Offset="0.25"/>
+                                                <GradientStop Color="#4a69bd" Offset="0.29"/>
+                                                <GradientStop Color="#87ceeb" Offset="0.5"/>
+                                                <GradientStop Color="#f6b93b" Offset="0.75"/>
+                                                <GradientStop Color="#4a69bd" Offset="0.85"/>
+                                                <GradientStop Color="#1a1a2e" Offset="0.9"/>
+                                                <GradientStop Color="#1a1a2e" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                    </Border>
+                                    
+                                    <!-- Marqueurs d'heures -->
+                                    <Grid Margin="0,0,0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="0h" Foreground="White" FontSize="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Opacity="0.8"/>
+                                        <TextBlock Grid.Column="1" Text="6h" Foreground="White" FontSize="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Opacity="0.8"/>
+                                        <TextBlock Grid.Column="2" Text="12h" Foreground="White" FontSize="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Opacity="0.8"/>
+                                        <TextBlock Grid.Column="3" Text="18h" Foreground="White" FontSize="10" HorizontalAlignment="Left" VerticalAlignment="Bottom" Opacity="0.8"/>
+                                        <TextBlock Grid.Column="3" Text="24h" Foreground="White" FontSize="10" HorizontalAlignment="Right" VerticalAlignment="Bottom" Opacity="0.8"/>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                            
+                            <!-- Paramètres des périodes -->
+                            <Grid Margin="0,8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="60"/>
-                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="100"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="👁️ Prévisualiser à:" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                                <Slider Grid.Column="1" Minimum="0" Maximum="24" Value="{Binding PreviewHour}" TickFrequency="1" IsSnapToTickEnabled="True" Margin="12,0"/>
-                                <TextBlock Grid.Column="2" VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}">
-                                    <TextBlock.Text>
-                                        <MultiBinding StringFormat="{}{0:00}:{1:00}">
-                                            <Binding Path="PreviewHour" Converter="{StaticResource FloorConverter}"/>
-                                            <Binding Path="PreviewHour" Converter="{StaticResource FractionToMinutesConverter}"/>
-                                        </MultiBinding>
-                                    </TextBlock.Text>
-                                </TextBlock>
-                                <Button Grid.Column="3" Content="👁️" Command="{Binding PreviewAtTimeCommand}" Style="{StaticResource PrimaryButton}" Width="36" Padding="0" ToolTip="Appliquer cette heure"/>
+                                <TextBlock Text="☀️" FontSize="20" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="Jour (fonds clairs)" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Images lumineuses pour la journée" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <TextBox Grid.Column="2" Text="{Binding DayStartTime, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" TextAlignment="Center" FontSize="14"/>
                             </Grid>
-                        </Border>
-                        
-                        <!-- Actions principales -->
-                        <Grid Grid.Row="5" Margin="0,12,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
                             
-                            <!-- Status -->
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <Border Width="10" Height="10" CornerRadius="5" Margin="0,0,8,0"
-                                        Visibility="{Binding IsSelectedDynamicActive, Converter={StaticResource BoolToVis}}">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="#22C55E"/>
-                                        </Style>
-                                    </Border.Style>
-                                </Border>
-                                <TextBlock Text="Actif" Foreground="#22C55E" FontWeight="SemiBold" 
-                                           Visibility="{Binding IsSelectedDynamicActive, Converter={StaticResource BoolToVis}}"/>
-                            </StackPanel>
+                            <Grid Margin="0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="100"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="🌅" FontSize="20" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="Soir (fonds neutres)" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Images de transition pour la soirée" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <TextBox Grid.Column="2" Text="{Binding EveningStartTime, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" TextAlignment="Center" FontSize="14"/>
+                            </Grid>
                             
-                            <!-- Boutons -->
-                            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                <Button Content="▶ Activer" Command="{Binding ActivateDynamicWallpaperCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
-                                <Button Content="⏹ Stop" Command="{Binding DeactivateDynamicWallpaperCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
-                                <Button Content="🗑️" Command="{Binding DeleteDynamicWallpaperCommand}" Background="#EF4444" Style="{StaticResource PrimaryButton}" Width="36" Padding="0"/>
-                            </StackPanel>
-                        </Grid>
-                    </Grid>
-                </Border>
-                
-                <!-- Message si aucun wallpaper sélectionné -->
-                <Border Grid.Row="1" Grid.Column="1" Visibility="{Binding SelectedDynamicWallpaper, Converter={StaticResource NullToVis}, ConverterParameter=Invert}">
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock Text="🌅" FontSize="64" HorizontalAlignment="Center" Opacity="0.5"/>
-                        <TextBlock Text="Sélectionnez ou créez un wallpaper dynamique" FontSize="16" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
-                        <TextBlock Text="Les wallpapers dynamiques changent automatiquement selon l'heure" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center" Margin="0,8,0,0"/>
-                    </StackPanel>
-                </Border>
-            </Grid>
+                            <Grid Margin="0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="100"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="🌙" FontSize="20" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <TextBlock Text="Nuit (fonds sombres)" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="Images sombres pour la nuit" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+                                <TextBox Grid.Column="2" Text="{Binding NightStartTime, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" TextAlignment="Center" FontSize="14"/>
+                            </Grid>
+                            
+                            <Button Content="💾 Sauvegarder les horaires" Command="{Binding SaveSmartRotationTimesCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,16,0,0" Padding="16,10"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Conseils -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="💡 Comment ça marche" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <TextBlock Text="• La rotation intelligente analyse la luminosité de vos images et les classe en 3 catégories" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4"/>
+                            <TextBlock Text="• Pendant le jour, des fonds clairs sont sélectionnés ; le soir des fonds neutres ; la nuit des fonds sombres" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4"/>
+                            <TextBlock Text="• Vous pouvez aussi voir ces catégories dans l'onglet Collections (Sombres, Neutres, Clairs)" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4"/>
+                            <TextBlock Text="• La rotation respecte l'intervalle défini dans les paramètres généraux" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
 
             <!-- UNSPLASH -->
             <Grid Visibility="{Binding IsChecked, ElementName=tabUnsplash, Converter={StaticResource BoolToVis}}">
@@ -1104,6 +989,169 @@
                     </ListBox.ItemTemplate>
                 </ListBox>
             </Grid>
+
+            <!-- WIDGETS -->
+            <ScrollViewer Visibility="{Binding IsChecked, ElementName=tabWidgets, Converter={StaticResource BoolToVis}}" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <Grid Margin="0,0,0,20">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="🖥️ Widgets Bureau" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                            <TextBlock Text="Affichez des informations sur votre bureau" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="👁️ Afficher/Masquer" Command="{Binding ToggleWidgetsCommand}" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0"/>
+                        </StackPanel>
+                    </Grid>
+                    
+                    <!-- Activation globale -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Activer les widgets" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                <TextBlock Text="Afficher des widgets sur votre bureau Windows" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
+                            </StackPanel>
+                            <ToggleButton Grid.Column="1" IsChecked="{Binding WidgetsEnabled, Mode=TwoWay}" Padding="12,8" Cursor="Hand" VerticalAlignment="Center">
+                                <ToggleButton.Style>
+                                    <Style TargetType="ToggleButton">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ToggleButton">
+                                                    <Border Width="50" Height="28" CornerRadius="14" Background="{StaticResource BorderBrush}" x:Name="toggle">
+                                                        <Ellipse Width="22" Height="22" Fill="White" HorizontalAlignment="Left" Margin="3,0" x:Name="dot"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsChecked" Value="True">
+                                                            <Setter TargetName="toggle" Property="Background" Value="{StaticResource PrimaryBrush}"/>
+                                                            <Setter TargetName="dot" Property="HorizontalAlignment" Value="Right"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </ToggleButton.Style>
+                            </ToggleButton>
+                        </Grid>
+                    </Border>
+                    
+                    <!-- Widgets actifs -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Widgets actifs" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <Button Content="+ System Monitor" Command="{Binding AddSystemMonitorWidgetCommand}" Style="{StaticResource PrimaryButton}" Padding="10,6" Margin="0,0,8,0"/>
+                                    <Button Content="+ Météo" Command="{Binding AddWeatherWidgetCommand}" Style="{StaticResource PrimaryButton}" Padding="10,6" Margin="0,0,8,0"/>
+                                    <Button Content="+ Stockage" Command="{Binding AddDiskStorageWidgetCommand}" Style="{StaticResource PrimaryButton}" Padding="10,6" Margin="0,0,8,0"/>
+                                    <Button Content="+ Batterie" Command="{Binding AddBatteryWidgetCommand}" Style="{StaticResource PrimaryButton}" Padding="10,6" Margin="0,0,8,0"/>
+                                    <Button Content="+ Notes" Command="{Binding AddQuickNotesWidgetCommand}" Style="{StaticResource PrimaryButton}" Padding="10,6"/>
+                                </StackPanel>
+                            </Grid>
+                            
+                            <ItemsControl ItemsSource="{Binding WidgetConfigs}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="{StaticResource SurfaceBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                
+                                                <TextBlock Text="{Binding TypeName}" FontSize="14" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                                
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0">
+                                                    <TextBlock Text="Opacité:" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                    <Slider Value="{Binding BackgroundOpacity}" Minimum="0.1" Maximum="1.0" Width="100" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{Binding BackgroundOpacity, StringFormat={}{0:P0}}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="8,0,0,0" Width="40"/>
+                                                </StackPanel>
+                                                
+                                                <CheckBox Grid.Column="2" Content="Actif" IsChecked="{Binding IsEnabled}" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                                
+                                                <Button Grid.Column="3" Content="🗑️" Command="{Binding DataContext.RemoveWidgetCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" Background="#EF4444" Style="{StaticResource PrimaryButton}" Width="32" Height="32" Padding="0"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            
+                            <!-- Message si aucun widget -->
+                            <TextBlock Text="Aucun widget configuré. Ajoutez-en avec les boutons ci-dessus." 
+                                       FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" 
+                                       HorizontalAlignment="Center" Margin="0,8"
+                                       Visibility="{Binding WidgetConfigs.Count, Converter={StaticResource CountToVisibilityConverter}, ConverterParameter=Invert}"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Configuration Météo -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="🌤️ Configuration Météo" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            
+                            <Grid Margin="0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding WeatherCity, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" Tag="Ville..."/>
+                                <Button Grid.Column="1" Content="🔍 Rechercher" Command="{Binding UpdateWeatherCityCommand}" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0"/>
+                            </Grid>
+                            
+                            <Grid Margin="0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="100"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Rafraîchissement (minutes)" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" Text="{Binding WeatherRefreshInterval}" Style="{StaticResource ModernTextBox}" TextAlignment="Center"/>
+                            </Grid>
+                            
+                            <Button Content="🔄 Rafraîchir maintenant" Command="{Binding RefreshWeatherCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Configuration System Monitor -->
+                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
+                        <StackPanel>
+                            <TextBlock Text="📊 Configuration System Monitor" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            
+                            <Grid Margin="0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="100"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Rafraîchissement (secondes)" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1" Text="{Binding SystemMonitorRefreshInterval}" Style="{StaticResource ModernTextBox}" TextAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Instructions -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="💡 Conseils" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
+                            <TextBlock Text="• Glissez les widgets pour les repositionner sur votre bureau" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
+                            <TextBlock Text="• Les widgets restent visibles même quand l'application est fermée" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
+                            <TextBlock Text="• Utilisez le raccourci Ctrl+Shift+W pour masquer/afficher rapidement" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
+                            <TextBlock Text="• L'API météo Open-Meteo est gratuite et ne nécessite pas de clé" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
 
             <!-- PARAMÈTRES -->
             <ScrollViewer Visibility="{Binding IsChecked, ElementName=tabSettings, Converter={StaticResource BoolToVis}}" VerticalScrollBarVisibility="Auto">

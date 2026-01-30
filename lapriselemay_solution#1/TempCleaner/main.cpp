@@ -30,12 +30,72 @@ static bool g_showErrors = false;
 static bool g_showEstimate = false;
 static bool g_startCleaningRequested = false;  // Flag pour éviter deadlock
 static bool g_showDismWarning = false;  // Avertissement DISM
+static bool g_isMemoryPurging = false;  // Purge mémoire en cours
+static std::wstring g_memoryPurgeResult;  // Résultat de la purge mémoire
 static int g_progress = 0;
 static std::wstring g_statusText = L"Pret";
 static std::wstring g_resultText;
 static std::vector<TempCleaner::ErrorInfo> g_errorDetails;
 static TempCleaner::CleaningEstimate g_estimate;
 static std::mutex g_mutex;
+
+// Disk space tracking
+static uint64_t g_diskFreeBefore = 0;
+static uint64_t g_diskFreeAfter = 0;
+static uint64_t g_diskTotal = 0;
+static bool g_showDiskChart = false;
+
+uint64_t GetDiskFreeSpace() {
+    wchar_t sysDir[MAX_PATH];
+    GetSystemDirectoryW(sysDir, MAX_PATH);
+    std::wstring root = std::wstring(sysDir, 3);  // "C:\"
+    
+    ULARGE_INTEGER freeBytesAvailable, totalBytes, totalFreeBytes;
+    if (GetDiskFreeSpaceExW(root.c_str(), &freeBytesAvailable, &totalBytes, &totalFreeBytes)) {
+        g_diskTotal = totalBytes.QuadPart;
+        return freeBytesAvailable.QuadPart;
+    }
+    return 0;
+}
+
+void DrawDonutChart(ImVec2 center, float radius, float thickness, float usedRatio, float freedRatio, bool showFreed) {
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const int segments = 64;
+    const float pi2 = 3.14159265f * 2.0f;
+    const float startAngle = -3.14159265f / 2.0f;  // Start from top
+    
+    ImU32 colorUsed = IM_COL32(180, 80, 80, 255);      // Rouge - utilisé
+    ImU32 colorFreed = IM_COL32(100, 200, 130, 255);   // Vert - libéré
+    ImU32 colorFree = IM_COL32(70, 130, 100, 255);     // Vert foncé - libre
+    ImU32 colorBg = IM_COL32(40, 40, 45, 255);         // Fond
+    
+    // Background ring
+    draw->PathArcTo(center, radius, 0, pi2, segments);
+    draw->PathStroke(colorBg, 0, thickness);
+    
+    float usedAngle = usedRatio * pi2;
+    float freedAngle = freedRatio * pi2;
+    float freeAngle = (1.0f - usedRatio) * pi2;
+    
+    // Free space (dark green)
+    if (freeAngle > 0.01f) {
+        draw->PathArcTo(center, radius, startAngle + usedAngle, startAngle + pi2, segments);
+        draw->PathStroke(colorFree, 0, thickness);
+    }
+    
+    // Freed space highlight (bright green) - only after cleaning
+    if (showFreed && freedAngle > 0.001f) {
+        float freedStart = startAngle + (usedRatio + freedRatio) * pi2 - freedAngle;
+        draw->PathArcTo(center, radius, freedStart, freedStart + freedAngle, segments);
+        draw->PathStroke(colorFreed, 0, thickness + 2);
+    }
+    
+    // Used space (red)
+    if (usedAngle > 0.01f) {
+        draw->PathArcTo(center, radius, startAngle, startAngle + usedAngle, segments);
+        draw->PathStroke(colorUsed, 0, thickness);
+    }
+}
 
 // Forward declarations
 bool CreateDeviceD3D(HWND hWnd);
@@ -111,6 +171,10 @@ void SetupImGuiStyle() {
 }
 
 void StartCleaning() {
+    // Capture disk space before cleaning
+    g_diskFreeBefore = GetDiskFreeSpace();
+    g_showDiskChart = false;
+    
     {
         std::lock_guard<std::mutex> lock(g_mutex);
         g_isRunning = true;
@@ -129,6 +193,9 @@ void StartCleaning() {
             };
 
             auto stats = g_cleaner.clean(g_options, callback);
+            
+            // Capture disk space after cleaning
+            g_diskFreeAfter = GetDiskFreeSpace();
 
             std::lock_guard<std::mutex> lock(g_mutex);
             g_resultText = std::format(L"{} fichiers supprimes\n{} liberes",
@@ -141,6 +208,7 @@ void StartCleaning() {
             g_statusText = L"Termine!";
             g_progress = 100;
             g_isRunning = false;
+            g_showDiskChart = (g_diskFreeAfter > g_diskFreeBefore);
         } catch (const std::exception& e) {
             std::lock_guard<std::mutex> lock(g_mutex);
             std::string what = e.what();
@@ -195,6 +263,35 @@ void StartEstimate() {
 void StopCleaning() {
     g_cleaner.stop();
     g_statusText = L"Arret en cours...";
+}
+
+void StartMemoryPurge() {
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        g_isMemoryPurging = true;
+        g_memoryPurgeResult.clear();
+        g_statusText = L"Purge de la memoire...";
+    }
+
+    std::thread([]() {
+        try {
+            auto stats = TempCleaner::Cleaner::purgeMemory();
+
+            std::lock_guard<std::mutex> lock(g_mutex);
+            g_memoryPurgeResult = std::format(L"{} liberes\n{} processus optimises",
+                FormatBytes(stats.memoryFreed), stats.processesOptimized);
+            if (stats.processesFailed > 0) {
+                g_memoryPurgeResult += std::format(L"\n({} processus inaccessibles)", stats.processesFailed);
+            }
+            g_statusText = L"Purge terminee!";
+            g_isMemoryPurging = false;
+        } catch (...) {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            g_memoryPurgeResult = L"Erreur lors de la purge";
+            g_statusText = L"Erreur!";
+            g_isMemoryPurging = false;
+        }
+    }).detach();
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
@@ -292,12 +389,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
             
             // Bouton Nettoyer
             if (ImGui::Button("Nettoyer", ImVec2(buttonWidth, buttonHeight))) {
-                // Vérifier si DISM est activé
-                if (g_options.cleanComponentStore) {
-                    g_showDismWarning = true;
-                } else {
-                    StartCleaning();
-                }
+                StartCleaning();
             }
         }
 
@@ -334,6 +426,33 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                     ImGui::Text("%s", line.c_str());
                 }
                 
+                // Donut chart - espace disque
+                if (g_showDiskChart && g_diskTotal > 0) {
+                    ImGui::Spacing();
+                    
+                    float chartRadius = 35.0f;
+                    float chartThickness = 10.0f;
+                    ImVec2 chartCenter(ImGui::GetWindowWidth() * 0.5f, ImGui::GetCursorPosY() + chartRadius + 5);
+                    
+                    // Convert to screen coords
+                    ImVec2 windowPos = ImGui::GetWindowPos();
+                    ImVec2 screenCenter(windowPos.x + chartCenter.x, windowPos.y + chartCenter.y);
+                    
+                    float usedBefore = static_cast<float>(g_diskTotal - g_diskFreeBefore) / g_diskTotal;
+                    float usedAfter = static_cast<float>(g_diskTotal - g_diskFreeAfter) / g_diskTotal;
+                    float freedRatio = usedBefore - usedAfter;
+                    
+                    DrawDonutChart(screenCenter, chartRadius, chartThickness, usedAfter, freedRatio, true);
+                    
+                    // Reserve space and add legend
+                    ImGui::Dummy(ImVec2(0, chartRadius * 2 + 15));
+                    
+                    // Compact legend
+                    std::string legendText = WideToUtf8(FormatBytes(g_diskFreeAfter)) + " libre";
+                    ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(legendText.c_str()).x) * 0.5f);
+                    ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.6f, 1.0f), "%s", legendText.c_str());
+                }
+                
                 if (!g_errorDetails.empty()) {
                     ImGui::Spacing();
                     float errBtnWidth = 150.0f;
@@ -347,13 +466,46 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
                     ImGui::PopStyleColor(3);
                 }
             }
+            
+            // Résultat purge mémoire
+            if (!g_memoryPurgeResult.empty()) {
+                ImGui::Spacing();
+                std::string memResult = WideToUtf8(g_memoryPurgeResult);
+                
+                std::istringstream stream(memResult);
+                std::string line;
+                while (std::getline(stream, line)) {
+                    ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(line.c_str()).x) * 0.5f);
+                    ImGui::TextColored(ImVec4(0.6f, 0.8f, 1.0f, 1.0f), "%s", line.c_str());
+                }
+            }
         }
 
-        // Bouton parametres en bas a gauche
+        // Boutons en bas
         ImGui::SetCursorPos(ImVec2(15, ImGui::GetWindowHeight() - 45));
         if (ImGui::Button("Parametres", ImVec2(100, 30))) {
             g_showSettings = true;
         }
+        
+        // Bouton Purger memoire en bas a droite
+        ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - 145, ImGui::GetWindowHeight() - 45));
+        bool canPurge = !g_isRunning && !g_isMemoryPurging;
+        if (!canPurge) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.3f, 0.35f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.3f, 0.3f, 0.35f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.3f, 0.3f, 0.35f, 1.0f));
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.50f, 0.35f, 0.60f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.55f, 0.40f, 0.65f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.60f, 0.45f, 0.70f, 1.0f));
+        }
+        if (ImGui::Button("Purger memoire", ImVec2(130, 30)) && canPurge) {
+            g_memoryPurgeResult.clear();
+            g_resultText.clear();
+            g_showDiskChart = false;
+            StartMemoryPurge();
+        }
+        ImGui::PopStyleColor(3);
 
         ImGui::End();
 
@@ -538,12 +690,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
             
             if (ImGui::Button("Nettoyer", ImVec2(btnWidth, 32))) {
                 g_showEstimate = false;
-                // Vérifier si DISM est activé
-                if (g_options.cleanComponentStore) {
-                    g_showDismWarning = true;
-                } else {
-                    g_startCleaningRequested = true;
-                }
+                g_startCleaningRequested = true;
             }
             ImGui::SameLine();
             if (ImGui::Button("Fermer", ImVec2(btnWidth, 32))) {

@@ -9,7 +9,7 @@ namespace WallpaperManager.ViewModels;
 public partial class MainViewModel
 {
     // Collection spéciale "Favoris" (virtuelle, non stockée)
-    private static readonly string FavoritesCollectionId = "__favorites__";
+    private static readonly string FavoritesCollectionId = SystemCollectionIds.Favorites;
     
     private readonly Collection _favoritesCollection = new()
     {
@@ -36,17 +36,33 @@ public partial class MainViewModel
     public bool IsSelectedCollectionFavorites => SelectedCollection?.Id == FavoritesCollectionId;
     
     /// <summary>
+    /// Indique si la collection sélectionnée est une collection système (non modifiable)
+    /// </summary>
+    public bool IsSelectedCollectionSystem => 
+        SelectedCollection != null && SystemCollectionIds.IsSystemCollection(SelectedCollection.Id);
+    
+    /// <summary>
     /// Indique si la collection sélectionnée peut être modifiée
     /// </summary>
-    public bool CanEditSelectedCollection => SelectedCollection != null && !IsSelectedCollectionFavorites;
+    public bool CanEditSelectedCollection => SelectedCollection != null && !IsSelectedCollectionSystem;
     
     private void LoadCollections()
     {
         // Mettre à jour le compteur des favoris
         UpdateFavoritesCount();
         
-        // Créer la liste avec Favoris en premier
-        var allCollections = new List<Collection> { _favoritesCollection };
+        // Mettre à jour les compteurs de luminosité
+        UpdateBrightnessCounters();
+        
+        // Créer la liste avec les collections système en premier
+        var allCollections = new List<Collection> 
+        { 
+            _favoritesCollection,
+            _animatedCollection,
+            _darkCollection,
+            _lightCollection,
+            _neutralCollection
+        };
         allCollections.AddRange(SettingsService.Collections);
         
         Collections = new ObservableCollection<Collection>(allCollections);
@@ -63,14 +79,14 @@ public partial class MainViewModel
     
     partial void OnSelectedCollectionChanged(Collection? oldValue, Collection? newValue)
     {
-        // Désabonner de l'ancienne collection
-        if (oldValue != null && oldValue.Id != FavoritesCollectionId)
+        // Désabonner de l'ancienne collection (sauf collections système)
+        if (oldValue != null && !SystemCollectionIds.IsSystemCollection(oldValue.Id))
         {
             oldValue.PropertyChanged -= OnCollectionPropertyChanged;
         }
         
-        // S'abonner à la nouvelle collection (sauf Favoris)
-        if (newValue != null && newValue.Id != FavoritesCollectionId)
+        // S'abonner à la nouvelle collection (sauf collections système)
+        if (newValue != null && !SystemCollectionIds.IsSystemCollection(newValue.Id))
         {
             newValue.PropertyChanged += OnCollectionPropertyChanged;
         }
@@ -79,6 +95,8 @@ public partial class MainViewModel
         
         // Notifier les propriétés dépendantes
         OnPropertyChanged(nameof(IsSelectedCollectionFavorites));
+        OnPropertyChanged(nameof(IsSelectedCollectionSystem));
+        OnPropertyChanged(nameof(IsSelectedCollectionBrightness));
         OnPropertyChanged(nameof(CanEditSelectedCollection));
     }
     
@@ -119,6 +137,26 @@ public partial class MainViewModel
         {
             // Collection Favoris : récupérer tous les favoris
             wallpapers = _allWallpapers.Where(w => w.IsFavorite).ToList();
+        }
+        else if (SelectedCollection.Id == DarkCollectionId)
+        {
+            // Collection Sombres
+            wallpapers = _allWallpapers.Where(w => w.BrightnessCategory == BrightnessCategory.Dark).ToList();
+        }
+        else if (SelectedCollection.Id == LightCollectionId)
+        {
+            // Collection Clairs
+            wallpapers = _allWallpapers.Where(w => w.BrightnessCategory == BrightnessCategory.Light).ToList();
+        }
+        else if (SelectedCollection.Id == NeutralCollectionId)
+        {
+            // Collection Neutres
+            wallpapers = _allWallpapers.Where(w => w.BrightnessCategory == BrightnessCategory.Neutral).ToList();
+        }
+        else if (SelectedCollection.Id == AnimatedCollectionId)
+        {
+            // Collection Animés (GIF et vidéos)
+            wallpapers = _allWallpapers.Where(w => w.Type == WallpaperType.Animated || w.Type == WallpaperType.Video).ToList();
         }
         else
         {
@@ -297,6 +335,11 @@ public partial class MainViewModel
             ApplyFiltersAndSort();
             
             StatusMessage = $"'{wallpaper.DisplayName}' retiré des favoris";
+        }
+        else if (IsSelectedCollectionBrightness)
+        {
+            // Collections de luminosité : réanalyser l'image ou ignorer
+            StatusMessage = "Les collections de luminosité sont gérées automatiquement par l'analyse";
         }
         else
         {

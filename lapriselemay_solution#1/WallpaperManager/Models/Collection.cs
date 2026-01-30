@@ -6,6 +6,24 @@ using System.Text.Json.Serialization;
 namespace WallpaperManager.Models;
 
 /// <summary>
+/// IDs des collections système (non modifiables).
+/// </summary>
+public static class SystemCollectionIds
+{
+    public const string Favorites = "__favorites__";
+    public const string Dark = "__dark__";
+    public const string Light = "__light__";
+    public const string Neutral = "__neutral__";
+    public const string Animated = "__animated__";
+    
+    public static bool IsSystemCollection(string? id) =>
+        id == Favorites || id == Dark || id == Light || id == Neutral || id == Animated;
+    
+    public static bool IsBrightnessCollection(string? id) =>
+        id == Dark || id == Light || id == Neutral;
+}
+
+/// <summary>
 /// Représente une collection de fonds d'écran regroupés par l'utilisateur.
 /// </summary>
 public class Collection : INotifyPropertyChanged

@@ -78,6 +78,14 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public event EventHandler<string>? ShowNotification;
     
     /// <summary>
+    /// Déclenche l'événement RequestCreateAlias depuis l'extérieur de la classe.
+    /// </summary>
+    public void TriggerCreateAlias(string name, string path)
+    {
+        RequestCreateAlias?.Invoke(this, (name, path));
+    }
+    
+    /// <summary>
     /// Service d'alias exposé pour l'UI.
     /// </summary>
     public AliasService AliasService => _aliasService;

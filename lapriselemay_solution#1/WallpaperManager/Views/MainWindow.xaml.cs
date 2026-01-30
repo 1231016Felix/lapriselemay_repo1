@@ -58,6 +58,9 @@ public partial class MainWindow : Window
         _viewModel.StatusMessage = count > 0 
             ? $"{count} fond(s) d'écran dans la bibliothèque" 
             : "Ajoutez des fonds d'écran avec + Ajouter ou glissez-déposez des fichiers";
+        
+        // Initialiser les widgets après le chargement de la fenêtre
+        _viewModel.OnAppInitialized();
     }
     
     /// <summary>

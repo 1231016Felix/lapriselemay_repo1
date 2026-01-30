@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Security.Cryptography;
 using WallpaperManager.Models;
@@ -7,7 +8,7 @@ namespace WallpaperManager.Services;
 public class DuplicateGroup
 {
     public required string Hash { get; init; }
-    public required List<Wallpaper> Wallpapers { get; init; }
+    public required ObservableCollection<Wallpaper> Wallpapers { get; init; }
     public long FileSize => Wallpapers.FirstOrDefault()?.FileSize ?? 0;
     public string Resolution => Wallpapers.FirstOrDefault()?.Resolution ?? "Inconnu";
 }
@@ -87,7 +88,7 @@ public static class DuplicateDetectionService
             .Select(kvp => new DuplicateGroup
             {
                 Hash = kvp.Key,
-                Wallpapers = kvp.Value.OrderBy(w => w.AddedDate).ToList()
+                Wallpapers = new ObservableCollection<Wallpaper>(kvp.Value.OrderBy(w => w.AddedDate))
             })
             .OrderByDescending(g => g.FileSize)
             .ToList();

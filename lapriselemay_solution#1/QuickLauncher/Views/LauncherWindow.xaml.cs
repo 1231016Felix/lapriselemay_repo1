@@ -84,10 +84,6 @@ public partial class LauncherWindow : Window
         _settings = AppSettings.Load();
         Opacity = _settings.WindowOpacity;
         SettingsButton.Visibility = _settings.ShowSettingsButton ? Visibility.Visible : Visibility.Collapsed;
-        _viewModel.ShowPreviewPanel = _settings.ShowPreviewPanel;
-        
-        // Ajuster la largeur selon si le panneau de prévisualisation est visible
-        Width = _settings.ShowPreviewPanel ? 900 : 680;
     }
     
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
@@ -113,13 +109,6 @@ public partial class LauncherWindow : Window
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // Si le panneau d'actions est ouvert, gérer ses raccourcis
-        if (_viewModel.ShowActionsPanel)
-        {
-            HandleActionsKeyDown(e);
-            return;
-        }
-        
         // Raccourcis avec Ctrl
         if (Keyboard.Modifiers == ModifierKeys.Control)
         {
@@ -139,13 +128,6 @@ public partial class LauncherWindow : Window
                     
                 case Key.Q:
                     RequestQuit?.Invoke(this, EventArgs.Empty);
-                    e.Handled = true;
-                    return;
-                    
-                case Key.P:
-                    _viewModel.TogglePreviewCommand.Execute(null);
-                    Width = _viewModel.ShowPreviewPanel ? 900 : 680;
-                    CenterOnScreen();
                     e.Handled = true;
                     return;
                     
@@ -221,15 +203,6 @@ public partial class LauncherWindow : Window
                 e.Handled = true;
                 break;
                 
-            case Key.Tab:
-                // Tab ouvre le panneau d'actions
-                if (_viewModel.HasResults && _viewModel.SelectedIndex >= 0)
-                {
-                    _viewModel.ToggleActionsCommand.Execute(null);
-                }
-                e.Handled = true;
-                break;
-                
             case Key.F2:
                 // Renommer
                 if (_viewModel.SelectedIndex >= 0 && _viewModel.SelectedIndex < _viewModel.Results.Count)
@@ -253,41 +226,6 @@ public partial class LauncherWindow : Window
                         ConfirmAndDelete(item);
                     }
                 }
-                e.Handled = true;
-                break;
-        }
-    }
-    
-    private void HandleActionsKeyDown(KeyEventArgs e)
-    {
-        switch (e.Key)
-        {
-            case Key.Escape:
-                _viewModel.ShowActionsPanel = false;
-                SearchBox.Focus();
-                e.Handled = true;
-                break;
-                
-            case Key.Enter:
-                _viewModel.ExecuteActionCommand.Execute(null);
-                e.Handled = true;
-                break;
-                
-            case Key.Down:
-                _viewModel.MoveActionSelection(1);
-                e.Handled = true;
-                break;
-                
-            case Key.Up:
-                _viewModel.MoveActionSelection(-1);
-                e.Handled = true;
-                break;
-                
-            case Key.Tab:
-                if (Keyboard.Modifiers == ModifierKeys.Shift)
-                    _viewModel.MoveActionSelection(-1);
-                else
-                    _viewModel.MoveActionSelection(1);
                 e.Handled = true;
                 break;
         }
@@ -347,30 +285,26 @@ public partial class LauncherWindow : Window
         SearchBox.Focus();
     }
     
-    private void PreviewToggle_Click(object sender, RoutedEventArgs e)
+    private void ResultsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
-        _viewModel.TogglePreviewCommand.Execute(null);
-        Width = _viewModel.ShowPreviewPanel ? 900 : 680;
-        CenterOnScreen();
-    }
-    
-    private void PreviewPath_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-    {
-        if (_viewModel.CurrentPreview != null)
+        if (!_settings.SingleClickLaunch)
         {
-            Clipboard.SetText(_viewModel.CurrentPreview.FullPath);
-            OnShowNotification(this, "Chemin copié");
+            _viewModel.ExecuteCommand.Execute(null);
         }
     }
     
-    private void ResultsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    private void ResultsList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        _viewModel.ExecuteCommand.Execute(null);
-    }
-    
-    private void ActionsList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
-    {
-        _viewModel.ExecuteActionCommand.Execute(null);
+        // Lancement en clic simple si activé
+        if (_settings.SingleClickLaunch && ResultsList.SelectedItem != null)
+        {
+            // Vérifier qu'on a bien cliqué sur un item (pas sur le scrollbar)
+            var item = ItemsControl.ContainerFromElement(ResultsList, (DependencyObject)e.OriginalSource) as ListBoxItem;
+            if (item != null)
+            {
+                _viewModel.ExecuteCommand.Execute(null);
+            }
+        }
     }
     
     private void Window_Loaded(object sender, RoutedEventArgs e) => CenterOnScreen();
@@ -412,101 +346,173 @@ public partial class LauncherWindow : Window
 
     #region Context Menu Handlers
 
-    private SearchResult? GetContextItem(object sender)
+    /// <summary>
+    /// Génère dynamiquement le menu contextuel en fonction du résultat sélectionné.
+    /// </summary>
+    private void ResultContextMenu_Opened(object sender, RoutedEventArgs e)
     {
-        if (sender is MenuItem menuItem && 
-            menuItem.Parent is ContextMenu contextMenu &&
-            contextMenu.PlacementTarget is ListBoxItem listBoxItem)
+        if (sender is not ContextMenu contextMenu)
+            return;
+        
+        contextMenu.Items.Clear();
+        
+        // Récupérer le SearchResult depuis le ListBoxItem
+        if (contextMenu.PlacementTarget is not ListBoxItem listBoxItem ||
+            listBoxItem.DataContext is not SearchResult result)
+            return;
+        
+        // Obtenir les actions disponibles pour ce résultat
+        var isPinned = _settings.IsPinned(result.Path);
+        var actions = FileActionProvider.GetActionsForResult(result, isPinned);
+        
+        // Créer le style pour les items
+        var menuItemStyle = (Style)FindResource("DarkMenuItemStyle");
+        
+        FileActionType? lastCategory = null;
+        
+        foreach (var action in actions)
         {
-            return listBoxItem.DataContext as SearchResult;
+            // Ajouter un séparateur entre les catégories
+            var currentCategory = GetActionCategory(action.ActionType);
+            if (lastCategory.HasValue && currentCategory != lastCategory.Value)
+            {
+                contextMenu.Items.Add(new Separator { Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3E, 0x3E, 0x3E)) });
+            }
+            lastCategory = currentCategory;
+            
+            var menuItem = new MenuItem
+            {
+                Header = $"{action.Icon} {action.Name}",
+                Style = menuItemStyle,
+                InputGestureText = action.Shortcut,
+                Tag = action
+            };
+            
+            // Couleur spéciale pour Supprimer
+            if (action.ActionType == FileActionType.Delete)
+            {
+                menuItem.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xFF, 0x6B, 0x6B));
+            }
+            
+            menuItem.Click += (s, args) =>
+            {
+                if (s is MenuItem mi && mi.Tag is FileAction fileAction)
+                {
+                    ExecuteContextAction(fileAction, result);
+                }
+            };
+            
+            contextMenu.Items.Add(menuItem);
         }
-        return null;
-    }
-
-    private void ContextMenu_OpenLocation(object sender, RoutedEventArgs e)
-    {
-        var item = GetContextItem(sender);
-        if (item != null)
+        
+        // Ajouter "Ouvrir avec..." pour les fichiers
+        if (result.Type is ResultType.File or ResultType.Script)
         {
-            FileActionExecutor.Execute(FileActionType.OpenLocation, item.Path);
-        }
-    }
-
-    private void ContextMenu_CopyPath(object sender, RoutedEventArgs e)
-    {
-        var item = GetContextItem(sender);
-        if (item != null)
-        {
-            FileActionExecutor.Execute(FileActionType.CopyPath, item.Path);
-            OnShowNotification(this, "Chemin copié");
-        }
-    }
-
-    private void ContextMenu_CopyName(object sender, RoutedEventArgs e)
-    {
-        var item = GetContextItem(sender);
-        if (item != null)
-        {
-            FileActionExecutor.Execute(FileActionType.CopyName, item.Path);
-            OnShowNotification(this, "Nom copié");
-        }
-    }
-
-    private void ContextMenu_RunAsAdmin(object sender, RoutedEventArgs e)
-    {
-        var item = GetContextItem(sender);
-        if (item != null)
-        {
-            FileActionExecutor.Execute(FileActionType.RunAsAdmin, item.Path);
-            HideWindow();
-        }
-    }
-
-    private void ContextMenu_OpenWith(object sender, RoutedEventArgs e)
-    {
-        var item = GetContextItem(sender);
-        if (item != null)
-        {
-            FileActionsService.OpenWith(item.Path);
-            HideWindow();
+            contextMenu.Items.Add(new Separator { Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3E, 0x3E, 0x3E)) });
+            var openWithItem = new MenuItem
+            {
+                Header = "📎 Ouvrir avec...",
+                Style = menuItemStyle
+            };
+            openWithItem.Click += (s, args) =>
+            {
+                FileActionsService.OpenWith(result.Path);
+                HideWindow();
+            };
+            contextMenu.Items.Add(openWithItem);
         }
     }
     
-    private void ContextMenu_OpenPrivate(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Détermine la catégorie d'une action pour le regroupement dans le menu.
+    /// </summary>
+    private static FileActionType GetActionCategory(FileActionType actionType)
     {
-        var item = GetContextItem(sender);
-        if (item != null)
+        return actionType switch
         {
-            FileActionExecutor.Execute(FileActionType.OpenPrivate, item.Path);
-            HideWindow();
-        }
+            FileActionType.Open or FileActionType.RunAsAdmin or FileActionType.OpenPrivate => FileActionType.Open,
+            FileActionType.OpenLocation or FileActionType.OpenInExplorer or FileActionType.OpenInTerminal => FileActionType.OpenLocation,
+            FileActionType.CopyPath or FileActionType.CopyName or FileActionType.CopyUrl => FileActionType.CopyPath,
+            FileActionType.Rename or FileActionType.Delete or FileActionType.Properties => FileActionType.Rename,
+            FileActionType.Pin or FileActionType.Unpin or FileActionType.CreateAlias or FileActionType.CreateShortcut => FileActionType.Pin,
+            _ => actionType
+        };
     }
-
-    private void ContextMenu_OpenTerminal(object sender, RoutedEventArgs e)
+    
+    /// <summary>
+    /// Exécute une action du menu contextuel.
+    /// </summary>
+    private void ExecuteContextAction(FileAction action, SearchResult result)
     {
-        var item = GetContextItem(sender);
-        if (item != null)
+        // Cas spécial pour Rename
+        if (action.ActionType == FileActionType.Rename)
         {
-            FileActionExecutor.Execute(FileActionType.OpenInTerminal, item.Path);
-            HideWindow();
+            OnRequestRename(this, result.Path);
+            return;
         }
-    }
-
-    private void ContextMenu_Rename(object sender, RoutedEventArgs e)
-    {
-        var item = GetContextItem(sender);
-        if (item != null)
+        
+        // Cas spécial pour Delete avec confirmation
+        if (action.ActionType == FileActionType.Delete)
         {
-            OnRequestRename(this, item.Path);
+            ConfirmAndDelete(result);
+            return;
         }
-    }
-
-    private void ContextMenu_Delete(object sender, RoutedEventArgs e)
-    {
-        var item = GetContextItem(sender);
-        if (item != null)
+        
+        // Cas spécial pour Pin
+        if (action.ActionType == FileActionType.Pin)
         {
-            ConfirmAndDelete(item);
+            _settings.PinItem(result.Name, result.Path, result.Type, result.DisplayIcon);
+            _settings.Save();
+            OnShowNotification(this, "⭐ Épinglé");
+            return;
+        }
+        
+        // Cas spécial pour Unpin
+        if (action.ActionType == FileActionType.Unpin)
+        {
+            _settings.UnpinItem(result.Path);
+            _settings.Save();
+            OnShowNotification(this, "📌 Désépinglé");
+            // Rafraîchir si on était dans la vue des épingles
+            if (string.IsNullOrWhiteSpace(_viewModel.SearchText))
+            {
+                _viewModel.Reset();
+            }
+            return;
+        }
+        
+        // Cas spécial pour CreateAlias
+        if (action.ActionType == FileActionType.CreateAlias)
+        {
+            _viewModel.TriggerCreateAlias(result.Name, result.Path);
+            return;
+        }
+        
+        // Exécuter l'action
+        var success = action.Execute(result.Path);
+        
+        if (success)
+        {
+            // Notification de succès
+            var message = action.ActionType switch
+            {
+                FileActionType.CopyPath => "Chemin copié",
+                FileActionType.CopyName => "Nom copié",
+                FileActionType.CopyUrl => "URL copiée",
+                _ => null
+            };
+            
+            if (message != null)
+                OnShowNotification(this, message);
+            
+            // Fermer après certaines actions
+            if (action.ActionType is FileActionType.Open 
+                or FileActionType.RunAsAdmin 
+                or FileActionType.OpenPrivate
+                or FileActionType.OpenInTerminal)
+            {
+                HideWindow();
+            }
         }
     }
 

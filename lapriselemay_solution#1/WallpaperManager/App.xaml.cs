@@ -23,6 +23,7 @@ public partial class App : Application
     private static SystemMonitorService? _systemMonitorService;
     private static HotkeyService? _hotkeyService;
     private static TransitionService? _transitionService;
+    private static WidgetManagerService? _widgetManagerService;
     private static bool _isInitialized;
     private static bool _mainWindowVisible;
 
@@ -96,6 +97,9 @@ public partial class App : Application
         // Connecter le service de transition au service de rotation
         _rotationService.SetTransitionService(_transitionService);
         
+        // Initialiser le service de widgets
+        _widgetManagerService = new WidgetManagerService();
+        
         // Connecter l'événement pour les wallpapers animés/vidéo dans la rotation
         _rotationService.AnimatedWallpaperRequested += OnAnimatedWallpaperRequested;
         
@@ -163,8 +167,11 @@ public partial class App : Application
 
     private void ShowMainWindowIfNeeded()
     {
-        bool shouldStartMinimized = SettingsService.Current.StartMinimized || 
-                                    SettingsService.Current.WasInTrayOnLastExit;
+        bool startMinimizedSetting = SettingsService.Current.StartMinimized;
+        bool wasInTray = SettingsService.Current.WasInTrayOnLastExit;
+        bool shouldStartMinimized = startMinimizedSetting || wasInTray;
+        
+        System.Diagnostics.Debug.WriteLine($"ShowMainWindowIfNeeded: StartMinimized={startMinimizedSetting}, WasInTray={wasInTray}, ShouldMinimize={shouldStartMinimized}");
         
         if (!shouldStartMinimized)
         {
@@ -201,6 +208,13 @@ public partial class App : Application
         {
             _rotationService?.Start();
         }
+        
+        // Démarrer les widgets après un court délai pour s'assurer que l'UI est prête
+        Application.Current?.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+        {
+            System.Diagnostics.Debug.WriteLine("Démarrage des widgets depuis App...");
+            _widgetManagerService?.StartWidgets();
+        });
     }
 
     private void ShowMainWindow()
@@ -299,6 +313,13 @@ public partial class App : Application
         // Disposer le tray icon
         _trayIconService?.Dispose();
         _trayIconService = null;
+        
+        // Disposer le service de widgets
+        if (_widgetManagerService != null)
+        {
+            _widgetManagerService.Dispose();
+            _widgetManagerService = null;
+        }
         
         // Libérer le mutex
         try
@@ -449,6 +470,16 @@ public partial class App : Application
             if (!_isInitialized || _transitionService == null)
                 throw new InvalidOperationException("App non initialisée");
             return _transitionService;
+        }
+    }
+    
+    public static WidgetManagerService WidgetManagerService
+    {
+        get
+        {
+            if (!_isInitialized || _widgetManagerService == null)
+                throw new InvalidOperationException("App non initialisée");
+            return _widgetManagerService;
         }
     }
     

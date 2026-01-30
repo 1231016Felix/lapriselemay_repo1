@@ -113,6 +113,10 @@ public partial class MainViewModel
                 _allWallpapers.Add(wallpaper);
                 ApplyFiltersAndSort();
                 SettingsService.Save();
+                
+                // Analyse automatique de luminosité en arrière-plan
+                _ = AnalyzeNewWallpapersAsync([wallpaper]);
+                
                 StatusMessage = "Photo téléchargée et ajoutée à la bibliothèque";
             }
             else

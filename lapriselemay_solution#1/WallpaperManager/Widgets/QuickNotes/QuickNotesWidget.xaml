@@ -1,0 +1,185 @@
+<UserControl x:Class="WallpaperManager.Widgets.QuickNotes.QuickNotesWidget"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:WallpaperManager.Widgets.QuickNotes">
+    
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="WidgetTextPrimary" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="WidgetTextSecondary" Color="#9CA3AF"/>
+        <SolidColorBrush x:Key="NoteBackground" Color="#374151"/>
+        <SolidColorBrush x:Key="NoteHover" Color="#4B5563"/>
+        <SolidColorBrush x:Key="AccentColor" Color="#F59E0B"/>
+        <SolidColorBrush x:Key="DeleteColor" Color="#EF4444"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
+        
+        <!-- Style bouton transparent -->
+        <Style x:Key="IconButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{StaticResource WidgetTextSecondary}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#374151"/>
+                    <Setter Property="Foreground" Value="{StaticResource WidgetTextPrimary}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        
+        <!-- Style note item -->
+        <Style x:Key="NoteItemStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource NoteBackground}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource NoteHover}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+    
+    <Grid>
+        <!-- Liste des notes -->
+        <Grid Visibility="{Binding IsEditing, Converter={StaticResource InverseBoolToVis}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            
+            <!-- Header -->
+            <Grid Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="📝" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock Text="Notes" FontSize="16" FontWeight="SemiBold" 
+                               Foreground="{StaticResource WidgetTextPrimary}" VerticalAlignment="Center"/>
+                </StackPanel>
+                
+                <Button Grid.Column="1" Style="{StaticResource IconButton}" 
+                        Command="{Binding AddNoteCommand}" ToolTip="Nouvelle note">
+                    <TextBlock Text="➕" FontSize="14"/>
+                </Button>
+            </Grid>
+            
+            <!-- Liste -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" 
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding Notes}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Style="{StaticResource NoteItemStyle}">
+                                <Border.InputBindings>
+                                    <MouseBinding MouseAction="LeftDoubleClick" 
+                                                  Command="{Binding DataContext.EditNoteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                  CommandParameter="{Binding}"/>
+                                </Border.InputBindings>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Preview}" 
+                                                   Foreground="{StaticResource WidgetTextPrimary}"
+                                                   FontSize="13" TextWrapping="Wrap" MaxHeight="40"/>
+                                        <TextBlock Text="{Binding TimeAgo}" 
+                                                   Foreground="{StaticResource WidgetTextSecondary}"
+                                                   FontSize="10" Margin="0,4,0,0"/>
+                                    </StackPanel>
+                                    
+                                    <Button Grid.Column="1" Style="{StaticResource IconButton}"
+                                            Command="{Binding DataContext.DeleteNoteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}"
+                                            VerticalAlignment="Top" ToolTip="Supprimer">
+                                        <TextBlock Text="🗑️" FontSize="12"/>
+                                    </Button>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+            
+            <!-- Message si vide -->
+            <TextBlock Grid.Row="1" 
+                       Text="Aucune note. Cliquez sur ➕ pour en créer une."
+                       Foreground="{StaticResource WidgetTextSecondary}"
+                       FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+                       TextWrapping="Wrap" TextAlignment="Center">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Notes.Count}" Value="0">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+        </Grid>
+        
+        <!-- Mode édition -->
+        <Grid Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            
+            <!-- Header édition -->
+            <TextBlock Text="✏️ Éditer la note" FontSize="14" FontWeight="SemiBold"
+                       Foreground="{StaticResource WidgetTextPrimary}" Margin="0,0,0,10"/>
+            
+            <!-- Zone de texte -->
+            <TextBox Grid.Row="1" 
+                     Text="{Binding CurrentNoteText, UpdateSourceTrigger=PropertyChanged}"
+                     AcceptsReturn="True" TextWrapping="Wrap"
+                     Background="#1F2937" Foreground="{StaticResource WidgetTextPrimary}"
+                     BorderBrush="#374151" BorderThickness="1"
+                     Padding="8" FontSize="13" VerticalScrollBarVisibility="Auto">
+                <TextBox.Resources>
+                    <Style TargetType="{x:Type Border}">
+                        <Setter Property="CornerRadius" Value="6"/>
+                    </Style>
+                </TextBox.Resources>
+            </TextBox>
+            
+            <!-- Boutons -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                <Button Content="Annuler" Command="{Binding CancelEditCommand}"
+                        Background="Transparent" Foreground="{StaticResource WidgetTextSecondary}"
+                        BorderThickness="0" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"/>
+                <Button Content="Sauvegarder" Command="{Binding SaveNoteCommand}"
+                        Background="{StaticResource AccentColor}" Foreground="#1F2937"
+                        BorderThickness="0" Padding="12,6" Cursor="Hand" FontWeight="SemiBold">
+                    <Button.Resources>
+                        <Style TargetType="{x:Type Border}">
+                            <Setter Property="CornerRadius" Value="4"/>
+                        </Style>
+                    </Button.Resources>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

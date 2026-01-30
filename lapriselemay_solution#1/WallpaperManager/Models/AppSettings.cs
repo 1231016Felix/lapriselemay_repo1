@@ -56,6 +56,13 @@ public class AppSettings
     public TransitionEffect TransitionEffect { get; set; } = TransitionEffect.Fade;
     public int TransitionDurationMs { get; set; } = 500;
     
+    // Rotation intelligente selon l'heure
+    public bool SmartRotationEnabled { get; set; } = false;
+    public TimeSpan SmartRotationDayStart { get; set; } = new TimeSpan(7, 0, 0);     // 07:00
+    public TimeSpan SmartRotationEveningStart { get; set; } = new TimeSpan(18, 0, 0); // 18:00
+    public TimeSpan SmartRotationNightStart { get; set; } = new TimeSpan(21, 0, 0);   // 21:00
+    public bool SmartRotationChangeOnTransition { get; set; } = true;
+    
     // État de la fenêtre (pour restaurer après redémarrage)
     public bool WasInTrayOnLastExit { get; set; }
     

@@ -5,11 +5,14 @@
 #include <winevt.h>
 #include <shobjidl.h>
 #include <objbase.h>
+#include <Psapi.h>
+#include <TlHelp32.h>
 #include <fstream>
 #include <sstream>
 
 #pragma comment(lib, "wevtapi.lib")
 #pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "psapi.lib")
 
 namespace fs = std::filesystem;
 
@@ -829,23 +832,39 @@ namespace TempCleaner {
     }
 
     void Cleaner::cleanWindowsStoreCache(CleaningStats& stats) {
-        STARTUPINFOW si = { sizeof(si) };
-        si.dwFlags = STARTF_USESHOWWINDOW;
-        si.wShowWindow = SW_HIDE;
-        PROCESS_INFORMATION pi;
-        
-        wchar_t cmd[] = L"wsreset.exe";
-        if (CreateProcessW(nullptr, cmd, nullptr, nullptr, FALSE,
-            CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) {
-            WaitForSingleObject(pi.hProcess, 30000);
-            CloseHandle(pi.hProcess);
-            CloseHandle(pi.hThread);
-            stats.filesDeleted++;
-        }
-        
+        // Nettoyer directement le cache sans utiliser wsreset.exe
+        // (wsreset.exe ouvre automatiquement le Microsoft Store après)
         auto storeCachePath = getWindowsStoreCachePath();
         if (fs::exists(storeCachePath)) {
             cleanDirectory(storeCachePath, stats, nullptr, L"Cache Windows Store");
+        }
+        
+        // Nettoyer aussi le cache des packages Windows Store
+        auto local = getLocalAppDataPath();
+        if (!local.empty()) {
+            // Cache général des packages
+            fs::path packagesCache = local / L"Packages";
+            if (fs::exists(packagesCache)) {
+                std::error_code ec;
+                for (const auto& entry : fs::directory_iterator(packagesCache, 
+                    fs::directory_options::skip_permission_denied, ec)) {
+                    if (m_stopRequested) return;
+                    try {
+                        if (entry.is_directory()) {
+                            // Nettoyer les sous-dossiers de cache de chaque package
+                            fs::path localCache = entry.path() / L"LocalCache";
+                            fs::path tempState = entry.path() / L"TempState";
+                            
+                            if (fs::exists(localCache)) {
+                                cleanDirectory(localCache, stats, nullptr, L"Cache Windows Store");
+                            }
+                            if (fs::exists(tempState)) {
+                                cleanDirectory(tempState, stats, nullptr, L"Cache Windows Store");
+                            }
+                        }
+                    } catch (...) {}
+                }
+            }
         }
     }
 
@@ -1754,6 +1773,120 @@ namespace TempCleaner {
         options.cleanBrowserExtended = readBool(L"BrowserExtended");
         
         return options;
+    }
+
+    Cleaner::MemoryPurgeStats Cleaner::purgeMemory() {
+        MemoryPurgeStats stats;
+        
+        // Obtenir la mémoire utilisée avant la purge
+        MEMORYSTATUSEX memBefore = {};
+        memBefore.dwLength = sizeof(memBefore);
+        GlobalMemoryStatusEx(&memBefore);
+        uint64_t usedBefore = memBefore.ullTotalPhys - memBefore.ullAvailPhys;
+        
+        // Activer SeDebugPrivilege pour accéder aux processus système
+        HANDLE hToken = nullptr;
+        if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
+            TOKEN_PRIVILEGES tp = {};
+            tp.PrivilegeCount = 1;
+            tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+            LookupPrivilegeValueW(nullptr, SE_DEBUG_NAME, &tp.Privileges[0].Luid);
+            AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr);
+            CloseHandle(hToken);
+        }
+        
+        // Énumérer tous les processus
+        HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (hSnapshot != INVALID_HANDLE_VALUE) {
+            PROCESSENTRY32W pe = {};
+            pe.dwSize = sizeof(pe);
+            
+            if (Process32FirstW(hSnapshot, &pe)) {
+                do {
+                    // Ignorer le processus System (PID 0 et 4)
+                    if (pe.th32ProcessID == 0 || pe.th32ProcessID == 4) continue;
+                    
+                    // Ouvrir le processus avec les droits nécessaires
+                    HANDLE hProcess = OpenProcess(
+                        PROCESS_QUERY_INFORMATION | PROCESS_SET_QUOTA,
+                        FALSE,
+                        pe.th32ProcessID
+                    );
+                    
+                    if (hProcess) {
+                        // EmptyWorkingSet force le processus à libérer sa mémoire vers le pagefile
+                        if (EmptyWorkingSet(hProcess)) {
+                            stats.processesOptimized++;
+                        } else {
+                            stats.processesFailed++;
+                        }
+                        CloseHandle(hProcess);
+                    } else {
+                        stats.processesFailed++;
+                    }
+                } while (Process32NextW(hSnapshot, &pe));
+            }
+            CloseHandle(hSnapshot);
+        }
+        
+        // Définitions pour les APIs non-documentées de purge mémoire système
+        typedef struct _SYSTEM_CACHE_INFORMATION {
+            SIZE_T CurrentSize;
+            SIZE_T PeakSize;
+            ULONG PageFaultCount;
+            SIZE_T MinimumWorkingSet;
+            SIZE_T MaximumWorkingSet;
+            SIZE_T CurrentSizeIncludingTransitionInPages;
+            SIZE_T PeakSizeIncludingTransitionInPages;
+            ULONG TransitionRePurposeCount;
+            ULONG Flags;
+        } SYSTEM_CACHE_INFORMATION;
+        
+        typedef enum _SYSTEM_MEMORY_LIST_COMMAND {
+            MemoryCaptureAccessedBits,
+            MemoryCaptureAndResetAccessedBits,
+            MemoryEmptyWorkingSets,
+            MemoryFlushModifiedList,
+            MemoryPurgeStandbyList,
+            MemoryPurgeLowPriorityStandbyList,
+            MemoryCommandMax
+        } SYSTEM_MEMORY_LIST_COMMAND;
+        
+        typedef NTSTATUS(WINAPI* NtSetSystemInformationFunc)(int, PVOID, ULONG);
+        
+        HMODULE hNtdll = GetModuleHandleW(L"ntdll.dll");
+        if (hNtdll) {
+            auto NtSetSystemInformation = (NtSetSystemInformationFunc)GetProcAddress(hNtdll, "NtSetSystemInformation");
+            if (NtSetSystemInformation) {
+                // Vider le cache système (SystemFileCacheInformation = 21)
+                SYSTEM_CACHE_INFORMATION sci = {};
+                sci.MinimumWorkingSet = (SIZE_T)-1;
+                sci.MaximumWorkingSet = (SIZE_T)-1;
+                NtSetSystemInformation(21, &sci, sizeof(sci));
+                
+                // Vider le Standby List (SystemMemoryListInformation = 80)
+                SYSTEM_MEMORY_LIST_COMMAND cmd = MemoryPurgeStandbyList;
+                NtSetSystemInformation(80, &cmd, sizeof(cmd));
+                
+                cmd = MemoryPurgeLowPriorityStandbyList;
+                NtSetSystemInformation(80, &cmd, sizeof(cmd));
+                
+                cmd = MemoryFlushModifiedList;
+                NtSetSystemInformation(80, &cmd, sizeof(cmd));
+            }
+        }
+        
+        // Calculer la mémoire libérée
+        MEMORYSTATUSEX memAfter = {};
+        memAfter.dwLength = sizeof(memAfter);
+        GlobalMemoryStatusEx(&memAfter);
+        uint64_t usedAfter = memAfter.ullTotalPhys - memAfter.ullAvailPhys;
+        
+        if (usedBefore > usedAfter) {
+            stats.memoryFreed = usedBefore - usedAfter;
+        }
+        
+        return stats;
     }
 
 } // namespace TempCleaner

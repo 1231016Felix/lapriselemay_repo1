@@ -494,16 +494,25 @@ public static class SystemControlService
     {
         try
         {
-            Process.Start(new ProcessStartInfo
+            var psi = new ProcessStartInfo
             {
                 FileName = "cmd.exe",
                 UseShellExecute = true,
                 Verb = "runas"
-            });
-            return true;
+            };
+            
+            var process = Process.Start(psi);
+            return process != null;
         }
-        catch
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
+            // L'utilisateur a annulé le prompt UAC
+            System.Diagnostics.Debug.WriteLine("[SystemControl] CMD Admin: UAC annulé par l'utilisateur");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SystemControl] CMD Admin erreur: {ex.Message}");
             return false;
         }
     }
@@ -515,16 +524,26 @@ public static class SystemControlService
     {
         try
         {
-            Process.Start(new ProcessStartInfo
+            var psi = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
+                Arguments = "-NoExit",
                 UseShellExecute = true,
                 Verb = "runas"
-            });
-            return true;
+            };
+            
+            var process = Process.Start(psi);
+            return process != null;
         }
-        catch
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
+            // L'utilisateur a annulé le prompt UAC
+            System.Diagnostics.Debug.WriteLine("[SystemControl] PowerShell Admin: UAC annulé par l'utilisateur");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SystemControl] PowerShell Admin erreur: {ex.Message}");
             return false;
         }
     }

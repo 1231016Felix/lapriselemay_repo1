@@ -137,8 +137,9 @@
                             <CheckBox x:Name="CloseAfterLaunchCheck" Content="Fermer après lancement" Style="{StaticResource SettingsCheckBox}"/>
                             <CheckBox x:Name="ShowIndexingStatusCheck" Content="Afficher le statut d'indexation" Style="{StaticResource SettingsCheckBox}"/>
                             <CheckBox x:Name="ShowSettingsButtonCheck" Content="Afficher le bouton ⚙️" Style="{StaticResource SettingsCheckBox}"/>
+                            <CheckBox x:Name="SingleClickLaunchCheck" Content="Lancer en simple clic" Style="{StaticResource SettingsCheckBox}" ToolTip="Active le lancement d'un élément au simple clic (au lieu du double clic)"/>
                             
-                            <TextBlock Text="SubSectionLabel" Style="{StaticResource SubSectionLabel}"/>
+                            <TextBlock Text="Résultats" Style="{StaticResource SubSectionLabel}"/>
                             <StackPanel Orientation="Horizontal" Margin="0,5">
                                 <TextBlock Text="Max résultats: " Foreground="White" VerticalAlignment="Center"/>
                                 <TextBlock x:Name="MaxResultsValue" Text="8" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="25"/>

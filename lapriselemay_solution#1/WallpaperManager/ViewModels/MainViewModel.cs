@@ -89,6 +89,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _startWithWindows;
     
     [ObservableProperty]
+    private bool _startMinimized;
+    
+    [ObservableProperty]
     private bool _minimizeToTray = true;
     
     [ObservableProperty]
@@ -163,6 +166,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pixabayService = new PixabayService();
         SelectedWallpapers.CollectionChanged += (s, e) => OnPropertyChanged(nameof(SelectedCount));
         LoadData();
+        InitializeWidgets();
+        InitializeSmartRotation();
+    }
+    
+    /// <summary>
+    /// Appelé après l'initialisation complète de l'application.
+    /// </summary>
+    public void OnAppInitialized()
+    {
+        StartWidgetsIfEnabled();
     }
     
     private void LoadData()
@@ -179,6 +192,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         PexelsApiKey = SettingsService.Current.PexelsApiKey ?? string.Empty;
         PixabayApiKey = SettingsService.Current.PixabayApiKey ?? string.Empty;
         StartWithWindows = SettingsService.Current.StartWithWindows;
+        StartMinimized = SettingsService.Current.StartMinimized;
         MinimizeToTray = SettingsService.Current.MinimizeToTray;
         PauseOnBattery = SettingsService.Current.PauseOnBattery;
         PauseOnFullscreen = SettingsService.Current.PauseOnFullscreen;
@@ -381,7 +395,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         StatusMessage = "Ajout des fichiers...";
         
         var cancellationToken = ResetCancellationToken();
-        var addedCount = 0;
+        var addedWallpapers = new List<Wallpaper>();
         
         try
         {
@@ -399,21 +413,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 {
                     SettingsService.AddWallpaper(wallpaper);
                     _allWallpapers.Add(wallpaper);
-                    addedCount++;
+                    addedWallpapers.Add(wallpaper);
                 }
             }
             
-            if (addedCount > 0)
+            if (addedWallpapers.Count > 0)
             {
                 ApplyFiltersAndSort();
                 SettingsService.Save();
                 
                 if (App.IsInitialized)
                     App.RotationService.RefreshPlaylist();
+                
+                // Analyse automatique de luminosité en arrière-plan
+                _ = AnalyzeNewWallpapersAsync(addedWallpapers);
             }
             
-            StatusMessage = addedCount > 0 
-                ? $"{addedCount} fond(s) d'écran ajouté(s) par glisser-déposer"
+            StatusMessage = addedWallpapers.Count > 0 
+                ? $"{addedWallpapers.Count} fond(s) d'écran ajouté(s) par glisser-déposer"
                 : "Aucun fichier valide trouvé";
         }
         catch (OperationCanceledException)
@@ -778,6 +795,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     
     partial void OnIsRotationEnabledChanged(bool value)
     {
+        // Empêcher l'activation si la rotation intelligente est active
+        if (value && SmartRotationEnabled)
+        {
+            // Forcer à false si on essaie d'activer pendant que la rotation intelligente est active
+            _isRotationEnabled = false;
+            OnPropertyChanged(nameof(IsRotationEnabled));
+            StatusMessage = "Désactivez d'abord la rotation intelligente";
+            return;
+        }
+        
         SettingsService.Current.RotationEnabled = value;
         
         if (App.IsInitialized)
@@ -810,6 +837,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     partial void OnPauseOnFullscreenChanged(bool value)
     {
         SettingsService.Current.PauseOnFullscreen = value;
+        SettingsService.Save();
+    }
+    
+    partial void OnStartMinimizedChanged(bool value)
+    {
+        SettingsService.Current.StartMinimized = value;
         SettingsService.Save();
     }
     
@@ -865,33 +898,54 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
     
     [RelayCommand]
-    private void RemoveDuplicate(Wallpaper? wallpaper)
+    private async Task RemoveDuplicateAsync(Wallpaper? wallpaper)
     {
         if (wallpaper == null) return;
         
-        SettingsService.RemoveWallpaper(wallpaper.Id);
-        _allWallpapers.Remove(wallpaper);
-        Wallpapers.Remove(wallpaper);
-        
-        foreach (var group in DuplicateGroups.ToList())
+        try
         {
-            group.Wallpapers.Remove(wallpaper);
-            if (group.Wallpapers.Count <= 1)
+            // Effectuer les opérations de suppression en arrière-plan
+            await Task.Run(() =>
+            {
+                SettingsService.RemoveWallpaper(wallpaper.Id);
+            });
+            
+            // Mises à jour UI sur le thread principal
+            _allWallpapers.Remove(wallpaper);
+            Wallpapers.Remove(wallpaper);
+            
+            // Mettre à jour les groupes de doublons
+            var groupsToRemove = new List<DuplicateGroup>();
+            foreach (var group in DuplicateGroups)
+            {
+                group.Wallpapers.Remove(wallpaper);
+                if (group.Wallpapers.Count <= 1)
+                    groupsToRemove.Add(group);
+            }
+            
+            foreach (var group in groupsToRemove)
+            {
                 DuplicateGroups.Remove(group);
+            }
+            
+            // Sauvegarder en arrière-plan
+            await Task.Run(() => SettingsService.Save());
+            
+            var remaining = DuplicateGroups.Sum(g => g.Wallpapers.Count - 1);
+            StatusMessage = remaining > 0 
+                ? $"Doublon retiré - {remaining} restant(s)" 
+                : "Tous les doublons ont été traités";
+            
+            if (App.IsInitialized)
+                App.RotationService.RefreshPlaylist();
+            
+            OnPropertyChanged(nameof(TotalCount));
+            OnPropertyChanged(nameof(FilteredCount));
         }
-        
-        SettingsService.Save();
-        
-        var remaining = DuplicateGroups.Sum(g => g.Wallpapers.Count - 1);
-        StatusMessage = remaining > 0 
-            ? $"Doublon retiré - {remaining} restant(s)" 
-            : "Tous les doublons ont été traités";
-        
-        if (App.IsInitialized)
-            App.RotationService.RefreshPlaylist();
-        
-        OnPropertyChanged(nameof(TotalCount));
-        OnPropertyChanged(nameof(FilteredCount));
+        catch (Exception ex)
+        {
+            StatusMessage = $"Erreur lors de la suppression: {ex.Message}";
+        }
     }
     
     [RelayCommand]
@@ -925,7 +979,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         StatusMessage = "Resynchronisation de la bibliothèque...";
         
         var cancellationToken = ResetCancellationToken();
-        var addedCount = 0;
+        var addedWallpapers = new List<Wallpaper>();
         var removedCount = 0;
         
         try
@@ -980,22 +1034,28 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 {
                     SettingsService.AddWallpaper(wallpaper);
                     _allWallpapers.Add(wallpaper);
-                    addedCount++;
+                    addedWallpapers.Add(wallpaper);
                 }
             }
             
-            if (addedCount > 0 || removedCount > 0)
+            if (addedWallpapers.Count > 0 || removedCount > 0)
             {
                 ApplyFiltersAndSort();
                 SettingsService.Save();
                 
                 if (App.IsInitialized)
                     App.RotationService.RefreshPlaylist();
+                
+                // Analyse automatique des nouvelles images en arrière-plan
+                if (addedWallpapers.Count > 0)
+                {
+                    _ = AnalyzeNewWallpapersAsync(addedWallpapers);
+                }
             }
             
             // Message de résultat
             var messages = new List<string>();
-            if (addedCount > 0) messages.Add($"{addedCount} ajouté(s)");
+            if (addedWallpapers.Count > 0) messages.Add($"{addedWallpapers.Count} ajouté(s)");
             if (removedCount > 0) messages.Add($"{removedCount} retiré(s)");
             
             StatusMessage = messages.Count > 0
@@ -1144,6 +1204,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 ApplyFiltersAndSort();
                 SettingsService.Save();
                 if (App.IsInitialized) App.RotationService.RefreshPlaylist();
+                
+                // Analyse automatique de luminosité en arrière-plan
+                _ = AnalyzeNewWallpapersAsync([wallpaper]);
+                
                 StatusMessage = $"Téléchargé: {wallpaper.DisplayName}";
             }
         }
@@ -1212,6 +1276,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 ApplyFiltersAndSort();
                 SettingsService.Save();
                 if (App.IsInitialized) App.RotationService.RefreshPlaylist();
+                
+                // Analyse automatique de luminosité en arrière-plan
+                _ = AnalyzeNewWallpapersAsync([wallpaper]);
+                
                 StatusMessage = $"Téléchargé: {wallpaper.DisplayName}";
             }
         }
@@ -1243,6 +1311,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _cts = null;
         }
         
+        CleanupSmartRotation();
+        CleanupWidgets();
         _unsplashService.Dispose();
         _pexelsService.Dispose();
         _pixabayService.Dispose();

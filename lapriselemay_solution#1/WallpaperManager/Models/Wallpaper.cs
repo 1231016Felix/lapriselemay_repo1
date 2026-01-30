@@ -20,6 +20,16 @@ public enum WallpaperFit
     Span         // Étendre sur plusieurs écrans
 }
 
+/// <summary>
+/// Catégorie de luminosité d'un fond d'écran.
+/// </summary>
+public enum BrightnessCategory
+{
+    Dark,       // Sombre
+    Neutral,    // Neutre
+    Light       // Clair
+}
+
 public class Wallpaper
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -39,6 +49,10 @@ public class Wallpaper
     public long FileSize { get; set; }
     public string[] Tags { get; set; } = [];
     public string? FileHash { get; set; }  // MD5 pour détection doublons
+    
+    // Analyse de luminosité (IA)
+    public BrightnessCategory? BrightnessCategory { get; set; }
+    public double? AverageBrightness { get; set; }
     
     // Propriétés calculées - ne pas sérialiser
     [JsonIgnore]
