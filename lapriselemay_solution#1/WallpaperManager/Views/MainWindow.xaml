@@ -1282,8 +1282,8 @@
                     <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
                         <StackPanel>
                             <TextBlock Text="Maintenance" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            <Button Content="🔄 Resynchroniser la bibliothèque" Command="{Binding ResyncLibraryAsyncCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" ToolTip="Scanne le dossier et synchronise les ajouts/suppressions"/>
-                            <Button Content="🗑️ Vider le cache" Command="{Binding ClearThumbnailCacheAsyncCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                            <Button Content="🔄 Resynchroniser la bibliothèque" Command="{Binding ResyncLibraryCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" ToolTip="Scanne le dossier et synchronise les ajouts/suppressions"/>
+                            <Button Content="🗑️ Vider le cache" Command="{Binding ClearThumbnailCacheCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
                             <Button Content="🔍 Détecter les doublons" Command="{Binding ScanDuplicatesCommand}" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Margin="0,8,0,0" IsEnabled="{Binding IsDuplicateScanRunning, Converter={StaticResource InverseBoolConverter}}"/>
                             <ItemsControl ItemsSource="{Binding DuplicateGroups}" Margin="0,16,0,0" Visibility="{Binding DuplicateGroups.Count, Converter={StaticResource CountToVisibilityConverter}}">
                                 <ItemsControl.ItemTemplate>

@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Windows.Data;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WallpaperManager.Models;
@@ -18,6 +19,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _cts;
     private readonly Lock _ctsLock = new();
     private volatile bool _disposed;
+    
+    // Timer pour effacer automatiquement les messages de statut
+    private DispatcherTimer? _statusMessageTimer;
+    private const int StatusMessageDurationMs = 4000; // 4 secondes
     
     // Collections source
     private ObservableCollection<Wallpaper> _allWallpapers = [];
@@ -208,6 +213,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
         TransitionEnabled = SettingsService.Current.TransitionEnabled;
         SelectedTransitionEffect = SettingsService.Current.TransitionEffect;
         TransitionDuration = SettingsService.Current.TransitionDurationMs;
+    }
+    
+    // === GESTION DES MESSAGES DE STATUT ===
+    partial void OnStatusMessageChanged(string value)
+    {
+        // Arrêter le timer précédent s'il existe
+        _statusMessageTimer?.Stop();
+        
+        // Ne pas programmer la disparition si le message est vide
+        if (string.IsNullOrEmpty(value)) return;
+        
+        // Créer ou réutiliser le timer
+        _statusMessageTimer ??= new DispatcherTimer();
+        _statusMessageTimer.Interval = TimeSpan.FromMilliseconds(StatusMessageDurationMs);
+        _statusMessageTimer.Tick -= StatusMessageTimer_Tick;
+        _statusMessageTimer.Tick += StatusMessageTimer_Tick;
+        _statusMessageTimer.Start();
+    }
+    
+    private void StatusMessageTimer_Tick(object? sender, EventArgs e)
+    {
+        _statusMessageTimer?.Stop();
+        StatusMessage = string.Empty;
     }
     
     // === MÉTHODES DE FILTRE ET TRI ===
@@ -1303,6 +1331,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        
+        // Nettoyer le timer de message de statut
+        _statusMessageTimer?.Stop();
+        _statusMessageTimer = null;
         
         lock (_ctsLock)
         {
