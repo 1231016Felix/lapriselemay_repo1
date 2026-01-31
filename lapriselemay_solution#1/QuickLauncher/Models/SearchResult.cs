@@ -134,6 +134,7 @@ public sealed class SearchResult : INotifyPropertyChanged
             ResultType.File => true,
             ResultType.Folder => true,
             ResultType.Script => true,
+            ResultType.Bookmark => true,  // Permettre le chargement d'icônes pour les favoris
             _ => false
         };
     }

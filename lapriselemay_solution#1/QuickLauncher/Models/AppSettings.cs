@@ -480,12 +480,12 @@ public sealed class ScoringWeights
     /// <summary>
     /// Score maximum ajouté pour la fréquence d'utilisation.
     /// </summary>
-    public int MaxUsageBonus { get; set; } = 100;
+    public int MaxUsageBonus { get; set; } = 500;
     
     /// <summary>
     /// Points ajoutés par utilisation (plafonné par MaxUsageBonus).
     /// </summary>
-    public int UsageBonusPerUse { get; set; } = 5;
+    public int UsageBonusPerUse { get; set; } = 50;
     
     /// <summary>
     /// Bonus pour un mot de la requête correspondant exactement à un mot du résultat.
@@ -518,8 +518,8 @@ public sealed class ScoringWeights
         InitialsMatch = 500;
         SubsequenceMatch = 300;
         FuzzyMatchMultiplier = 250;
-        MaxUsageBonus = 100;
-        UsageBonusPerUse = 5;
+        MaxUsageBonus = 500;
+        UsageBonusPerUse = 50;
         ExactWordBonus = 50;
         FuzzyMatchThreshold = 0.6;
         ConsecutiveMatchBonus = 10;
