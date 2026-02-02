@@ -42,6 +42,7 @@ public partial class SettingsWindow : Window
         CloseAfterLaunchCheck.IsChecked = _settings.CloseAfterLaunch;
         ShowIndexingStatusCheck.IsChecked = _settings.ShowIndexingStatus;
         ShowSettingsButtonCheck.IsChecked = _settings.ShowSettingsButton;
+        SingleClickLaunchCheck.IsChecked = _settings.SingleClickLaunch;
         MaxResultsSlider.Value = _settings.MaxResults;
         MaxResultsValue.Text = _settings.MaxResults.ToString();
         SelectComboByTag(WindowPositionCombo, _settings.WindowPosition);
@@ -595,6 +596,7 @@ public partial class SettingsWindow : Window
         _settings.CloseAfterLaunch = CloseAfterLaunchCheck.IsChecked == true;
         _settings.ShowIndexingStatus = ShowIndexingStatusCheck.IsChecked == true;
         _settings.ShowSettingsButton = ShowSettingsButtonCheck.IsChecked == true;
+        _settings.SingleClickLaunch = SingleClickLaunchCheck.IsChecked == true;
         _settings.MaxResults = (int)MaxResultsSlider.Value;
         _settings.WindowPosition = GetComboTag(WindowPositionCombo) ?? "Center";
         
