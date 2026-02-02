@@ -14,7 +14,6 @@ public partial class MainViewModel
     // Collections système de luminosité
     private static readonly string DarkCollectionId = SystemCollectionIds.Dark;
     private static readonly string LightCollectionId = SystemCollectionIds.Light;
-    private static readonly string NeutralCollectionId = SystemCollectionIds.Neutral;
     private static readonly string AnimatedCollectionId = SystemCollectionIds.Animated;
     
     private readonly Collection _darkCollection = new()
@@ -29,13 +28,6 @@ public partial class MainViewModel
         Id = LightCollectionId,
         Name = "Clairs",
         Icon = "☀️"
-    };
-    
-    private readonly Collection _neutralCollection = new()
-    {
-        Id = NeutralCollectionId,
-        Name = "Neutres",
-        Icon = "⚖️"
     };
     
     private readonly Collection _animatedCollection = new()
@@ -69,9 +61,6 @@ public partial class MainViewModel
     private int _lightCount;
     
     [ObservableProperty]
-    private int _neutralCount;
-    
-    [ObservableProperty]
     private int _animatedCount;
     
     [ObservableProperty]
@@ -82,10 +71,7 @@ public partial class MainViewModel
     private string _dayStartTime = "07:00";
     
     [ObservableProperty]
-    private string _eveningStartTime = "18:00";
-    
-    [ObservableProperty]
-    private string _nightStartTime = "21:00";
+    private string _nightStartTime = "19:00";
     
     /// <summary>
     /// Initialise le service de rotation intelligente.
@@ -100,7 +86,6 @@ public partial class MainViewModel
         var settings = SettingsService.Current;
         SmartRotationEnabled = settings.SmartRotationEnabled;
         DayStartTime = settings.SmartRotationDayStart.ToString(@"hh\:mm");
-        EveningStartTime = settings.SmartRotationEveningStart.ToString(@"hh\:mm");
         NightStartTime = settings.SmartRotationNightStart.ToString(@"hh\:mm");
         
         // Appliquer les paramètres au service
@@ -162,6 +147,12 @@ public partial class MainViewModel
                 IsRotationEnabled = false;
             }
             
+            // Désactiver la rotation de collection si active
+            if (IsCollectionRotationActive)
+            {
+                IsCollectionRotationActive = false;
+            }
+            
             _smartRotationService.Start();
             StatusMessage = "Rotation intelligente activée (rotation automatique désactivée)";
         }
@@ -177,9 +168,9 @@ public partial class MainViewModel
     
     /// <summary>
     /// Indique si le toggle de rotation automatique peut être modifié.
-    /// Désactivé quand la rotation intelligente est active.
+    /// Désactivé quand la rotation intelligente ou la rotation de collection est active.
     /// </summary>
-    public bool IsRotationToggleEnabled => !SmartRotationEnabled;
+    public bool IsRotationToggleEnabled => !SmartRotationEnabled && !IsCollectionRotationActive;
     
     /// <summary>
     /// Met à jour les paramètres du service de rotation.
@@ -190,9 +181,6 @@ public partial class MainViewModel
         
         if (TimeSpan.TryParse(DayStartTime, out var dayStart))
             _smartRotationService.Settings.DayStartTime = dayStart;
-        
-        if (TimeSpan.TryParse(EveningStartTime, out var eveningStart))
-            _smartRotationService.Settings.EveningStartTime = eveningStart;
         
         if (TimeSpan.TryParse(NightStartTime, out var nightStart))
             _smartRotationService.Settings.NightStartTime = nightStart;
@@ -207,9 +195,6 @@ public partial class MainViewModel
     {
         if (TimeSpan.TryParse(DayStartTime, out var dayStart))
             SettingsService.Current.SmartRotationDayStart = dayStart;
-        
-        if (TimeSpan.TryParse(EveningStartTime, out var eveningStart))
-            SettingsService.Current.SmartRotationEveningStart = eveningStart;
         
         if (TimeSpan.TryParse(NightStartTime, out var nightStart))
             SettingsService.Current.SmartRotationNightStart = nightStart;
@@ -227,10 +212,9 @@ public partial class MainViewModel
     {
         DarkCount = _allWallpapers.Count(w => w.BrightnessCategory == BrightnessCategory.Dark);
         LightCount = _allWallpapers.Count(w => w.BrightnessCategory == BrightnessCategory.Light);
-        NeutralCount = _allWallpapers.Count(w => w.BrightnessCategory == BrightnessCategory.Neutral);
         AnimatedCount = _allWallpapers.Count(w => w.Type == WallpaperType.Animated || w.Type == WallpaperType.Video);
-        // Non analysés = images statiques sans catégorie de luminosité
-        UnanalyzedCount = _allWallpapers.Count(w => w.BrightnessCategory == null && w.Type == WallpaperType.Static);
+        // Non analysés = images statiques existantes sans catégorie de luminosité (cohérent avec ce qui sera analysé)
+        UnanalyzedCount = _allWallpapers.Count(w => w.BrightnessCategory == null && w.Type == WallpaperType.Static && w.Exists);
         
         // Mettre à jour les collections virtuelles
         _darkCollection.WallpaperIds = _allWallpapers
@@ -240,11 +224,6 @@ public partial class MainViewModel
         
         _lightCollection.WallpaperIds = _allWallpapers
             .Where(w => w.BrightnessCategory == BrightnessCategory.Light)
-            .Select(w => w.Id)
-            .ToList();
-        
-        _neutralCollection.WallpaperIds = _allWallpapers
-            .Where(w => w.BrightnessCategory == BrightnessCategory.Neutral)
             .Select(w => w.Id)
             .ToList();
         
@@ -259,18 +238,15 @@ public partial class MainViewModel
     
     /// <summary>
     /// Rafraîchit l'affichage des collections de luminosité dans la liste des collections.
+    /// Utilise NotifyCountChanged() au lieu de RemoveAt/Insert pour éviter de casser la sélection.
     /// </summary>
     private void RefreshBrightnessCollectionsDisplay()
     {
-        // Forcer le rafraîchissement des compteurs dans la liste
-        foreach (var collection in new[] { _darkCollection, _lightCollection, _neutralCollection, _animatedCollection })
+        // Notifier les changements de compteur sans toucher à l'ObservableCollection
+        // Cela évite de déclencher OnSelectedCollectionChanged par effet de bord
+        foreach (var collection in new[] { _darkCollection, _lightCollection, _animatedCollection })
         {
-            var index = Collections.IndexOf(collection);
-            if (index >= 0)
-            {
-                Collections.RemoveAt(index);
-                Collections.Insert(index, collection);
-            }
+            collection.NotifyCountChanged();
         }
         
         // Si une collection de luminosité ou animée est sélectionnée, rafraîchir son contenu
@@ -295,6 +271,9 @@ public partial class MainViewModel
     private async Task AnalyzeBrightnessAsync()
     {
         if (IsAnalyzingBrightness) return;
+        
+        // Rafraîchir le compteur avant de filtrer (au cas où des fichiers ont été supprimés)
+        UpdateBrightnessCounters();
         
         var toAnalyze = _allWallpapers
             .Where(w => w.BrightnessCategory == null && w.Type == WallpaperType.Static && w.Exists)
@@ -322,10 +301,10 @@ public partial class MainViewModel
                 toAnalyze.Select(w => w.FilePath),
                 progress);
             
-            // Appliquer les résultats
+            // Appliquer les résultats et compter les échecs
             var darkAdded = 0;
             var lightAdded = 0;
-            var neutralAdded = 0;
+            var failedCount = 0;
             
             foreach (var wallpaper in toAnalyze)
             {
@@ -343,10 +322,13 @@ public partial class MainViewModel
                         case BrightnessCategory.Light:
                             lightAdded++;
                             break;
-                        case BrightnessCategory.Neutral:
-                            neutralAdded++;
-                            break;
                     }
+                }
+                else
+                {
+                    // L'analyse a échoué pour cette image
+                    failedCount++;
+                    System.Diagnostics.Debug.WriteLine($"Analyse échouée pour: {wallpaper.FilePath}");
                 }
             }
             
@@ -364,7 +346,17 @@ public partial class MainViewModel
             }
             
             BrightnessAnalysisStatus = "Analyse terminée!";
-            StatusMessage = $"Analyse terminée: {darkAdded} sombres, {lightAdded} clairs, {neutralAdded} neutres";
+            
+            // Message de résultat détaillé
+            var successCount = darkAdded + lightAdded;
+            if (failedCount > 0)
+            {
+                StatusMessage = $"Analyse terminée: {darkAdded} sombres, {lightAdded} clairs ({failedCount} échec(s) - fichiers corrompus ou inaccessibles)";
+            }
+            else
+            {
+                StatusMessage = $"Analyse terminée: {darkAdded} sombres, {lightAdded} clairs";
+            }
         }
         catch (Exception ex)
         {
@@ -383,13 +375,18 @@ public partial class MainViewModel
     [RelayCommand]
     private async Task ReanalyzeAllBrightnessAsync()
     {
-        // Réinitialiser toutes les analyses
-        foreach (var wallpaper in _allWallpapers)
+        if (IsAnalyzingBrightness) return;
+        
+        // Réinitialiser toutes les analyses pour les images statiques existantes
+        var staticWallpapers = _allWallpapers.Where(w => w.Type == WallpaperType.Static).ToList();
+        
+        foreach (var wallpaper in staticWallpapers)
         {
             wallpaper.BrightnessCategory = null;
             wallpaper.AverageBrightness = null;
         }
         
+        // Mettre à jour les compteurs immédiatement pour refléter la réinitialisation
         UpdateBrightnessCounters();
         
         // Lancer l'analyse complète
@@ -436,10 +433,15 @@ public partial class MainViewModel
         
         if (toAnalyze.Count == 0) return;
         
+        System.Diagnostics.Debug.WriteLine($"Analyse automatique: démarrage pour {toAnalyze.Count} image(s)");
+        
         try
         {
             var results = await ImageBrightnessAnalyzer.AnalyzeBatchAsync(
                 toAnalyze.Select(w => w.FilePath));
+            
+            var analyzedCount = 0;
+            var failedCount = 0;
             
             foreach (var wallpaper in toAnalyze)
             {
@@ -447,15 +449,29 @@ public partial class MainViewModel
                 {
                     wallpaper.BrightnessCategory = result.Category;
                     wallpaper.AverageBrightness = result.AverageBrightness;
+                    analyzedCount++;
+                }
+                else
+                {
+                    failedCount++;
+                    System.Diagnostics.Debug.WriteLine($"Analyse automatique échouée pour: {wallpaper.FilePath}");
                 }
             }
             
             // Sauvegarder et mettre à jour
-            SettingsService.MarkDirty();
-            SettingsService.Save();
-            UpdateBrightnessCounters();
+            if (analyzedCount > 0)
+            {
+                SettingsService.MarkDirty();
+                SettingsService.Save();
+                
+                // Mettre à jour les compteurs sur le thread UI
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    UpdateBrightnessCounters();
+                });
+            }
             
-            System.Diagnostics.Debug.WriteLine($"Analyse automatique: {toAnalyze.Count} image(s) analysée(s)");
+            System.Diagnostics.Debug.WriteLine($"Analyse automatique: {analyzedCount} image(s) analysée(s), {failedCount} échec(s)");
         }
         catch (Exception ex)
         {

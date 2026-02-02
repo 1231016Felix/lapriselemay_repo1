@@ -444,9 +444,11 @@ public static class SettingsService
         lock (_lock)
         {
             var collection = _collections.Find(c => c.Id == collectionId);
-            if (collection == null) return [];
+            if (collection == null || collection.WallpaperIds.Count == 0) return [];
             
-            return _wallpapers.Where(w => collection.WallpaperIds.Contains(w.Id)).ToList();
+            // Utiliser un HashSet pour la recherche O(1) au lieu de O(n)
+            var idsSet = new HashSet<string>(collection.WallpaperIds);
+            return _wallpapers.Where(w => idsSet.Contains(w.Id)).ToList();
         }
     }
     

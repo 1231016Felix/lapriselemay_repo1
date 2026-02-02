@@ -178,6 +178,55 @@
                                    Visibility="{Binding SmartRotationEnabled, Converter={StaticResource BoolToVis}}"
                                    ToolTip="Désactivez la rotation intelligente dans l'onglet Dynamiques pour réactiver la rotation automatique"/>
                         
+                        <!-- Avertissement rotation de collection active -->
+                        <TextBlock Text="⚠️ Rotation de collection active" FontSize="10" Foreground="#F59E0B" Margin="12,2,12,0" TextWrapping="Wrap"
+                                   Visibility="{Binding IsCollectionRotationActive, Converter={StaticResource BoolToVis}}"
+                                   ToolTip="La rotation automatique est verrouillée car une rotation de collection est en cours"/>
+                        
+                        <!-- Bouton Intervalle -->
+                        <TextBlock Text="Intervalle de rotation" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,12,12,4"/>
+                        <Button x:Name="BtnIntervalLibrary" Margin="12,4,8,4" Padding="12,8" Cursor="Hand" Click="BtnInterval_Click">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{StaticResource CardBrush}" CornerRadius="8" Padding="12,8">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="⏱️" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Foreground="{StaticResource TextPrimaryBrush}">
+                                                            <Run Text="{Binding RotationInterval, Mode=OneWay}"/><Run Text=" min"/>
+                                                        </TextBlock>
+                                                        <TextBlock Grid.Column="2" Text="▼" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Button.Style>
+                            <Button.ContextMenu>
+                                <ContextMenu Placement="Bottom">
+                                    <MenuItem Header="5 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="5"/>
+                                    <MenuItem Header="10 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="10"/>
+                                    <MenuItem Header="15 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="15"/>
+                                    <MenuItem Header="30 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="30"/>
+                                    <MenuItem Header="45 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="45"/>
+                                    <Separator/>
+                                    <MenuItem Header="1 heure" Command="{Binding SetIntervalCommand}" CommandParameter="60"/>
+                                    <MenuItem Header="2 heures" Command="{Binding SetIntervalCommand}" CommandParameter="120"/>
+                                    <MenuItem Header="4 heures" Command="{Binding SetIntervalCommand}" CommandParameter="240"/>
+                                    <MenuItem Header="8 heures" Command="{Binding SetIntervalCommand}" CommandParameter="480"/>
+                                    <MenuItem Header="24 heures" Command="{Binding SetIntervalCommand}" CommandParameter="1440"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                        
                         <TextBlock Text="Changer de fond" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="12,12,12,4"/>
                         
                         <StackPanel Orientation="Horizontal" Margin="12,4" HorizontalAlignment="Left">
@@ -540,17 +589,23 @@
                         </TextBlock>
                         
                         <!-- Grille des wallpapers de la collection -->
-                        <ListBox Grid.Row="2" ItemsSource="{Binding CollectionWallpapers}" SelectedItem="{Binding SelectedCollectionWallpaper}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <Grid Grid.Row="2">
+                            <ListBox ItemsSource="{Binding CollectionWallpapers}" SelectedItem="{Binding SelectedCollectionWallpaper}" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 VirtualizingPanel.IsVirtualizing="True"
+                                 VirtualizingPanel.VirtualizationMode="Recycling"
+                                 VirtualizingPanel.ScrollUnit="Pixel"
+                                 ScrollViewer.IsDeferredScrollingEnabled="True"
+                                 ScrollViewer.CanContentScroll="True">
                             <ListBox.ItemsPanel>
                                 <ItemsPanelTemplate>
-                                    <WrapPanel/>
+                                    <controls:VirtualizingWrapPanel ItemWidth="168" ItemHeight="108" ItemMargin="4"/>
                                 </ItemsPanelTemplate>
                             </ListBox.ItemsPanel>
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Border Width="160" Height="100" Margin="4" CornerRadius="8" Background="{StaticResource CardBrush}" Cursor="Hand">
                                         <Grid>
-                                            <Image Source="{Binding FilePath, Converter={StaticResource PathToThumb}}" Stretch="UniformToFill"/>
+                                            <Image Source="{Binding FilePath, Converter={StaticResource AsyncThumb}}" Stretch="UniformToFill"/>
                                             
                                             <!-- Icône play au centre pour les vidéos -->
                                             <Border Background="#60000000" CornerRadius="50" Width="36" Height="36"
@@ -580,6 +635,17 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                            
+                            <!-- Indicateur de chargement amélioré -->
+                            <Border Background="#E0000000" CornerRadius="8" 
+                                    Visibility="{Binding IsCollectionLoading, Converter={StaticResource BoolToVis}}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center" Padding="24,16">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="⏳" FontSize="24" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                    <TextBlock Text="{Binding CollectionLoadingText}" FontSize="14" Foreground="White" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
                         
                         <!-- Bouton Rotation collection (toujours visible quand collection sélectionnée) -->
                         <Border Grid.Row="3" Margin="0,12,0,0">
@@ -595,8 +661,43 @@
                                     <Button Content="Appliquer" Command="{Binding ApplyCollectionWallpaperCommand}" Style="{StaticResource PrimaryButton}"/>
                                 </StackPanel>
                                 
-                                <!-- Bouton rotation toujours visible à droite -->
-                                <Button Grid.Column="1" Content="▶ Rotation collection" Command="{Binding StartCollectionRotationCommand}" Style="{StaticResource PrimaryButton}"/>
+                                <!-- Bouton rotation toujours visible à droite : démarrer ou arrêter -->
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <!-- Bouton Intervalle -->
+                                    <Button x:Name="BtnIntervalCollections" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" Padding="10,8" Cursor="Hand" Click="BtnInterval_Click" ToolTip="Modifier l'intervalle de rotation">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="⏱️" Margin="0,0,6,0"/>
+                                            <TextBlock>
+                                                <Run Text="{Binding RotationInterval, Mode=OneWay}"/><Run Text=" min"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <Button.ContextMenu>
+                                            <ContextMenu Placement="Bottom">
+                                                <MenuItem Header="5 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="5"/>
+                                                <MenuItem Header="10 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="10"/>
+                                                <MenuItem Header="15 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="15"/>
+                                                <MenuItem Header="30 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="30"/>
+                                                <MenuItem Header="45 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="45"/>
+                                                <Separator/>
+                                                <MenuItem Header="1 heure" Command="{Binding SetIntervalCommand}" CommandParameter="60"/>
+                                                <MenuItem Header="2 heures" Command="{Binding SetIntervalCommand}" CommandParameter="120"/>
+                                                <MenuItem Header="4 heures" Command="{Binding SetIntervalCommand}" CommandParameter="240"/>
+                                                <MenuItem Header="8 heures" Command="{Binding SetIntervalCommand}" CommandParameter="480"/>
+                                                <MenuItem Header="24 heures" Command="{Binding SetIntervalCommand}" CommandParameter="1440"/>
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
+                                    </Button>
+                                    
+                                    <Button Content="▶ Rotation collection" 
+                                            Command="{Binding StartCollectionRotationCommand}" 
+                                            Style="{StaticResource PrimaryButton}"
+                                            Visibility="{Binding IsCollectionRotationActive, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"/>
+                                    <Button Content="⏹ Arrêter collection" 
+                                            Command="{Binding StopCollectionRotationCommand}" 
+                                            Style="{StaticResource PrimaryButton}"
+                                            Background="#DC2626"
+                                            Visibility="{Binding IsCollectionRotationActive, Converter={StaticResource BoolToVis}}"/>
+                                </StackPanel>
                             </Grid>
                         </Border>
                         
@@ -630,7 +731,33 @@
                             <TextBlock Text="🌓 Rotation Intelligente" FontSize="24" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}"/>
                             <TextBlock Text="Change automatiquement de fond d'écran selon l'heure et la luminosité" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}"/>
                         </StackPanel>
-                        <ToggleButton Grid.Column="1" IsChecked="{Binding SmartRotationEnabled, Mode=TwoWay}" Padding="12,8" Cursor="Hand" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Bouton Intervalle -->
+                            <Button x:Name="BtnIntervalDynamic" Style="{StaticResource PrimaryButton}" Margin="0,0,12,0" Padding="10,8" Cursor="Hand" Click="BtnInterval_Click" ToolTip="Modifier l'intervalle de rotation">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="⏱️" Margin="0,0,6,0"/>
+                                    <TextBlock>
+                                        <Run Text="{Binding RotationInterval, Mode=OneWay}"/><Run Text=" min"/>
+                                    </TextBlock>
+                                </StackPanel>
+                                <Button.ContextMenu>
+                                    <ContextMenu Placement="Bottom">
+                                        <MenuItem Header="5 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="5"/>
+                                        <MenuItem Header="10 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="10"/>
+                                        <MenuItem Header="15 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="15"/>
+                                        <MenuItem Header="30 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="30"/>
+                                        <MenuItem Header="45 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="45"/>
+                                        <Separator/>
+                                        <MenuItem Header="1 heure" Command="{Binding SetIntervalCommand}" CommandParameter="60"/>
+                                        <MenuItem Header="2 heures" Command="{Binding SetIntervalCommand}" CommandParameter="120"/>
+                                        <MenuItem Header="4 heures" Command="{Binding SetIntervalCommand}" CommandParameter="240"/>
+                                        <MenuItem Header="8 heures" Command="{Binding SetIntervalCommand}" CommandParameter="480"/>
+                                        <MenuItem Header="24 heures" Command="{Binding SetIntervalCommand}" CommandParameter="1440"/>
+                                    </ContextMenu>
+                                </Button.ContextMenu>
+                            </Button>
+                            
+                            <ToggleButton IsChecked="{Binding SmartRotationEnabled, Mode=TwoWay}" Padding="12,8" Cursor="Hand" VerticalAlignment="Center">
                             <ToggleButton.Style>
                                 <Style TargetType="ToggleButton">
                                     <Setter Property="Template">
@@ -651,6 +778,7 @@
                                 </Style>
                             </ToggleButton.Style>
                         </ToggleButton>
+                        </StackPanel>
                     </Grid>
                     
                     <!-- Période actuelle -->
@@ -678,7 +806,6 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
                                 <Border Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="12" Margin="0,0,4,0">
                                     <StackPanel HorizontalAlignment="Center">
@@ -689,26 +816,19 @@
                                 </Border>
                                 <Border Grid.Column="1" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="12" Margin="4,0">
                                     <StackPanel HorizontalAlignment="Center">
-                                        <TextBlock Text="⚖️" FontSize="24" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="{Binding NeutralCount}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="Neutres" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
-                                    </StackPanel>
-                                </Border>
-                                <Border Grid.Column="2" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="12" Margin="4,0">
-                                    <StackPanel HorizontalAlignment="Center">
                                         <TextBlock Text="☀️" FontSize="24" HorizontalAlignment="Center"/>
                                         <TextBlock Text="{Binding LightCount}" FontSize="28" FontWeight="Bold" Foreground="{StaticResource TextPrimaryBrush}" HorizontalAlignment="Center"/>
                                         <TextBlock Text="Clairs" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
-                                <Border Grid.Column="3" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="12" Margin="4,0">
+                                <Border Grid.Column="2" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="12" Margin="4,0">
                                     <StackPanel HorizontalAlignment="Center">
                                         <TextBlock Text="🎬" FontSize="24" HorizontalAlignment="Center"/>
                                         <TextBlock Text="{Binding AnimatedCount}" FontSize="28" FontWeight="Bold" Foreground="#8B5CF6" HorizontalAlignment="Center"/>
                                         <TextBlock Text="Animés" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
-                                <Border Grid.Column="4" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="12" Margin="4,0,0,0">
+                                <Border Grid.Column="3" Background="{StaticResource SurfaceBrush}" CornerRadius="12" Padding="12" Margin="4,0,0,0">
                                     <StackPanel HorizontalAlignment="Center">
                                         <TextBlock Text="❓" FontSize="24" HorizontalAlignment="Center"/>
                                         <TextBlock Text="{Binding UnanalyzedCount}" FontSize="28" FontWeight="Bold" Foreground="#F59E0B" HorizontalAlignment="Center"/>
@@ -723,7 +843,7 @@
                     <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
                         <StackPanel>
                             <TextBlock Text="🔍 Analyse de luminosité" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            <TextBlock Text="Analysez vos images pour détecter automatiquement leur luminosité (sombre, neutre, clair). Cette analyse permet à la rotation intelligente de choisir les bons fonds d'écran selon l'heure." 
+                            <TextBlock Text="Analysez vos images pour détecter automatiquement leur luminosité (sombre ou clair). Cette analyse permet à la rotation intelligente de choisir les bons fonds d'écran selon l'heure." 
                                        FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" Margin="0,0,0,16"/>
                             
                             <!-- Boutons d'analyse -->
@@ -804,20 +924,6 @@
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="100"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="🌅" FontSize="20" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <TextBlock Text="Soir (fonds neutres)" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="SemiBold"/>
-                                    <TextBlock Text="Images de transition pour la soirée" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}"/>
-                                </StackPanel>
-                                <TextBox Grid.Column="2" Text="{Binding EveningStartTime, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource ModernTextBox}" TextAlignment="Center" FontSize="14"/>
-                            </Grid>
-                            
-                            <Grid Margin="0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="100"/>
-                                </Grid.ColumnDefinitions>
                                 <TextBlock Text="🌙" FontSize="20" VerticalAlignment="Center" Margin="0,0,12,0"/>
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                     <TextBlock Text="Nuit (fonds sombres)" Foreground="{StaticResource TextPrimaryBrush}" FontWeight="SemiBold"/>
@@ -834,9 +940,9 @@
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="💡 Comment ça marche" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            <TextBlock Text="• La rotation intelligente analyse la luminosité de vos images et les classe en 3 catégories" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4"/>
-                            <TextBlock Text="• Pendant le jour, des fonds clairs sont sélectionnés ; le soir des fonds neutres ; la nuit des fonds sombres" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4"/>
-                            <TextBlock Text="• Vous pouvez aussi voir ces catégories dans l'onglet Collections (Sombres, Neutres, Clairs)" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4"/>
+                            <TextBlock Text="• La rotation intelligente analyse la luminosité de vos images et les classe en 2 catégories" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4"/>
+                            <TextBlock Text="• Pendant le jour, des fonds clairs sont sélectionnés ; la nuit des fonds sombres" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4"/>
+                            <TextBlock Text="• Vous pouvez aussi voir ces catégories dans l'onglet Collections (Sombres, Clairs)" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4"/>
                             <TextBlock Text="• La rotation respecte l'intervalle défini dans les paramètres généraux" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4"/>
                         </StackPanel>
                     </Border>
@@ -1162,21 +1268,8 @@
                         <StackPanel>
                             <TextBlock Text="Général" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
                             <CheckBox Content="Démarrer avec Windows" IsChecked="{Binding StartWithWindows}" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
+                            <CheckBox Content="Démarrer minimisé (dans la zone de notification)" IsChecked="{Binding StartMinimized}" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
                             <CheckBox Content="Minimiser dans la barre des tâches" IsChecked="{Binding MinimizeToTray}" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8"/>
-                        </StackPanel>
-                    </Border>
-                    
-                    <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
-                        <StackPanel>
-                            <TextBlock Text="Rotation automatique" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,12"/>
-                            <Grid Margin="0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Intervalle (minutes)" Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
-                                <TextBox Grid.Column="1" Text="{Binding RotationInterval}" Width="80" Style="{StaticResource ModernTextBox}" TextAlignment="Center"/>
-                            </Grid>
                         </StackPanel>
                     </Border>
                     

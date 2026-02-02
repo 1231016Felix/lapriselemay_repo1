@@ -16,7 +16,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <PublishReadyToRun>true</PublishReadyToRun>
     <!-- Supprime les avertissements de compatibilité LibVLCSharp avec .NET 9 -->
-    <NoWarn>$(NoWarn);MSB3106;MC1000</NoWarn>
+    <NoWarn>$(NoWarn);MC1000</NoWarn>
     <ResolveAssemblyReferenceIgnoreTargetFrameworkAttributeVersionMismatch>true</ResolveAssemblyReferenceIgnoreTargetFrameworkAttributeVersionMismatch>
   </PropertyGroup>
 

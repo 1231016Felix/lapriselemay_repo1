@@ -26,7 +26,6 @@ public enum WallpaperFit
 public enum BrightnessCategory
 {
     Dark,       // Sombre
-    Neutral,    // Neutre
     Light       // Clair
 }
 

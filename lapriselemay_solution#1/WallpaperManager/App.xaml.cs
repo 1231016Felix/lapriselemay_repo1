@@ -188,6 +188,7 @@ public partial class App : Application
             _mainWindowVisible = false;
             
             // Créer une fenêtre cachée pour les raccourcis clavier
+            // Utiliser EnsureHandle() pour créer le HWND sans jamais afficher la fenêtre
             var hiddenWindow = new Window
             {
                 Width = 0,
@@ -196,8 +197,7 @@ public partial class App : Application
                 ShowInTaskbar = false,
                 ShowActivated = false
             };
-            hiddenWindow.Show();
-            hiddenWindow.Hide();
+            new System.Windows.Interop.WindowInteropHelper(hiddenWindow).EnsureHandle();
             _hotkeyService?.Initialize(hiddenWindow);
         }
     }
@@ -284,6 +284,7 @@ public partial class App : Application
         
         // Sauvegarder l'état de la fenêtre pour le prochain démarrage
         SettingsService.Current.WasInTrayOnLastExit = !_mainWindowVisible;
+        SettingsService.MarkDirty();
         
         SettingsService.Shutdown();
         

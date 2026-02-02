@@ -12,6 +12,11 @@
     <WarningLevel>7</WarningLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     
+    <!-- MSB3106 : faux positifs de résolution de noms forts sur des dépendances
+         transitives NuGet (.NET 9 + VS 18). Les assemblies sont bien présentes,
+         MSBuild échoue uniquement à valider leur strong name signature. -->
+    <NoWarn>$(NoWarn);MSB3106</NoWarn>
+    
     <!-- Métadonnées communes -->
     <Authors>Felix-Antoine</Authors>
     <Company>Laprise-Lemay</Company>

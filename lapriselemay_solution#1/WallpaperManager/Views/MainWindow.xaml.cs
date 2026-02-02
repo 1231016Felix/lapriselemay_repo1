@@ -263,6 +263,17 @@ public partial class MainWindow : Window
         }
     }
     
+    // === BOUTON INTERVALLE DE ROTATION ===
+    private void BtnInterval_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button button && button.ContextMenu != null)
+        {
+            button.ContextMenu.PlacementTarget = button;
+            button.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            button.ContextMenu.IsOpen = true;
+        }
+    }
+    
     private void OpenPreview(Wallpaper wallpaper)
     {
         var index = _viewModel.Wallpapers.IndexOf(wallpaper);

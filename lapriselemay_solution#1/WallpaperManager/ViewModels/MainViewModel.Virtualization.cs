@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using WallpaperManager.Controls;
 using WallpaperManager.Models;
 using WallpaperManager.Services;
+using System.Collections.Concurrent;
 
 namespace WallpaperManager.ViewModels;
 
@@ -16,6 +17,10 @@ public partial class MainViewModel
 {
     private ICollectionView? _wallpapersView;
     private readonly object _viewLock = new();
+    
+    // Debounce pour OnThumbnailGenerated : empêche le spam de Refresh()
+    private DispatcherTimer? _thumbnailRefreshTimer;
+    private volatile bool _thumbnailRefreshPending;
     
     /// <summary>
     /// Vue filtrée et triée des wallpapers - utilise ICollectionView pour des performances optimales.
@@ -204,25 +209,56 @@ public partial class MainViewModel
     
     /// <summary>
     /// Gère la notification de génération de miniature pour rafraîchir l'UI.
+    /// Utilise un debounce pour éviter de spammer Refresh() à chaque miniature.
     /// </summary>
     private void OnThumbnailGenerated(object? sender, string filePath)
     {
-        // Rafraîchir l'élément spécifique dans l'UI
+        // Marquer qu'un rafraîchissement est nécessaire
+        _thumbnailRefreshPending = true;
+        
+        // Programmer un rafraîchissement groupé via le dispatcher
         System.Windows.Application.Current?.Dispatcher.BeginInvoke(() =>
         {
-            // Trouver le wallpaper correspondant et notifier le changement
-            var wallpaper = _allWallpapers.FirstOrDefault(w => w.FilePath == filePath);
-            if (wallpaper != null)
+            // Initialiser le timer de debounce si nécessaire
+            if (_thumbnailRefreshTimer == null)
             {
-                // Force la mise à jour du binding
-                var index = _allWallpapers.IndexOf(wallpaper);
-                if (index >= 0)
+                _thumbnailRefreshTimer = new DispatcherTimer
                 {
-                    // Technique pour forcer le rafraîchissement sans modifier la collection
-                    _wallpapersView?.Refresh();
-                }
+                    Interval = TimeSpan.FromMilliseconds(300)
+                };
+                _thumbnailRefreshTimer.Tick += (_, _) =>
+                {
+                    _thumbnailRefreshTimer.Stop();
+                    if (_thumbnailRefreshPending)
+                    {
+                        _thumbnailRefreshPending = false;
+                        _wallpapersView?.Refresh();
+                        OnPropertyChanged(nameof(FilteredCount));
+                        
+                        // Rafraîchir aussi les wallpapers de la collection visible
+                        RefreshCollectionWallpaperBindings();
+                    }
+                };
             }
+            
+            // (Re)démarrer le timer : on attend 300ms après le dernier thumbnail
+            _thumbnailRefreshTimer.Stop();
+            _thumbnailRefreshTimer.Start();
         }, DispatcherPriority.Background);
+    }
+    
+    /// <summary>
+    /// Force le rafraîchissement des bindings de miniatures dans la collection active.
+    /// Ré-assigne la même collection pour déclencher la mise à jour de l'UI.
+    /// </summary>
+    private void RefreshCollectionWallpaperBindings()
+    {
+        if (SelectedCollection == null || CollectionWallpapers.Count == 0)
+            return;
+        
+        // Notifier que la propriété CollectionWallpapers a "changé" pour forcer
+        // la réévaluation des converters de miniatures sur les éléments visibles.
+        OnPropertyChanged(nameof(CollectionWallpapers));
     }
     
     /// <summary>
@@ -293,5 +329,7 @@ public partial class MainViewModel
     private void CleanupVirtualization()
     {
         ThumbnailService.Instance.ThumbnailGenerated -= OnThumbnailGenerated;
+        _thumbnailRefreshTimer?.Stop();
+        _thumbnailRefreshTimer = null;
     }
 }

@@ -178,6 +178,19 @@ public static class IconExtractorService
                 if (!string.IsNullOrEmpty(resolvedPath))
                 {
                     Debug.WriteLine($"[IconExtractor] Resolved Known Folder: {path} -> {resolvedPath}");
+                    
+                    // Gestion spéciale pour les fichiers .msc (MMC Snap-in)
+                    if (resolvedPath.EndsWith(".msc", StringComparison.OrdinalIgnoreCase))
+                    {
+                        icon = ExtractMscIcon(resolvedPath, largeIcon);
+                        if (icon != null)
+                        {
+                            Debug.WriteLine($"[IconExtractor] SUCCESS via MSC icon for: {path}");
+                            _iconCache.TryAdd(cacheKey, icon);
+                            return icon;
+                        }
+                    }
+                    
                     icon = ExtractIconFromFile(resolvedPath, largeIcon);
                     if (icon != null)
                     {
@@ -365,10 +378,42 @@ public static class IconExtractorService
         // AppUserModelId avec underscore (ex: Microsoft.WindowsCalculator_8wekyb3d8bbwe)
         if (path.Contains('_') && !Path.HasExtension(path) && !File.Exists(path)) return true;
         
+        // AppUserModelId format "Name.hash" (ex: VisualStudio.ab275738, Blend.ab275738)
+        // Ces identifiants ont un point suivi de caractères alphanumériques courts (6-10 chars)
+        if (IsShortHashAppUserModelId(path)) return true;
+        
         // Autres chemins sans extension qui ne sont pas des fichiers/dossiers existants
         if (!Path.HasExtension(path) && !File.Exists(path) && !Directory.Exists(path)) return true;
         
         return false;
+    }
+    
+    /// <summary>
+    /// Détecte le format AppUserModelId "Name.hash" utilisé par certaines applications Win32
+    /// (ex: VisualStudio.ab275738, Blend.ab275738)
+    /// </summary>
+    private static bool IsShortHashAppUserModelId(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+        
+        var dotIndex = path.LastIndexOf('.');
+        if (dotIndex <= 0 || dotIndex >= path.Length - 1) return false;
+        
+        var suffix = path[(dotIndex + 1)..];
+        
+        // Un hash court fait généralement 6-10 caractères alphanumériques
+        if (suffix.Length < 6 || suffix.Length > 12) return false;
+        
+        // Doit être uniquement alphanumérique (pas une vraie extension de fichier)
+        if (!suffix.All(c => char.IsLetterOrDigit(c))) return false;
+        
+        // Les vraies extensions de fichier sont généralement 2-4 caractères
+        // et contiennent des patterns connus
+        var knownExtensions = new[] { "exe", "dll", "msi", "lnk", "bat", "cmd", "ps1", "msc", "cpl", "txt", "xml", "json", "config" };
+        if (knownExtensions.Contains(suffix.ToLowerInvariant())) return false;
+        
+        // C'est probablement un AppUserModelId avec hash
+        return true;
     }
 
     /// <summary>
@@ -903,6 +948,84 @@ public static class IconExtractorService
                 try { Marshal.ReleaseComObject(factory); } catch { }
             }
         }
+        return null;
+    }
+
+    /// <summary>
+    /// Extrait l'icône d'un fichier MMC Snap-in (.msc).
+    /// Les fichiers .msc n'ont pas d'icône intégrée, donc on utilise l'icône de mmc.exe
+    /// ou on cherche dans le registre pour une icône personnalisée.
+    /// </summary>
+    private static ImageSource? ExtractMscIcon(string mscPath, bool largeIcon)
+    {
+        try
+        {
+            Debug.WriteLine($"[IconExtractor] ExtractMscIcon for: {mscPath}");
+            
+            // 1. Essayer d'obtenir l'icône via le registre (certains .msc ont une icône personnalisée)
+            var mscName = Path.GetFileName(mscPath);
+            var regPath = $@"SOFTWARE\Microsoft\MMC\SnapIns";
+            
+            // Chercher dans le registre si ce snap-in a une icône personnalisée
+            try
+            {
+                using var snapInsKey = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(regPath);
+                if (snapInsKey != null)
+                {
+                    foreach (var subKeyName in snapInsKey.GetSubKeyNames())
+                    {
+                        using var subKey = snapInsKey.OpenSubKey(subKeyName);
+                        var nameAbout = subKey?.GetValue("NameStringIndirect") as string;
+                        var iconPath = subKey?.GetValue("IconPath") as string;
+                        
+                        if (!string.IsNullOrEmpty(iconPath))
+                        {
+                            // Format: "path,index" ou juste "path"
+                            var parts = iconPath.Split(',');
+                            var iconFile = Environment.ExpandEnvironmentVariables(parts[0]);
+                            var iconIndex = parts.Length > 1 && int.TryParse(parts[1], out var idx) ? idx : 0;
+                            
+                            if (File.Exists(iconFile))
+                            {
+                                var hIcon = ExtractIcon(IntPtr.Zero, iconFile, iconIndex);
+                                if (hIcon != IntPtr.Zero && hIcon.ToInt64() > 1)
+                                {
+                                    try
+                                    {
+                                        var icon = Imaging.CreateBitmapSourceFromHIcon(
+                                            hIcon, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                                        icon.Freeze();
+                                        Debug.WriteLine($"[IconExtractor] MSC icon from registry: {iconFile}");
+                                        return icon;
+                                    }
+                                    finally
+                                    {
+                                        DestroyIcon(hIcon);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[IconExtractor] MSC registry search error: {ex.Message}");
+            }
+            
+            // 2. Fallback: utiliser l'icône de mmc.exe
+            var mmcPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "mmc.exe");
+            if (File.Exists(mmcPath))
+            {
+                Debug.WriteLine($"[IconExtractor] Using mmc.exe icon for MSC file");
+                return ExtractIconFromFile(mmcPath, largeIcon);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[IconExtractor] ExtractMscIcon error: {ex.Message}");
+        }
+        
         return null;
     }
 

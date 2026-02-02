@@ -13,14 +13,13 @@ public static class SystemCollectionIds
     public const string Favorites = "__favorites__";
     public const string Dark = "__dark__";
     public const string Light = "__light__";
-    public const string Neutral = "__neutral__";
     public const string Animated = "__animated__";
     
     public static bool IsSystemCollection(string? id) =>
-        id == Favorites || id == Dark || id == Light || id == Neutral || id == Animated;
+        id == Favorites || id == Dark || id == Light || id == Animated;
     
     public static bool IsBrightnessCollection(string? id) =>
-        id == Dark || id == Light || id == Neutral;
+        id == Dark || id == Light;
 }
 
 /// <summary>
@@ -81,6 +80,9 @@ public class Collection : INotifyPropertyChanged
     
     private List<string> _wallpaperIds = [];
     
+    // HashSet pour les recherches rapides O(1)
+    private HashSet<string>? _wallpaperIdsSet;
+    
     /// <summary>
     /// Liste des IDs de wallpapers dans cette collection.
     /// </summary>
@@ -90,11 +92,17 @@ public class Collection : INotifyPropertyChanged
         set
         {
             _wallpaperIds = value ?? [];
+            _wallpaperIdsSet = null; // Invalider le cache
             OnPropertyChanged();
             OnPropertyChanged(nameof(Count));
             OnPropertyChanged(nameof(IsEmpty));
         }
     }
+    
+    /// <summary>
+    /// Obtient un HashSet pour des recherches rapides (lazy-loaded).
+    /// </summary>
+    private HashSet<string> WallpaperIdsSet => _wallpaperIdsSet ??= new HashSet<string>(_wallpaperIds);
     
     /// <summary>
     /// Nombre de wallpapers dans la collection.
@@ -125,10 +133,11 @@ public class Collection : INotifyPropertyChanged
     /// <returns>True si ajouté, false si déjà présent</returns>
     public bool AddWallpaper(string wallpaperId)
     {
-        if (string.IsNullOrEmpty(wallpaperId) || _wallpaperIds.Contains(wallpaperId))
+        if (string.IsNullOrEmpty(wallpaperId) || WallpaperIdsSet.Contains(wallpaperId))
             return false;
         
         _wallpaperIds.Add(wallpaperId);
+        _wallpaperIdsSet?.Add(wallpaperId);
         OnPropertyChanged(nameof(Count));
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(CountText));
@@ -147,6 +156,7 @@ public class Collection : INotifyPropertyChanged
         var removed = _wallpaperIds.Remove(wallpaperId);
         if (removed)
         {
+            _wallpaperIdsSet?.Remove(wallpaperId);
             OnPropertyChanged(nameof(Count));
             OnPropertyChanged(nameof(IsEmpty));
             OnPropertyChanged(nameof(CountText));
@@ -156,7 +166,21 @@ public class Collection : INotifyPropertyChanged
     
     /// <summary>
     /// Vérifie si un wallpaper est dans la collection.
+    /// Utilise un HashSet pour une recherche O(1).
     /// </summary>
     public bool Contains(string wallpaperId)
-        => !string.IsNullOrEmpty(wallpaperId) && _wallpaperIds.Contains(wallpaperId);
+        => !string.IsNullOrEmpty(wallpaperId) && WallpaperIdsSet.Contains(wallpaperId);
+    
+    /// <summary>
+    /// Force la notification de changement du compteur.
+    /// Utile quand WallpaperIds est modifié directement (ex: via SettingsService).
+    /// Invalide également le cache HashSet.
+    /// </summary>
+    public void NotifyCountChanged()
+    {
+        _wallpaperIdsSet = null; // Invalider le cache car la liste a pu changer
+        OnPropertyChanged(nameof(Count));
+        OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(CountText));
+    }
 }

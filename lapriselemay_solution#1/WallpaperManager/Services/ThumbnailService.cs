@@ -199,45 +199,25 @@ public sealed class ThumbnailService : IDisposable
     
     /// <summary>
     /// Version synchrone pour le converter XAML.
-    /// Retourne le cache ou null, déclenche le chargement en arrière-plan.
+    /// Retourne le cache mémoire uniquement (aucun I/O disque) pour ne pas bloquer le thread UI.
+    /// Déclenche le chargement en arrière-plan si non trouvé en mémoire.
     /// </summary>
     public BitmapSource? GetThumbnailSync(string filePath)
     {
         if (string.IsNullOrEmpty(filePath))
             return null;
         
-        // Cache mémoire seulement (instantané)
+        // Cache mémoire seulement (instantané, aucun I/O disque)
         if (_memoryCache.TryGet(filePath, out var cached))
         {
             Interlocked.Increment(ref _cacheHits);
             return cached;
         }
         
-        // Vérifier le cache disque (synchrone mais rapide)
-        var cacheKey = GetCacheKey(filePath);
-        var cachePath = Path.Combine(_cacheFolder, $"{cacheKey}.jpg");
-        
-        if (File.Exists(cachePath))
-        {
-            try
-            {
-                var bitmap = LoadFromDiskSync(cachePath);
-                if (bitmap != null)
-                {
-                    _memoryCache.Set(filePath, bitmap);
-                    Interlocked.Increment(ref _diskHits);
-                    return bitmap;
-                }
-            }
-            catch
-            {
-                try { File.Delete(cachePath); } catch { }
-            }
-        }
-        
         Interlocked.Increment(ref _cacheMisses);
         
-        // Déclencher la génération en arrière-plan avec priorité visible
+        // Déclencher le chargement en arrière-plan (cache disque + génération)
+        // Le converter retournera un placeholder, puis l'UI sera notifiée via ThumbnailGenerated
         _ = GetThumbnailAsync(filePath, ThumbnailPriority.Visible);
         
         return null;

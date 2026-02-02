@@ -11,6 +11,12 @@ public partial class MainViewModel
     // Collection spéciale "Favoris" (virtuelle, non stockée)
     private static readonly string FavoritesCollectionId = SystemCollectionIds.Favorites;
     
+    /// <summary>
+    /// Garde de réentrance : empêche OnSelectedCollectionChanged de se re-déclencher
+    /// lors des mises à jour programmatiques de la liste des collections.
+    /// </summary>
+    private bool _suppressCollectionSelectionChanged;
+    
     private readonly Collection _favoritesCollection = new()
     {
         Id = FavoritesCollectionId,
@@ -29,6 +35,9 @@ public partial class MainViewModel
     
     [ObservableProperty]
     private Wallpaper? _selectedCollectionWallpaper;
+    
+    [ObservableProperty]
+    private bool _isCollectionRotationActive;
     
     /// <summary>
     /// Indique si la collection sélectionnée est la collection spéciale "Favoris"
@@ -60,8 +69,7 @@ public partial class MainViewModel
             _favoritesCollection,
             _animatedCollection,
             _darkCollection,
-            _lightCollection,
-            _neutralCollection
+            _lightCollection
         };
         allCollections.AddRange(SettingsService.Collections);
         
@@ -79,25 +87,38 @@ public partial class MainViewModel
     
     partial void OnSelectedCollectionChanged(Collection? oldValue, Collection? newValue)
     {
-        // Désabonner de l'ancienne collection (sauf collections système)
-        if (oldValue != null && !SystemCollectionIds.IsSystemCollection(oldValue.Id))
+        // Garde de réentrance : ignorer les changements programmatiques
+        if (_suppressCollectionSelectionChanged)
+            return;
+        
+        try
         {
-            oldValue.PropertyChanged -= OnCollectionPropertyChanged;
+            // Désabonner de l'ancienne collection (sauf collections système)
+            if (oldValue != null && !SystemCollectionIds.IsSystemCollection(oldValue.Id))
+            {
+                oldValue.PropertyChanged -= OnCollectionPropertyChanged;
+            }
+            
+            // S'abonner à la nouvelle collection (sauf collections système)
+            if (newValue != null && !SystemCollectionIds.IsSystemCollection(newValue.Id))
+            {
+                newValue.PropertyChanged += OnCollectionPropertyChanged;
+            }
+            
+            // Charger les wallpapers de manière asynchrone pour ne pas geler l'UI
+            _ = RefreshCollectionWallpapersAsync();
+            
+            // Notifier les propriétés dépendantes
+            OnPropertyChanged(nameof(IsSelectedCollectionFavorites));
+            OnPropertyChanged(nameof(IsSelectedCollectionSystem));
+            OnPropertyChanged(nameof(IsSelectedCollectionBrightness));
+            OnPropertyChanged(nameof(CanEditSelectedCollection));
         }
-        
-        // S'abonner à la nouvelle collection (sauf collections système)
-        if (newValue != null && !SystemCollectionIds.IsSystemCollection(newValue.Id))
+        catch (Exception ex)
         {
-            newValue.PropertyChanged += OnCollectionPropertyChanged;
+            System.Diagnostics.Debug.WriteLine($"Erreur lors du changement de collection: {ex.Message}");
+            StatusMessage = $"Erreur: {ex.Message}";
         }
-        
-        RefreshCollectionWallpapers();
-        
-        // Notifier les propriétés dépendantes
-        OnPropertyChanged(nameof(IsSelectedCollectionFavorites));
-        OnPropertyChanged(nameof(IsSelectedCollectionSystem));
-        OnPropertyChanged(nameof(IsSelectedCollectionBrightness));
-        OnPropertyChanged(nameof(CanEditSelectedCollection));
     }
     
     private void OnCollectionPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -109,15 +130,24 @@ public partial class MainViewModel
             SettingsService.Save();
             
             // Rafraîchir la liste pour mettre à jour l'affichage
+            // On utilise la garde de réentrance pour éviter les cascades
             if (SelectedCollection != null)
             {
                 var index = Collections.IndexOf(SelectedCollection);
                 if (index >= 0)
                 {
-                    var temp = SelectedCollection;
-                    Collections.RemoveAt(index);
-                    Collections.Insert(index, temp);
-                    SelectedCollection = temp;
+                    _suppressCollectionSelectionChanged = true;
+                    try
+                    {
+                        var temp = SelectedCollection;
+                        Collections.RemoveAt(index);
+                        Collections.Insert(index, temp);
+                        SelectedCollection = temp;
+                    }
+                    finally
+                    {
+                        _suppressCollectionSelectionChanged = false;
+                    }
                 }
             }
         }
@@ -125,46 +155,125 @@ public partial class MainViewModel
     
     private void RefreshCollectionWallpapers()
     {
+        // Version synchrone qui délègue à la version async
+        _ = RefreshCollectionWallpapersAsync();
+    }
+    
+    /// <summary>
+    /// Indicateur de chargement spécifique aux collections
+    /// </summary>
+    [ObservableProperty]
+    private bool _isCollectionLoading;
+    
+    /// <summary>
+    /// Texte de progression du chargement
+    /// </summary>
+    [ObservableProperty]
+    private string _collectionLoadingText = "Chargement...";
+    
+    /// <summary>
+    /// Rafraîchit les wallpapers de la collection sélectionnée de manière asynchrone et progressive.
+    /// </summary>
+    private async Task RefreshCollectionWallpapersAsync()
+    {
         if (SelectedCollection == null)
         {
             CollectionWallpapers.Clear();
             return;
         }
         
-        List<Wallpaper> wallpapers;
+        var collectionId = SelectedCollection.Id;
         
-        if (SelectedCollection.Id == FavoritesCollectionId)
+        try
         {
-            // Collection Favoris : récupérer tous les favoris
-            wallpapers = _allWallpapers.Where(w => w.IsFavorite).ToList();
+            // Afficher l'indicateur IMMÉDIATEMENT avant tout traitement
+            IsCollectionLoading = true;
+            CollectionLoadingText = "Chargement...";
+            
+            // Laisser le temps à l'UI de se mettre à jour (afficher le spinner)
+            await Task.Delay(10).ConfigureAwait(true);
+            
+            // Effectuer les opérations de filtrage en arrière-plan
+            var wallpapers = await Task.Run(() =>
+            {
+                // Vérifier que la collection n'a pas changé pendant l'attente
+                if (SelectedCollection?.Id != collectionId)
+                    return null;
+                
+                List<Wallpaper> result;
+                
+                if (collectionId == FavoritesCollectionId)
+                {
+                    result = _allWallpapers.Where(w => w.IsFavorite).ToList();
+                }
+                else if (collectionId == DarkCollectionId)
+                {
+                    result = _allWallpapers.Where(w => w.BrightnessCategory == BrightnessCategory.Dark).ToList();
+                }
+                else if (collectionId == LightCollectionId)
+                {
+                    result = _allWallpapers.Where(w => w.BrightnessCategory == BrightnessCategory.Light).ToList();
+                }
+                else if (collectionId == AnimatedCollectionId)
+                {
+                    result = _allWallpapers.Where(w => w.Type == WallpaperType.Animated || w.Type == WallpaperType.Video).ToList();
+                }
+                else
+                {
+                    result = SettingsService.GetWallpapersInCollection(collectionId);
+                }
+                
+                return result;
+            }).ConfigureAwait(true);
+            
+            // Vérifier que la collection n'a pas changé pendant l'attente
+            if (wallpapers == null || SelectedCollection?.Id != collectionId)
+                return;
+            
+            // Charger progressivement pour les grandes collections
+            if (wallpapers.Count > 100)
+            {
+                CollectionLoadingText = $"Affichage de {wallpapers.Count} éléments...";
+                
+                // Vider d'abord pour éviter la mémoire excessive
+                CollectionWallpapers = new ObservableCollection<Wallpaper>();
+                
+                // Ajouter par lots pour ne pas bloquer l'UI
+                const int batchSize = 50;
+                for (int i = 0; i < wallpapers.Count; i += batchSize)
+                {
+                    // Vérifier que la collection n'a pas changé
+                    if (SelectedCollection?.Id != collectionId)
+                        return;
+                    
+                    var batch = wallpapers.Skip(i).Take(batchSize);
+                    foreach (var wp in batch)
+                    {
+                        CollectionWallpapers.Add(wp);
+                    }
+                    
+                    CollectionLoadingText = $"Chargé {Math.Min(i + batchSize, wallpapers.Count)}/{wallpapers.Count}...";
+                    
+                    // Laisser l'UI respirer entre les lots
+                    await Task.Delay(5).ConfigureAwait(true);
+                }
+            }
+            else
+            {
+                // Pour les petites collections, charger tout d'un coup
+                CollectionWallpapers = new ObservableCollection<Wallpaper>(wallpapers);
+            }
         }
-        else if (SelectedCollection.Id == DarkCollectionId)
+        catch (Exception ex)
         {
-            // Collection Sombres
-            wallpapers = _allWallpapers.Where(w => w.BrightnessCategory == BrightnessCategory.Dark).ToList();
+            System.Diagnostics.Debug.WriteLine($"Erreur lors du rafraîchissement des wallpapers de collection: {ex.Message}");
+            CollectionWallpapers.Clear();
+            StatusMessage = $"Erreur de chargement: {ex.Message}";
         }
-        else if (SelectedCollection.Id == LightCollectionId)
+        finally
         {
-            // Collection Clairs
-            wallpapers = _allWallpapers.Where(w => w.BrightnessCategory == BrightnessCategory.Light).ToList();
+            IsCollectionLoading = false;
         }
-        else if (SelectedCollection.Id == NeutralCollectionId)
-        {
-            // Collection Neutres
-            wallpapers = _allWallpapers.Where(w => w.BrightnessCategory == BrightnessCategory.Neutral).ToList();
-        }
-        else if (SelectedCollection.Id == AnimatedCollectionId)
-        {
-            // Collection Animés (GIF et vidéos)
-            wallpapers = _allWallpapers.Where(w => w.Type == WallpaperType.Animated || w.Type == WallpaperType.Video).ToList();
-        }
-        else
-        {
-            // Collection normale
-            wallpapers = SettingsService.GetWallpapersInCollection(SelectedCollection.Id);
-        }
-        
-        CollectionWallpapers = new ObservableCollection<Wallpaper>(wallpapers);
     }
     
     /// <summary>
@@ -174,18 +283,13 @@ public partial class MainViewModel
     {
         UpdateFavoritesCount();
         
-        // Rafraîchir l'affichage du compteur dans la liste
-        var index = Collections.IndexOf(_favoritesCollection);
-        if (index >= 0)
-        {
-            Collections.RemoveAt(index);
-            Collections.Insert(index, _favoritesCollection);
-        }
+        // Notifier le changement de compteur sans casser la sélection
+        _favoritesCollection.NotifyCountChanged();
         
-        // Rafraîchir le contenu si Favoris est sélectionné
+        // Rafraîchir le contenu si Favoris est sélectionné (de manière async)
         if (IsSelectedCollectionFavorites)
         {
-            RefreshCollectionWallpapers();
+            _ = RefreshCollectionWallpapersAsync();
         }
     }
     
@@ -243,14 +347,22 @@ public partial class MainViewModel
         SettingsService.MarkDirty();
         SettingsService.Save();
         
-        // Forcer le rafraîchissement de l'UI
+        // Forcer le rafraîchissement de l'UI avec garde de réentrance
         var index = Collections.IndexOf(SelectedCollection);
         if (index >= 0)
         {
-            var temp = SelectedCollection;
-            Collections.RemoveAt(index);
-            Collections.Insert(index, temp);
-            SelectedCollection = temp;
+            _suppressCollectionSelectionChanged = true;
+            try
+            {
+                var temp = SelectedCollection;
+                Collections.RemoveAt(index);
+                Collections.Insert(index, temp);
+                SelectedCollection = temp;
+            }
+            finally
+            {
+                _suppressCollectionSelectionChanged = false;
+            }
         }
         
         StatusMessage = $"Collection renommée en '{newName}'";
@@ -265,14 +377,22 @@ public partial class MainViewModel
         SettingsService.MarkDirty();
         SettingsService.Save();
         
-        // Forcer le rafraîchissement
+        // Forcer le rafraîchissement avec garde de réentrance
         var index = Collections.IndexOf(SelectedCollection);
         if (index >= 0)
         {
-            var temp = SelectedCollection;
-            Collections.RemoveAt(index);
-            Collections.Insert(index, temp);
-            SelectedCollection = temp;
+            _suppressCollectionSelectionChanged = true;
+            try
+            {
+                var temp = SelectedCollection;
+                Collections.RemoveAt(index);
+                Collections.Insert(index, temp);
+                SelectedCollection = temp;
+            }
+            finally
+            {
+                _suppressCollectionSelectionChanged = false;
+            }
         }
     }
     
@@ -303,13 +423,8 @@ public partial class MainViewModel
         if (SelectedCollection?.Id == collection.Id)
             RefreshCollectionWallpapers();
         
-        // Rafraîchir le compteur dans la liste
-        var index = Collections.IndexOf(collection);
-        if (index >= 0)
-        {
-            Collections.RemoveAt(index);
-            Collections.Insert(index, collection);
-        }
+        // Rafraîchir le compteur sans casser la sélection
+        collection.NotifyCountChanged();
         
         StatusMessage = addedCount > 0 
             ? $"{addedCount} fond(s) ajouté(s) à '{collection.Name}'"
@@ -347,15 +462,8 @@ public partial class MainViewModel
             CollectionWallpapers.Remove(wallpaper);
             SettingsService.Save();
             
-            // Rafraîchir le compteur
-            var index = Collections.IndexOf(SelectedCollection);
-            if (index >= 0)
-            {
-                var temp = SelectedCollection;
-                Collections.RemoveAt(index);
-                Collections.Insert(index, temp);
-                SelectedCollection = temp;
-            }
+            // Rafraîchir le compteur sans casser la sélection
+            SelectedCollection.NotifyCountChanged();
             
             StatusMessage = $"'{wallpaper.DisplayName}' retiré de la collection";
         }
@@ -392,6 +500,18 @@ public partial class MainViewModel
             // Collection Favoris : récupérer tous les favoris
             wallpapers = _allWallpapers.Where(w => w.IsFavorite).ToList();
         }
+        else if (SelectedCollection.Id == DarkCollectionId)
+        {
+            wallpapers = _allWallpapers.Where(w => w.BrightnessCategory == BrightnessCategory.Dark).ToList();
+        }
+        else if (SelectedCollection.Id == LightCollectionId)
+        {
+            wallpapers = _allWallpapers.Where(w => w.BrightnessCategory == BrightnessCategory.Light).ToList();
+        }
+        else if (SelectedCollection.Id == AnimatedCollectionId)
+        {
+            wallpapers = _allWallpapers.Where(w => w.Type == WallpaperType.Animated || w.Type == WallpaperType.Video).ToList();
+        }
         else
         {
             // Collection normale
@@ -407,6 +527,12 @@ public partial class MainViewModel
         // Désactiver le wallpaper dynamique
         App.DynamicService.Stop();
         
+        // Désactiver la rotation intelligente si active
+        if (SmartRotationEnabled)
+        {
+            SmartRotationEnabled = false;
+        }
+        
         // Configurer la rotation avec cette collection uniquement
         App.RotationService.SetPlaylist(wallpapers);
         App.RotationService.Start();
@@ -414,7 +540,46 @@ public partial class MainViewModel
         // Appliquer immédiatement le premier wallpaper
         App.RotationService.Next();
         
-        IsRotationEnabled = true;
+        // Mettre à jour l'état : d'abord activer la rotation, puis verrouiller le toggle
+        // Important: _isRotationEnabled est mis directement pour éviter que le handler
+        // OnIsRotationEnabledChanged ne recharge la playlist par défaut
+        _isRotationEnabled = true;
+        SettingsService.Current.RotationEnabled = true;
+        OnPropertyChanged(nameof(IsRotationEnabled));
+        OnPropertyChanged(nameof(RotationStatusText));
+        IsCollectionRotationActive = true;
+        SettingsService.Save();
         StatusMessage = $"Rotation démarrée avec '{SelectedCollection.Name}' ({wallpapers.Count} fonds)";
+    }
+    
+    [RelayCommand]
+    private void StopCollectionRotation()
+    {
+        if (!App.IsInitialized) return;
+        
+        // Arrêter la rotation en cours
+        App.RotationService.Stop();
+        
+        // Désactiver l'état de rotation de collection
+        IsCollectionRotationActive = false;
+        
+        // Recharger la playlist par défaut (toute la bibliothèque) et relancer
+        App.RotationService.RefreshPlaylist();
+        App.RotationService.Start();
+        
+        // L'état reste "rotation activée" mais avec la bibliothèque complète
+        _isRotationEnabled = true;
+        SettingsService.Current.RotationEnabled = true;
+        OnPropertyChanged(nameof(IsRotationEnabled));
+        OnPropertyChanged(nameof(RotationStatusText));
+        SettingsService.Save();
+        
+        StatusMessage = "Rotation de collection arrêtée — rotation de la bibliothèque rétablie";
+    }
+    
+    partial void OnIsCollectionRotationActiveChanged(bool value)
+    {
+        // Notifier l'UI que l'état du toggle de rotation automatique peut avoir changé
+        OnPropertyChanged(nameof(IsRotationToggleEnabled));
     }
 }

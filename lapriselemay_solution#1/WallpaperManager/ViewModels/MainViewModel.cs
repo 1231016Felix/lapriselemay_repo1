@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Windows.Data;
@@ -821,6 +821,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SettingsService.Save();
     }
     
+    /// <summary>
+    /// Commande pour définir l'intervalle de rotation depuis le menu contextuel.
+    /// </summary>
+    [RelayCommand]
+    private void SetInterval(string? minutesString)
+    {
+        if (int.TryParse(minutesString, out var minutes) && minutes > 0)
+        {
+            RotationInterval = minutes;
+            StatusMessage = $"Intervalle de rotation: {minutes} minute(s)";
+        }
+    }
+    
     partial void OnIsRotationEnabledChanged(bool value)
     {
         // Empêcher l'activation si la rotation intelligente est active
@@ -830,6 +843,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _isRotationEnabled = false;
             OnPropertyChanged(nameof(IsRotationEnabled));
             StatusMessage = "Désactivez d'abord la rotation intelligente";
+            return;
+        }
+        
+        // Empêcher l'activation si la rotation de collection est active
+        if (value && IsCollectionRotationActive)
+        {
+            _isRotationEnabled = false;
+            OnPropertyChanged(nameof(IsRotationEnabled));
+            StatusMessage = "Désactivez d'abord la rotation de collection";
             return;
         }
         
@@ -849,6 +871,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             else
             {
                 App.RotationService.Stop();
+                
+                // Désactiver aussi la rotation de collection si elle était active
+                if (IsCollectionRotationActive)
+                {
+                    IsCollectionRotationActive = false;
+                }
+                
                 StatusMessage = "Rotation automatique désactivée";
             }
         }

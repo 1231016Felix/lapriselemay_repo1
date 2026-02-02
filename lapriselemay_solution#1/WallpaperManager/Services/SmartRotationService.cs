@@ -19,14 +19,9 @@ public class SmartRotationSettings
     public TimeSpan DayStartTime { get; set; } = new TimeSpan(7, 0, 0); // 07:00
     
     /// <summary>
-    /// Heure de début de la période "soir" (collection neutre).
-    /// </summary>
-    public TimeSpan EveningStartTime { get; set; } = new TimeSpan(18, 0, 0); // 18:00
-    
-    /// <summary>
     /// Heure de début de la période "nuit" (collection sombre).
     /// </summary>
-    public TimeSpan NightStartTime { get; set; } = new TimeSpan(21, 0, 0); // 21:00
+    public TimeSpan NightStartTime { get; set; } = new TimeSpan(19, 0, 0); // 19:00
     
     /// <summary>
     /// Changer le fond d'écran à chaque changement de période.
@@ -45,13 +40,12 @@ public class SmartRotationSettings
 public enum DayPeriod
 {
     Night,      // Nuit → Collection Sombre
-    Day,        // Jour → Collection Claire
-    Evening     // Soir → Collection Neutre
+    Day         // Jour → Collection Claire
 }
 
 /// <summary>
 /// Service de rotation intelligente des fonds d'écran selon l'heure.
-/// Utilise les collections de luminosité (Sombre, Claire, Neutre).
+/// Utilise les collections de luminosité (Sombre, Claire).
 /// </summary>
 public sealed class SmartRotationService : IDisposable
 {
@@ -146,17 +140,13 @@ public sealed class SmartRotationService : IDisposable
     {
         var now = DateTime.Now.TimeOfDay;
         
+        // Jour: de DayStartTime à NightStartTime
         // Nuit: de NightStartTime à DayStartTime
-        // Jour: de DayStartTime à EveningStartTime
-        // Soir: de EveningStartTime à NightStartTime
         
-        if (now >= Settings.NightStartTime || now < Settings.DayStartTime)
-            return DayPeriod.Night;
-        
-        if (now >= Settings.DayStartTime && now < Settings.EveningStartTime)
+        if (now >= Settings.DayStartTime && now < Settings.NightStartTime)
             return DayPeriod.Day;
         
-        return DayPeriod.Evening;
+        return DayPeriod.Night;
     }
     
     /// <summary>
@@ -166,8 +156,7 @@ public sealed class SmartRotationService : IDisposable
     {
         DayPeriod.Night => BrightnessCategory.Dark,
         DayPeriod.Day => BrightnessCategory.Light,
-        DayPeriod.Evening => BrightnessCategory.Neutral,
-        _ => BrightnessCategory.Neutral
+        _ => BrightnessCategory.Light
     };
     
     /// <summary>
@@ -177,8 +166,7 @@ public sealed class SmartRotationService : IDisposable
     {
         BrightnessCategory.Dark => DayPeriod.Night,
         BrightnessCategory.Light => DayPeriod.Day,
-        BrightnessCategory.Neutral => DayPeriod.Evening,
-        _ => DayPeriod.Evening
+        _ => DayPeriod.Day
     };
     
     /// <summary>
@@ -227,7 +215,6 @@ public sealed class SmartRotationService : IDisposable
     {
         DayPeriod.Night => "Nuit",
         DayPeriod.Day => "Jour",
-        DayPeriod.Evening => "Soir",
         _ => "Inconnu"
     };
     
@@ -238,7 +225,6 @@ public sealed class SmartRotationService : IDisposable
     {
         DayPeriod.Night => "🌙",
         DayPeriod.Day => "☀️",
-        DayPeriod.Evening => "🌅",
         _ => "❓"
     };
     
