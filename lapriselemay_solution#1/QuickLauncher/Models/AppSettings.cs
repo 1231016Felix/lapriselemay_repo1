@@ -113,6 +113,10 @@ public sealed class AppSettings
     
     private static List<SystemControlCommand> GetDefaultSystemCommands() =>
     [
+        // Recherche
+        new() { Type = SystemControlType.SystemSearch, Name = "Recherche système", Prefix = "find", Icon = "🔎", 
+                Description = "Rechercher des fichiers sur tout le système", RequiresArgument = true, ArgumentHint = "[terme de recherche]" },
+        
         // Audio
         new() { Type = SystemControlType.Volume, Name = "Volume", Prefix = "volume", Icon = "🔊", 
                 Description = "Régler le volume (0-100, up, down)", RequiresArgument = true, ArgumentHint = "[0-100|up|down]" },
@@ -407,7 +411,8 @@ public enum SystemControlType
     EmptyTemp = 16,
     OpenCmdAdmin = 17,
     OpenPowerShellAdmin = 18,
-    RestartExplorer = 19
+    RestartExplorer = 19,
+    SystemSearch = 20
 }
 
 /// <summary>

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 using Application = System.Windows.Application;
 using Color = System.Windows.Media.Color;
@@ -23,14 +24,44 @@ public partial class SettingsWindow : Window
     
     private const string StartupRegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
     private const string AppName = "QuickLauncher";
+    
+    // Valeurs initiales du raccourci pour détecter les changements
+    private bool _initialHotkeyAlt;
+    private bool _initialHotkeyCtrl;
+    private bool _initialHotkeyShift;
+    private bool _initialHotkeyWin;
+    private string _initialHotkeyKey = "Space";
+    
+    // Flag pour éviter les sauvegardes pendant le chargement initial
+    private bool _isLoading = true;
+    
+    // Timer pour le feedback de sauvegarde
+    private readonly DispatcherTimer _saveIndicatorTimer;
 
     public SettingsWindow(IndexingService? indexingService = null)
     {
         InitializeComponent();
         _settings = AppSettings.Load();
         _indexingService = indexingService;
+        
+        // Initialiser le timer pour le feedback de sauvegarde
+        _saveIndicatorTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(2)
+        };
+        _saveIndicatorTimer.Tick += SaveIndicatorTimer_Tick;
+        
+        // Sauvegarder les valeurs initiales du raccourci
+        _initialHotkeyAlt = _settings.Hotkey.UseAlt;
+        _initialHotkeyCtrl = _settings.Hotkey.UseCtrl;
+        _initialHotkeyShift = _settings.Hotkey.UseShift;
+        _initialHotkeyWin = _settings.Hotkey.UseWin;
+        _initialHotkeyKey = _settings.Hotkey.Key;
+        
         LoadSettings();
         LoadStatistics();
+        
+        _isLoading = false;
     }
 
     private void LoadSettings()
@@ -185,30 +216,60 @@ public partial class SettingsWindow : Window
     {
         if (MaxResultsValue != null)
             MaxResultsValue.Text = ((int)e.NewValue).ToString();
+        
+        if (!_isLoading)
+        {
+            _settings.MaxResults = (int)e.NewValue;
+            AutoSave();
+        }
     }
     
     private void MaxHistorySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (MaxHistoryValue != null)
             MaxHistoryValue.Text = ((int)e.NewValue).ToString();
+        
+        if (!_isLoading)
+        {
+            _settings.MaxSearchHistory = (int)e.NewValue;
+            AutoSave();
+        }
     }
     
     private void OpacitySlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (OpacityValue != null)
             OpacityValue.Text = $"{(int)(e.NewValue * 100)}%";
+        
+        if (!_isLoading)
+        {
+            _settings.WindowOpacity = e.NewValue;
+            AutoSave();
+        }
     }
     
     private void SearchDepthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (SearchDepthValue != null)
             SearchDepthValue.Text = ((int)e.NewValue).ToString();
+        
+        if (!_isLoading)
+        {
+            _settings.SearchDepth = (int)e.NewValue;
+            AutoSave();
+        }
     }
     
     private void SystemSearchDepthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (SystemSearchDepthValue != null)
             SystemSearchDepthValue.Text = ((int)e.NewValue).ToString();
+        
+        if (!_isLoading)
+        {
+            _settings.SystemSearchDepth = (int)e.NewValue;
+            AutoSave();
+        }
     }
     
     private void LoadSearchEngineInfo()
@@ -268,18 +329,81 @@ public partial class SettingsWindow : Window
 
     // === Gestionnaires d'événements - Apparence ===
     
-    private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) { }
+    private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoading && ThemeCombo.SelectedItem is ComboBoxItem { Tag: string theme })
+        {
+            _settings.Theme = theme;
+            AutoSave();
+        }
+    }
     
     private void AccentColorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (AccentColorCombo.SelectedItem is ComboBoxItem { Tag: string color })
+        {
             UpdateColorPreview(color);
+            if (!_isLoading)
+            {
+                _settings.AccentColor = color;
+                AutoSave();
+            }
+        }
     }
 
     // === Gestionnaires d'événements - Raccourci ===
     
-    private void Hotkey_Changed(object sender, RoutedEventArgs e) => UpdateHotkeyDisplay();
-    private void HotkeyKeyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateHotkeyDisplay();
+    private void Hotkey_Changed(object sender, RoutedEventArgs e)
+    {
+        UpdateHotkeyDisplay();
+        if (!_isLoading)
+        {
+            SaveHotkeySettings();
+            CheckHotkeyChanged();
+        }
+    }
+    
+    private void HotkeyKeyCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateHotkeyDisplay();
+        if (!_isLoading)
+        {
+            SaveHotkeySettings();
+            CheckHotkeyChanged();
+        }
+    }
+    
+    private void SaveHotkeySettings()
+    {
+        _settings.Hotkey.UseAlt = HotkeyAltCheck.IsChecked == true;
+        _settings.Hotkey.UseCtrl = HotkeyCtrlCheck.IsChecked == true;
+        _settings.Hotkey.UseShift = HotkeyShiftCheck.IsChecked == true;
+        _settings.Hotkey.UseWin = HotkeyWinCheck.IsChecked == true;
+        _settings.Hotkey.Key = GetComboTag(HotkeyKeyCombo) ?? "Space";
+        AutoSave();
+    }
+    
+    private void CheckHotkeyChanged()
+    {
+        bool hasChanged = 
+            _settings.Hotkey.UseAlt != _initialHotkeyAlt ||
+            _settings.Hotkey.UseCtrl != _initialHotkeyCtrl ||
+            _settings.Hotkey.UseShift != _initialHotkeyShift ||
+            _settings.Hotkey.UseWin != _initialHotkeyWin ||
+            _settings.Hotkey.Key != _initialHotkeyKey;
+        
+        RestartWarningPanel.Visibility = hasChanged ? Visibility.Visible : Visibility.Collapsed;
+    }
+    
+    private void RestartApp_Click(object sender, RoutedEventArgs e)
+    {
+        var exePath = Environment.ProcessPath;
+        if (!string.IsNullOrEmpty(exePath))
+        {
+            Process.Start(exePath);
+            Application.Current.Shutdown();
+        }
+    }
     
     private void UpdateHotkeyDisplay()
     {
@@ -313,6 +437,7 @@ public partial class SettingsWindow : Window
             {
                 _settings.IndexedFolders.Add(dialog.SelectedPath);
                 RefreshFoldersList();
+                AutoSave();
             }
             else
             {
@@ -330,6 +455,7 @@ public partial class SettingsWindow : Window
             {
                 _settings.IndexedFolders.Remove(folder);
                 RefreshFoldersList();
+                AutoSave();
             }
             else
             {
@@ -343,6 +469,66 @@ public partial class SettingsWindow : Window
     {
         IndexedFoldersList.ItemsSource = null;
         IndexedFoldersList.ItemsSource = _settings.IndexedFolders;
+    }
+    
+    // === Sauvegarde automatique ===
+    
+    private void AutoSave()
+    {
+        if (_isLoading) return;
+        
+        _settings.Save();
+        Debug.WriteLine("[Settings] Auto-sauvegardé");
+        
+        // Afficher le feedback visuel
+        ShowSaveIndicator();
+    }
+    
+    private void ShowSaveIndicator()
+    {
+        AutoSaveIndicator.Text = "✓ Sauvegardé";
+        AutoSaveIndicator.Foreground = new SolidColorBrush(Color.FromRgb(0x10, 0x7C, 0x10));
+        
+        _saveIndicatorTimer.Stop();
+        _saveIndicatorTimer.Start();
+    }
+    
+    private void SaveIndicatorTimer_Tick(object? sender, EventArgs e)
+    {
+        _saveIndicatorTimer.Stop();
+        AutoSaveIndicator.Text = "💾 Sauvegarde automatique";
+        AutoSaveIndicator.Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66));
+    }
+    
+    // === Gestionnaires génériques pour CheckBox ===
+    
+    private void CheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoading) return;
+        
+        // Synchroniser toutes les valeurs de checkboxes
+        _settings.StartWithWindows = StartWithWindowsCheck.IsChecked == true;
+        _settings.MinimizeOnStartup = MinimizeOnStartupCheck.IsChecked == true;
+        _settings.ShowInTaskbar = ShowInTaskbarCheck.IsChecked == true;
+        _settings.CloseAfterLaunch = CloseAfterLaunchCheck.IsChecked == true;
+        _settings.ShowIndexingStatus = ShowIndexingStatusCheck.IsChecked == true;
+        _settings.ShowSettingsButton = ShowSettingsButtonCheck.IsChecked == true;
+        _settings.SingleClickLaunch = SingleClickLaunchCheck.IsChecked == true;
+        _settings.EnableSearchHistory = EnableSearchHistoryCheck.IsChecked == true;
+        _settings.EnableAnimations = EnableAnimationsCheck.IsChecked == true;
+        _settings.IndexHiddenFolders = IndexHiddenFoldersCheck.IsChecked == true;
+        
+        UpdateStartupRegistry();
+        AutoSave();
+    }
+    
+    private void WindowPositionCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoading && WindowPositionCombo.SelectedItem is ComboBoxItem { Tag: string pos })
+        {
+            _settings.WindowPosition = pos;
+            AutoSave();
+        }
     }
 
     // === Gestionnaires d'événements - Navigateurs ===
@@ -455,6 +641,7 @@ public partial class SettingsWindow : Window
         {
             cmd.IsEnabled = !cmd.IsEnabled;
             LoadSystemCommands();
+            AutoSave();
             e.Handled = true; // Empêcher la propagation vers le parent
         }
     }
@@ -497,8 +684,9 @@ public partial class SettingsWindow : Window
         _selectedSystemCommand.Prefix = newPrefix;
         _selectedSystemCommand.Icon = string.IsNullOrWhiteSpace(newIcon) ? "⚡" : newIcon;
         
-        // Rafraîchir la liste
+        // Rafraîchir la liste et sauvegarder
         LoadSystemCommands();
+        AutoSave();
         CommandEditPanel.Visibility = Visibility.Collapsed;
         _selectedSystemCommand = null;
     }
@@ -510,14 +698,67 @@ public partial class SettingsWindow : Window
         {
             _settings.ResetSystemCommands();
             LoadSystemCommands();
+            AutoSave();
             CommandEditPanel.Visibility = Visibility.Collapsed;
         }
     }
 
     // === Gestionnaires d'événements - Réindexation auto ===
     
-    private void AutoReindexEnabled_Changed(object sender, RoutedEventArgs e) => UpdateAutoReindexOptionsVisibility();
-    private void ReindexMode_Changed(object sender, RoutedEventArgs e) { }
+    private void AutoReindexEnabled_Changed(object sender, RoutedEventArgs e)
+    {
+        UpdateAutoReindexOptionsVisibility();
+        if (!_isLoading)
+        {
+            _settings.AutoReindexEnabled = AutoReindexEnabledCheck.IsChecked == true;
+            AutoSave();
+            
+            // Reconfigurer le timer
+            if (Application.Current is App app)
+                app.SetupAutoReindex();
+        }
+    }
+    
+    private void ReindexMode_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_isLoading)
+        {
+            _settings.AutoReindexMode = ReindexTimeRadio.IsChecked == true 
+                ? AutoReindexMode.ScheduledTime 
+                : AutoReindexMode.Interval;
+            AutoSave();
+            
+            // Reconfigurer le timer
+            if (Application.Current is App app)
+                app.SetupAutoReindex();
+        }
+    }
+    
+    private void ReindexIntervalCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoading && ReindexIntervalCombo.SelectedItem is ComboBoxItem { Tag: string tag })
+        {
+            _settings.AutoReindexIntervalMinutes = int.Parse(tag);
+            AutoSave();
+            
+            if (Application.Current is App app)
+                app.SetupAutoReindex();
+        }
+    }
+    
+    private void ReindexTimeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoading)
+        {
+            var hour = GetComboTag(ReindexHourCombo) ?? "03";
+            var minute = GetComboTag(ReindexMinuteCombo) ?? "00";
+            _settings.AutoReindexScheduledTime = $"{hour}:{minute}";
+            AutoSave();
+            
+            if (Application.Current is App app)
+                app.SetupAutoReindex();
+        }
+    }
 
     // === Gestionnaires d'événements - Actions ===
     
@@ -585,82 +826,28 @@ public partial class SettingsWindow : Window
         }
     }
 
-    // === Boutons principaux ===
+    // === Extensions (sauvegarde sur perte de focus) ===
     
-    private void SaveButton_Click(object sender, RoutedEventArgs e)
+    private void FileExtensionsBox_LostFocus(object sender, RoutedEventArgs e)
     {
-        // Général
-        _settings.StartWithWindows = StartWithWindowsCheck.IsChecked == true;
-        _settings.MinimizeOnStartup = MinimizeOnStartupCheck.IsChecked == true;
-        _settings.ShowInTaskbar = ShowInTaskbarCheck.IsChecked == true;
-        _settings.CloseAfterLaunch = CloseAfterLaunchCheck.IsChecked == true;
-        _settings.ShowIndexingStatus = ShowIndexingStatusCheck.IsChecked == true;
-        _settings.ShowSettingsButton = ShowSettingsButtonCheck.IsChecked == true;
-        _settings.SingleClickLaunch = SingleClickLaunchCheck.IsChecked == true;
-        _settings.MaxResults = (int)MaxResultsSlider.Value;
-        _settings.WindowPosition = GetComboTag(WindowPositionCombo) ?? "Center";
+        if (_isLoading) return;
         
-        // Historique
-        _settings.EnableSearchHistory = EnableSearchHistoryCheck.IsChecked == true;
-        _settings.MaxSearchHistory = (int)MaxHistorySlider.Value;
-        
-        // Apparence
-        _settings.Theme = GetComboTag(ThemeCombo) ?? "Dark";
-        _settings.WindowOpacity = OpacitySlider.Value;
-        _settings.EnableAnimations = EnableAnimationsCheck.IsChecked == true;
-        _settings.AccentColor = GetComboTag(AccentColorCombo) ?? "#0078D4";
-        
-        // Raccourci
-        _settings.Hotkey.UseAlt = HotkeyAltCheck.IsChecked == true;
-        _settings.Hotkey.UseCtrl = HotkeyCtrlCheck.IsChecked == true;
-        _settings.Hotkey.UseShift = HotkeyShiftCheck.IsChecked == true;
-        _settings.Hotkey.UseWin = HotkeyWinCheck.IsChecked == true;
-        _settings.Hotkey.Key = GetComboTag(HotkeyKeyCombo) ?? "Space";
-        
-        // Indexation
-        _settings.SearchDepth = (int)SearchDepthSlider.Value;
-        _settings.IndexHiddenFolders = IndexHiddenFoldersCheck.IsChecked == true;
-        _settings.SystemSearchDepth = (int)SystemSearchDepthSlider.Value;
-        
-        // Réindexation automatique
-        _settings.AutoReindexEnabled = AutoReindexEnabledCheck.IsChecked == true;
-        _settings.AutoReindexMode = ReindexTimeRadio.IsChecked == true 
-            ? AutoReindexMode.ScheduledTime 
-            : AutoReindexMode.Interval;
-        _settings.AutoReindexIntervalMinutes = int.Parse(GetComboTag(ReindexIntervalCombo) ?? "60");
-        
-        var hour = GetComboTag(ReindexHourCombo) ?? "03";
-        var minute = GetComboTag(ReindexMinuteCombo) ?? "00";
-        _settings.AutoReindexScheduledTime = $"{hour}:{minute}";
-        
-        // Extensions
         var extensions = FileExtensionsBox.Text
             .Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries)
-            .Select(e => e.Trim().ToLowerInvariant())
-            .Where(e => e.StartsWith('.'))
+            .Select(ext => ext.Trim().ToLowerInvariant())
+            .Where(ext => ext.StartsWith('.'))
             .Distinct()
             .ToList();
         
         if (extensions.Count > 0)
+        {
             _settings.FileExtensions = extensions;
-        
-        _settings.Save();
-        UpdateStartupRegistry();
-        
-        // Reconfigurer le timer
-        if (Application.Current is App app)
-            app.SetupAutoReindex();
-        
-        MessageBox.Show("✅ Paramètres sauvegardés!\n\nCertains paramètres (raccourci clavier, mode de clic) nécessitent un redémarrage.",
-            "QuickLauncher", MessageBoxButton.OK, MessageBoxImage.Information);
-        
-        Close();
+            AutoSave();
+        }
     }
     
     private static string? GetComboTag(ComboBox combo) => 
         (combo.SelectedItem as ComboBoxItem)?.Tag?.ToString();
-
-    private void CancelButton_Click(object sender, RoutedEventArgs e) => Close();
 
     private void UpdateStartupRegistry()
     {

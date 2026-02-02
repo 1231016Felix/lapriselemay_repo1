@@ -2,10 +2,11 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="QuickLauncher - Paramètres"
-        Width="850" Height="700"
+        Width="850" Height="650"
+        MinWidth="700" MinHeight="500"
         WindowStartupLocation="CenterScreen"
         Background="#1E1E1E"
-        ResizeMode="CanResizeWithGrip">
+        ResizeMode="CanResize">
     
     <Window.Resources>
         <Style x:Key="SettingsCheckBox" TargetType="CheckBox">
@@ -128,16 +129,16 @@
                         <StackPanel Grid.Column="0">
                             <!-- Démarrage -->
                             <TextBlock Text="Démarrage" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
-                            <CheckBox x:Name="StartWithWindowsCheck" Content="Démarrer avec Windows" Style="{StaticResource SettingsCheckBox}"/>
-                            <CheckBox x:Name="MinimizeOnStartupCheck" Content="Démarrer minimisé" Style="{StaticResource SettingsCheckBox}"/>
-                            <CheckBox x:Name="ShowInTaskbarCheck" Content="Afficher dans la barre des tâches" Style="{StaticResource SettingsCheckBox}"/>
+                            <CheckBox x:Name="StartWithWindowsCheck" Content="Démarrer avec Windows" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
+                            <CheckBox x:Name="MinimizeOnStartupCheck" Content="Démarrer minimisé" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
+                            <CheckBox x:Name="ShowInTaskbarCheck" Content="Afficher dans la barre des tâches" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
                             
                             <!-- Comportement -->
                             <TextBlock Text="Comportement" Style="{StaticResource SectionLabel}"/>
-                            <CheckBox x:Name="CloseAfterLaunchCheck" Content="Fermer après lancement" Style="{StaticResource SettingsCheckBox}"/>
-                            <CheckBox x:Name="ShowIndexingStatusCheck" Content="Afficher le statut d'indexation" Style="{StaticResource SettingsCheckBox}"/>
-                            <CheckBox x:Name="ShowSettingsButtonCheck" Content="Afficher le bouton ⚙️" Style="{StaticResource SettingsCheckBox}"/>
-                            <CheckBox x:Name="SingleClickLaunchCheck" Content="Lancer en simple clic" Style="{StaticResource SettingsCheckBox}" ToolTip="Active le lancement d'un élément au simple clic (au lieu du double clic)"/>
+                            <CheckBox x:Name="CloseAfterLaunchCheck" Content="Fermer après lancement" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
+                            <CheckBox x:Name="ShowIndexingStatusCheck" Content="Afficher le statut d'indexation" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
+                            <CheckBox x:Name="ShowSettingsButtonCheck" Content="Afficher le bouton ⚙️" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
+                            <CheckBox x:Name="SingleClickLaunchCheck" Content="Lancer en simple clic" Style="{StaticResource SettingsCheckBox}" ToolTip="Active le lancement d'un élément au simple clic (au lieu du double clic)" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
                             
                             <TextBlock Text="Résultats" Style="{StaticResource SubSectionLabel}"/>
                             <StackPanel Orientation="Horizontal" Margin="0,5">
@@ -146,7 +147,7 @@
                             </StackPanel>
                             <Slider x:Name="MaxResultsSlider" Minimum="3" Maximum="15" Value="8" Width="250" HorizontalAlignment="Left" ValueChanged="MaxResultsSlider_ValueChanged"/>
                             
-                            <ComboBox x:Name="WindowPositionCombo" Width="220" HorizontalAlignment="Left" Margin="0,10,0,0">
+                            <ComboBox x:Name="WindowPositionCombo" Width="220" HorizontalAlignment="Left" Margin="0,10,0,0" SelectionChanged="WindowPositionCombo_SelectionChanged">
                                 <ComboBoxItem Content="📍 Centré sur l'écran" Tag="Center"/>
                                 <ComboBoxItem Content="📍 En haut de l'écran" Tag="Top"/>
                                 <ComboBoxItem Content="📍 Mémoriser position" Tag="Remember"/>
@@ -154,7 +155,7 @@
                             
                             <!-- Historique -->
                             <TextBlock Text="Historique" Style="{StaticResource SectionLabel}"/>
-                            <CheckBox x:Name="EnableSearchHistoryCheck" Content="Activer l'historique" Style="{StaticResource SettingsCheckBox}"/>
+                            <CheckBox x:Name="EnableSearchHistoryCheck" Content="Activer l'historique" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
                             <StackPanel Orientation="Horizontal" Margin="0,5">
                                 <TextBlock Text="Max entrées: " Foreground="White" VerticalAlignment="Center"/>
                                 <TextBlock x:Name="MaxHistoryValue" Text="10" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="25"/>
@@ -190,7 +191,7 @@
                                     <ComboBoxItem Content="Rose" Tag="#E3008C"/>
                                 </ComboBox>
                             </StackPanel>
-                            <CheckBox x:Name="EnableAnimationsCheck" Content="Activer les animations" Style="{StaticResource SettingsCheckBox}"/>
+                            <CheckBox x:Name="EnableAnimationsCheck" Content="Activer les animations" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
                             
                             <!-- Raccourci clavier -->
                             <TextBlock Text="Raccourci global" Style="{StaticResource SectionLabel}"/>
@@ -214,7 +215,6 @@
                                     </ComboBox>
                                 </StackPanel>
                             </Border>
-                            <TextBlock Text="⚠️ Redémarrage requis après modification" Foreground="#FFB900" FontSize="10" Margin="0,5,0,0"/>
                         </StackPanel>
                     </Grid>
                 </ScrollViewer>
@@ -244,7 +244,7 @@
                             
                             <!-- Extensions -->
                             <TextBlock Text="Extensions" Style="{StaticResource SectionLabel}"/>
-                            <TextBox x:Name="FileExtensionsBox" Background="#2D2D2D" Foreground="White" BorderThickness="0" Padding="10" FontFamily="Consolas" TextWrapping="Wrap" Height="50"/>
+                            <TextBox x:Name="FileExtensionsBox" Background="#2D2D2D" Foreground="White" BorderThickness="0" Padding="10" FontFamily="Consolas" TextWrapping="Wrap" Height="50" LostFocus="FileExtensionsBox_LostFocus"/>
                             
                             <!-- Options -->
                             <TextBlock Text="Options" Style="{StaticResource SectionLabel}"/>
@@ -254,7 +254,7 @@
                                 <TextBlock Text="niveaux" Foreground="#888" VerticalAlignment="Center"/>
                             </StackPanel>
                             <Slider x:Name="SearchDepthSlider" Minimum="1" Maximum="10" Value="5" Width="250" HorizontalAlignment="Left" ValueChanged="SearchDepthSlider_ValueChanged"/>
-                            <CheckBox x:Name="IndexHiddenFoldersCheck" Content="Indexer dossiers cachés" Style="{StaticResource SettingsCheckBox}"/>
+                            <CheckBox x:Name="IndexHiddenFoldersCheck" Content="Indexer dossiers cachés" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
                             
                             <!-- Réindexation -->
                             <Border Style="{StaticResource SettingsCard}" Margin="0,15,0,0">
@@ -273,7 +273,7 @@
                             <CheckBox x:Name="AutoReindexEnabledCheck" Content="Activer" Style="{StaticResource SettingsCheckBox}" Checked="AutoReindexEnabled_Changed" Unchecked="AutoReindexEnabled_Changed"/>
                             <StackPanel x:Name="AutoReindexOptionsPanel" Margin="15,0,0,0">
                                 <RadioButton x:Name="ReindexIntervalRadio" Content="Intervalle" Foreground="White" Margin="0,3" GroupName="ReindexMode" Checked="ReindexMode_Changed"/>
-                                <ComboBox x:Name="ReindexIntervalCombo" Width="120" Margin="20,3,0,8">
+                                <ComboBox x:Name="ReindexIntervalCombo" Width="120" Margin="20,3,0,3" HorizontalAlignment="Left" SelectionChanged="ReindexIntervalCombo_SelectionChanged">
                                     <ComboBoxItem Content="15 min" Tag="15"/>
                                     <ComboBoxItem Content="30 min" Tag="30"/>
                                     <ComboBoxItem Content="1 heure" Tag="60"/>
@@ -281,7 +281,7 @@
                                 </ComboBox>
                                 <RadioButton x:Name="ReindexTimeRadio" Content="Heure fixe" Foreground="White" Margin="0,3" GroupName="ReindexMode" Checked="ReindexMode_Changed"/>
                                 <StackPanel Orientation="Horizontal" Margin="20,3,0,0">
-                                    <ComboBox x:Name="ReindexHourCombo" Width="55">
+                                    <ComboBox x:Name="ReindexHourCombo" Width="55" SelectionChanged="ReindexTimeCombo_SelectionChanged">
                                         <ComboBoxItem Content="00h" Tag="00"/>
                                         <ComboBoxItem Content="03h" Tag="03"/>
                                         <ComboBoxItem Content="06h" Tag="06"/>
@@ -289,7 +289,7 @@
                                         <ComboBoxItem Content="18h" Tag="18"/>
                                     </ComboBox>
                                     <TextBlock Text=":" Foreground="#888" VerticalAlignment="Center" Margin="3,0"/>
-                                    <ComboBox x:Name="ReindexMinuteCombo" Width="55">
+                                    <ComboBox x:Name="ReindexMinuteCombo" Width="55" SelectionChanged="ReindexTimeCombo_SelectionChanged">
                                         <ComboBoxItem Content="00" Tag="00"/>
                                         <ComboBoxItem Content="30" Tag="30"/>
                                     </ComboBox>
@@ -431,10 +431,6 @@
                                         <TextBlock Grid.Column="1" Text="Réindexer" Foreground="#888" FontSize="11"/>
                                     </Grid>
                                     <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":find" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Recherche système" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                         <TextBlock Text=":history" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
                                         <TextBlock Grid.Column="1" Text="Historique" Foreground="#888" FontSize="11"/>
                                     </Grid>
@@ -464,6 +460,17 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <Border Background="#2A2A2A" CornerRadius="3" Padding="8,5" Margin="0,0,5,5" Cursor="Hand" MouseLeftButtonUp="SystemCommandItem_Click">
+                                            <Border.ToolTip>
+                                                <ToolTip Background="#2D2D2D" BorderBrush="#555" BorderThickness="1" Padding="10">
+                                                    <StackPanel MaxWidth="250">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="White"/>
+                                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="#CCC" Margin="0,4,0,0"/>
+                                                        <TextBlock Foreground="#888" FontSize="10" Margin="0,6,0,0">
+                                                            <Run Text="Commande: "/><Run Text=":" Foreground="#0078D4"/><Run Text="{Binding Prefix}" Foreground="#0078D4"/>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                </ToolTip>
+                                            </Border.ToolTip>
                                             <Border.Style>
                                                 <Style TargetType="Border">
                                                     <Style.Triggers>
@@ -624,12 +631,28 @@
             </TabItem>
         </TabControl>
         
-        <!-- Boutons d'action -->
+        <!-- Barre de statut -->
         <Border Grid.Row="2" BorderBrush="#3E3E3E" BorderThickness="0,1,0,0" Padding="0,15,0,0" Margin="0,15,0,0">
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Content="Annuler" Click="CancelButton_Click" Style="{StaticResource ActionButton}" Margin="0,0,10,0"/>
-                <Button Content="💾 Sauvegarder" Click="SaveButton_Click" Style="{StaticResource PrimaryButton}"/>
-            </StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <!-- Avertissement redémarrage requis -->
+                <Border x:Name="RestartWarningPanel" Grid.Column="0" Background="#3D2D10" CornerRadius="6" Padding="12,8" Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="⚠️" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBlock Text="Le raccourci clavier a été modifié. Un redémarrage est nécessaire." Foreground="#FFB900" VerticalAlignment="Center" FontSize="12"/>
+                        <Button Content="Redémarrer" Click="RestartApp_Click" Background="#FFB900" Foreground="Black" Padding="10,4" Margin="15,0,0,0" BorderThickness="0" Cursor="Hand" FontWeight="SemiBold"/>
+                    </StackPanel>
+                </Border>
+                
+                <!-- Indicateur de sauvegarde auto -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="AutoSaveIndicator" Text="💾 Sauvegarde automatique" Foreground="#666" FontSize="11" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

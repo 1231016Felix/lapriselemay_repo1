@@ -232,10 +232,14 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         var query = SearchText.Trim();
         var queryLower = query.ToLowerInvariant();
         
-        // Commande :find pour la recherche Windows Search
-        if (queryLower.StartsWith(":find ") && query.Length > 6)
+        // Commande :find pour la recherche Windows Search (vérifier si activée)
+        var findCmd = _settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.SystemSearch);
+        var findPrefix = findCmd?.Prefix ?? "find";
+        var findEnabled = findCmd?.IsEnabled ?? true;
+        
+        if (findEnabled && queryLower.StartsWith($":{findPrefix} ") && query.Length > findPrefix.Length + 2)
         {
-            var searchQuery = query[6..].Trim();
+            var searchQuery = query[(findPrefix.Length + 2)..].Trim();
             if (searchQuery.Length >= 2)
             {
                 _ = PerformWindowsSearchAsync(searchQuery, _searchCts.Token);
@@ -243,19 +247,19 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             }
         }
         
-        // Suggestion pour :find
-        if (queryLower.StartsWith(":find") || ":find".StartsWith(queryLower))
+        // Suggestion pour :find (si activée)
+        if (findEnabled && (queryLower.StartsWith($":{findPrefix}") || $":{findPrefix}".StartsWith(queryLower)))
         {
             Results.Add(new SearchResult
             {
-                Name = ":find <terme>",
-                Description = "Rechercher dans tout le système via Windows Search",
+                Name = $":{findPrefix} <terme>",
+                Description = findCmd?.Description ?? "Rechercher dans tout le système via Windows Search",
                 Type = ResultType.SystemCommand,
-                DisplayIcon = "🔍",
-                Path = ":find"
+                DisplayIcon = findCmd?.Icon ?? "🔍",
+                Path = $":{findPrefix}"
             });
             
-            if (queryLower == ":find")
+            if (queryLower == $":{findPrefix}")
             {
                 FinalizeResults();
                 return;
@@ -385,6 +389,14 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         }
         
         return false;
+    }
+    
+    /// <summary>
+    /// Vérifie si une commande système spécifique est activée.
+    /// </summary>
+    private bool IsSystemCommandEnabled(SystemControlType type)
+    {
+        return _settings.SystemCommands.Any(c => c.Type == type && c.IsEnabled);
     }
 
     /// <summary>
@@ -1025,14 +1037,19 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     {
         Results.Clear();
         
-        // Commande de recherche système
-        Results.Add(new SearchResult 
-        { 
-            Name = ":find <terme>", 
-            Description = "Rechercher via Windows Search (tout le système)", 
-            Type = ResultType.SystemCommand, 
-            DisplayIcon = "🔍" 
-        });
+        // Commande de recherche système (si activée)
+        var findCmd = _settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.SystemSearch);
+        if (findCmd?.IsEnabled == true)
+        {
+            Results.Add(new SearchResult 
+            { 
+                Name = $":{findCmd.Prefix} <terme>", 
+                Description = findCmd.Description, 
+                Type = ResultType.SystemCommand, 
+                DisplayIcon = findCmd.Icon,
+                Path = $":{findCmd.Prefix}"
+            });
+        }
         
         // Commandes de base de l'application
         Results.Add(new SearchResult 
