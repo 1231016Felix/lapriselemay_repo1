@@ -100,13 +100,14 @@ public partial class LauncherWindow : Window
     {
         _settings = AppSettings.Load();
         ApplySettings();
-        _viewModel.ReloadSettings(); // Synchroniser les settings du ViewModel (épingles, etc.)
+        _viewModel.ReloadSettings();
         _viewModel.Reset();
         CenterOnScreen();
+        
         SearchBox.Focus();
         SearchBox.SelectAll();
     }
-
+    
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         // Raccourcis avec Ctrl
@@ -271,8 +272,6 @@ public partial class LauncherWindow : Window
     {
         if (_settings.WindowPosition == "Remember")
         {
-            // Recharger les settings depuis le fichier pour ne pas écraser les changements
-            // du ViewModel (comme les épingles) avec une ancienne version
             _settings = AppSettings.Load();
             _settings.LastWindowLeft = Left;
             _settings.LastWindowTop = Top;

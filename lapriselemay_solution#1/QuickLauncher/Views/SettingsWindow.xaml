@@ -139,7 +139,6 @@
                             <TextBlock Text="Démarrage" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
                             <CheckBox x:Name="StartWithWindowsCheck" Content="Démarrer avec Windows" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
                             <CheckBox x:Name="MinimizeOnStartupCheck" Content="Démarrer minimisé" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
-                            <CheckBox x:Name="ShowInTaskbarCheck" Content="Afficher dans la barre des tâches" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
                             
                             <!-- Comportement -->
                             <TextBlock Text="Comportement" Style="{StaticResource SectionLabel}"/>
@@ -176,11 +175,38 @@
                         <StackPanel Grid.Column="2">
                             <!-- Apparence -->
                             <TextBlock Text="Apparence" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
-                            <ComboBox x:Name="ThemeCombo" Width="180" HorizontalAlignment="Left" SelectionChanged="ThemeCombo_SelectionChanged">
-                                <ComboBoxItem Content="🌙 Thème sombre" Tag="Dark"/>
-                                <ComboBoxItem Content="☀️ Thème clair" Tag="Light"/>
-                                <ComboBoxItem Content="💻 Système" Tag="System"/>
+                            
+                            <!-- Mode thème avec Auto -->
+                            <TextBlock Text="Thème" Style="{StaticResource SubSectionLabel}" Margin="0,0,0,4"/>
+                            <ComboBox x:Name="ThemeModeCombo" Width="200" HorizontalAlignment="Left" SelectionChanged="ThemeModeCombo_SelectionChanged">
+                                <ComboBoxItem Content="🌙 Sombre" Tag="Dark"/>
+                                <ComboBoxItem Content="☀️ Clair" Tag="Light"/>
+                                <ComboBoxItem Content="🌓 Auto (jour/nuit)" Tag="Auto"/>
                             </ComboBox>
+                            
+                            <!-- Heures pour mode Auto -->
+                            <StackPanel x:Name="AutoThemePanel" Margin="15,8,0,0" Visibility="Collapsed">
+                                <TextBlock Text="Plage horaire mode clair:" Foreground="#888" FontSize="11" Margin="0,0,0,4"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="De" Foreground="White" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <ComboBox x:Name="LightStartCombo" Width="70" SelectionChanged="AutoThemeTime_Changed">
+                                        <ComboBoxItem Content="05:00" Tag="05:00"/>
+                                        <ComboBoxItem Content="06:00" Tag="06:00"/>
+                                        <ComboBoxItem Content="07:00" Tag="07:00"/>
+                                        <ComboBoxItem Content="08:00" Tag="08:00"/>
+                                        <ComboBoxItem Content="09:00" Tag="09:00"/>
+                                    </ComboBox>
+                                    <TextBlock Text="à" Foreground="White" VerticalAlignment="Center" Margin="8,0"/>
+                                    <ComboBox x:Name="DarkStartCombo" Width="70" SelectionChanged="AutoThemeTime_Changed">
+                                        <ComboBoxItem Content="17:00" Tag="17:00"/>
+                                        <ComboBoxItem Content="18:00" Tag="18:00"/>
+                                        <ComboBoxItem Content="19:00" Tag="19:00"/>
+                                        <ComboBoxItem Content="20:00" Tag="20:00"/>
+                                        <ComboBoxItem Content="21:00" Tag="21:00"/>
+                                        <ComboBoxItem Content="22:00" Tag="22:00"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </StackPanel>
                             
                             <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                 <TextBlock Text="Opacité: " Foreground="White" VerticalAlignment="Center"/>
@@ -199,19 +225,22 @@
                                     <ComboBoxItem Content="Rose" Tag="#E3008C"/>
                                 </ComboBox>
                             </StackPanel>
-                            <CheckBox x:Name="EnableAnimationsCheck" Content="Activer les animations" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
+                            
+                            <!-- Badges de catégorie -->
+                            <TextBlock Text="Affichage" Style="{StaticResource SubSectionLabel}" Margin="0,12,0,4"/>
+                            <CheckBox x:Name="ShowCategoryBadgesCheck" Content="Afficher les badges de catégorie" Style="{StaticResource SettingsCheckBox}" ToolTip="Affiche un badge coloré (APP, FILE, WEB...) à côté de chaque résultat" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
                             
                             <!-- Raccourci clavier -->
                             <TextBlock Text="Raccourci global" Style="{StaticResource SectionLabel}"/>
                             <Border Style="{StaticResource SettingsCard}">
                                 <StackPanel>
                                     <TextBlock x:Name="CurrentHotkeyDisplay" Text="Alt + Space" FontSize="18" FontWeight="Bold" Foreground="#0078D4" Margin="0,0,0,10"/>
-                                    <WrapPanel>
-                                        <CheckBox x:Name="HotkeyAltCheck" Content="Alt" Style="{StaticResource SettingsCheckBox}" Margin="0,0,15,0" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
-                                        <CheckBox x:Name="HotkeyCtrlCheck" Content="Ctrl" Style="{StaticResource SettingsCheckBox}" Margin="0,0,15,0" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
-                                        <CheckBox x:Name="HotkeyShiftCheck" Content="Shift" Style="{StaticResource SettingsCheckBox}" Margin="0,0,15,0" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
-                                        <CheckBox x:Name="HotkeyWinCheck" Content="Win" Style="{StaticResource SettingsCheckBox}" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
-                                    </WrapPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <CheckBox x:Name="HotkeyAltCheck" Content="Alt" Foreground="White" FontSize="13" Margin="0,0,15,0" VerticalAlignment="Center" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
+                                        <CheckBox x:Name="HotkeyCtrlCheck" Content="Ctrl" Foreground="White" FontSize="13" Margin="0,0,15,0" VerticalAlignment="Center" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
+                                        <CheckBox x:Name="HotkeyShiftCheck" Content="Shift" Foreground="White" FontSize="13" Margin="0,0,15,0" VerticalAlignment="Center" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
+                                        <CheckBox x:Name="HotkeyWinCheck" Content="Win" Foreground="White" FontSize="13" VerticalAlignment="Center" Checked="Hotkey_Changed" Unchecked="Hotkey_Changed"/>
+                                    </StackPanel>
                                     <ComboBox x:Name="HotkeyKeyCombo" Width="100" HorizontalAlignment="Left" Margin="0,8,0,0" SelectionChanged="HotkeyKeyCombo_SelectionChanged">
                                         <ComboBoxItem Content="Space" Tag="Space"/>
                                         <ComboBoxItem Content="Enter" Tag="Enter"/>
@@ -457,9 +486,9 @@
                         <!-- Colonne droite: Contrôle Système -->
                         <StackPanel Grid.Column="2">
                             <TextBlock Text="Contrôle Système" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
-                            <TextBlock Text="Tapez ':' + préfixe dans la barre de recherche" Foreground="#888" FontSize="11" Margin="0,0,0,8"/>
+                            <TextBlock Text="Tapez ':' + préfixe dans la barre de recherche • Cliquez pour modifier" Foreground="#888" FontSize="11" Margin="0,0,0,8"/>
                             
-                            <ScrollViewer MaxHeight="400" VerticalScrollBarVisibility="Auto">
+                            <ScrollViewer MaxHeight="280" VerticalScrollBarVisibility="Auto">
                                 <ItemsControl x:Name="SystemCommandsList">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -529,15 +558,97 @@
                                 </ItemsControl>
                             </ScrollViewer>
                             
-                            <!-- Panneau d'édition -->
-                            <Border x:Name="CommandEditPanel" Background="#252525" CornerRadius="4" Padding="10" Margin="0,10,0,0" Visibility="Collapsed">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text=":" Foreground="#0078D4" FontFamily="Consolas" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="CommandPrefixBox" Width="70" Background="#1E1E1E" Foreground="White" BorderBrush="#3E3E3E" Padding="5,3" FontFamily="Consolas" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="CommandIconBox" Width="35" Background="#1E1E1E" Foreground="White" BorderBrush="#3E3E3E" Padding="5,3" TextAlignment="Center" VerticalAlignment="Center" Margin="8,0"/>
-                                    <Button Content="✓" Click="ApplyCommandEdit_Click" Background="#107C10" Foreground="White" Width="24" Height="24" BorderThickness="0" Cursor="Hand"/>
-                                    <Button Content="✕" Click="CancelCommandEdit_Click" Background="#3E3E3E" Foreground="White" Width="24" Height="24" BorderThickness="0" Cursor="Hand" Margin="5,0,0,0"/>
-                                </StackPanel>
+                            <!-- Panneau d'édition amélioré -->
+                            <Border x:Name="CommandEditPanel" Background="#1A3A5C" CornerRadius="8" Padding="16" Margin="0,12,0,0" Visibility="Collapsed" BorderBrush="#0078D4" BorderThickness="1">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    
+                                    <!-- En-tête avec nom et bouton fermer -->
+                                    <Grid Grid.Row="0" Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="✏️" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock x:Name="EditCommandName" Text="Modifier la commande" FontSize="14" FontWeight="SemiBold" Foreground="White"/>
+                                            <TextBlock x:Name="EditCommandDescription" Text="" FontSize="11" Foreground="#88AACC" TextTrimming="CharacterEllipsis" MaxWidth="220"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="2" Content="✕" Click="CancelCommandEdit_Click" Background="Transparent" Foreground="#888" Width="24" Height="24" BorderThickness="0" Cursor="Hand" FontSize="14" VerticalAlignment="Top">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Foreground" Value="White"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </Grid>
+                                    
+                                    <!-- Champs d'édition -->
+                                    <Grid Grid.Row="1" Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="12"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        
+                                        <!-- Préfixe -->
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Préfixe" Foreground="#88AACC" FontSize="11" Margin="0,0,0,4"/>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Border Background="#0D2840" CornerRadius="4,0,0,4" Padding="10,8">
+                                                    <TextBlock Text=":" Foreground="#0078D4" FontFamily="Consolas" FontSize="14" FontWeight="Bold"/>
+                                                </Border>
+                                                <TextBox x:Name="CommandPrefixBox" Grid.Column="1" Background="#0D2840" Foreground="White" BorderThickness="0" Padding="8" FontFamily="Consolas" FontSize="14" VerticalContentAlignment="Center"/>
+                                            </Grid>
+                                        </StackPanel>
+                                        
+                                        <!-- Icône -->
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="Icône" Foreground="#88AACC" FontSize="11" Margin="0,0,0,4"/>
+                                            <TextBox x:Name="CommandIconBox" Width="50" Background="#0D2840" Foreground="White" BorderThickness="0" Padding="8" TextAlignment="Center" FontSize="18" VerticalContentAlignment="Center"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    
+                                    <!-- Boutons d'action -->
+                                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Annuler" Click="CancelCommandEdit_Click" Background="#2A4A6A" Foreground="#AAA" Padding="16,8" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#3A5A7A"/>
+                                                            <Setter Property="Foreground" Value="White"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        <Button Content="✓ Appliquer" Click="ApplyCommandEdit_Click" Background="#0078D4" Foreground="White" Padding="16,8" BorderThickness="0" Cursor="Hand" FontWeight="SemiBold">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#1088E4"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
                             </Border>
                             
                             <Button Content="🔄 Réinitialiser" Click="ResetSystemCommands_Click" Style="{StaticResource ActionButton}" HorizontalAlignment="Left" Margin="0,10,0,0"/>

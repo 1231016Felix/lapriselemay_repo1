@@ -1,4 +1,5 @@
 using System.Windows.Media;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using QuickLauncher.Models;
 
@@ -11,11 +12,12 @@ namespace QuickLauncher.Services;
 
 /// <summary>
 /// Service de gestion des thèmes de l'application.
-/// Supporte les thèmes Sombre, Clair et Système (suit Windows).
+/// Supporte les thèmes Sombre, Clair, Système (suit Windows) et Auto (selon l'heure).
 /// </summary>
 public static class ThemeService
 {
     private static string _currentTheme = "Dark";
+    private static DispatcherTimer? _autoThemeTimer;
     
     /// <summary>
     /// Événement déclenché quand le thème change.
@@ -33,14 +35,86 @@ public static class ThemeService
     public static void Initialize()
     {
         var settings = AppSettings.Load();
-        ApplyTheme(settings.Theme);
+        ApplyThemeFromSettings(settings);
         
         // Écouter les changements de thème Windows
         SystemEvents.UserPreferenceChanged += OnSystemThemeChanged;
+        
+        // Démarrer le timer pour le mode auto
+        StartAutoThemeTimer();
     }
     
     /// <summary>
-    /// Applique un thème spécifique.
+    /// Applique le thème en fonction des paramètres (ThemeMode).
+    /// </summary>
+    public static void ApplyThemeFromSettings(AppSettings? settings = null)
+    {
+        settings ??= AppSettings.Load();
+        
+        var actualTheme = settings.ThemeMode switch
+        {
+            ThemeMode.Light => "Light",
+            ThemeMode.Dark => "Dark",
+            ThemeMode.Auto => GetAutoTheme(settings),
+            _ => "Dark"
+        };
+        
+        ApplyThemeInternal(actualTheme);
+    }
+    
+    /// <summary>
+    /// Détermine le thème selon l'heure actuelle.
+    /// </summary>
+    private static string GetAutoTheme(AppSettings settings)
+    {
+        var now = DateTime.Now.TimeOfDay;
+        
+        if (TimeSpan.TryParse(settings.AutoThemeLightStart, out var lightStart) &&
+            TimeSpan.TryParse(settings.AutoThemeDarkStart, out var darkStart))
+        {
+            // Cas normal: lightStart < darkStart (ex: 07:00 - 19:00)
+            if (lightStart < darkStart)
+            {
+                return (now >= lightStart && now < darkStart) ? "Light" : "Dark";
+            }
+            // Cas inversé: darkStart < lightStart (ex: 22:00 - 06:00)
+            else
+            {
+                return (now >= darkStart || now < lightStart) ? "Dark" : "Light";
+            }
+        }
+        
+        // Valeurs par défaut si parsing échoue
+        return (now.Hours >= 7 && now.Hours < 19) ? "Light" : "Dark";
+    }
+    
+    /// <summary>
+    /// Démarre le timer pour vérifier le changement de thème automatique.
+    /// </summary>
+    private static void StartAutoThemeTimer()
+    {
+        _autoThemeTimer?.Stop();
+        _autoThemeTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMinutes(1)
+        };
+        _autoThemeTimer.Tick += (_, _) =>
+        {
+            var settings = AppSettings.Load();
+            if (settings.ThemeMode == ThemeMode.Auto)
+            {
+                var expectedTheme = GetAutoTheme(settings);
+                if (expectedTheme != _currentTheme)
+                {
+                    ApplyThemeInternal(expectedTheme);
+                }
+            }
+        };
+        _autoThemeTimer.Start();
+    }
+    
+    /// <summary>
+    /// Applique un thème spécifique (méthode legacy pour compatibilité).
     /// </summary>
     /// <param name="theme">Nom du thème: "Dark", "Light", ou "System"</param>
     public static void ApplyTheme(string theme)
@@ -53,6 +127,14 @@ public static class ThemeService
             actualTheme = IsWindowsInLightMode() ? "Light" : "Dark";
         }
         
+        ApplyThemeInternal(actualTheme);
+    }
+    
+    /// <summary>
+    /// Applique le thème réel (Dark ou Light).
+    /// </summary>
+    private static void ApplyThemeInternal(string actualTheme)
+    {
         _currentTheme = actualTheme;
         
         var app = WpfApplication.Current;
@@ -190,6 +272,23 @@ public static class ThemeService
     /// </summary>
     public static void Shutdown()
     {
+        _autoThemeTimer?.Stop();
+        _autoThemeTimer = null;
         SystemEvents.UserPreferenceChanged -= OnSystemThemeChanged;
+    }
+    
+    /// <summary>
+    /// Retourne une description lisible du mode de thème actuel.
+    /// </summary>
+    public static string GetThemeModeDescription(ThemeMode mode, AppSettings? settings = null)
+    {
+        settings ??= AppSettings.Load();
+        return mode switch
+        {
+            ThemeMode.Dark => "🌙 Sombre",
+            ThemeMode.Light => "☀️ Clair",
+            ThemeMode.Auto => $"🌓 Auto ({settings.AutoThemeLightStart} - {settings.AutoThemeDarkStart})",
+            _ => "🌙 Sombre"
+        };
     }
 }

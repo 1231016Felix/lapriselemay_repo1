@@ -26,6 +26,8 @@
         <converters:ResultTypeToMenuVisibilityConverter x:Key="TypeToMenuVis"/>
         <converters:NullToVisibilityConverter x:Key="NullToVis"/>
         <converters:PreviewTypeToVisibilityConverter x:Key="PreviewTypeToVis"/>
+        <converters:ResultTypeToBadgeTextConverter x:Key="TypeToBadgeText"/>
+        <converters:ResultTypeToBadgeColorConverter x:Key="TypeToBadgeColor"/>
         
         <!-- Style bouton clear discret -->
         <Style x:Key="ClearButtonStyle" TargetType="Button">
@@ -164,7 +166,8 @@
                      Opened="ResultContextMenu_Opened"/>
     </Window.Resources>
     
-    <Border Background="{DynamicResource BackgroundBrush}" 
+    <Border x:Name="MainBorder"
+            Background="{DynamicResource BackgroundBrush}" 
             CornerRadius="12" 
             BorderBrush="{DynamicResource BorderBrush}" 
             BorderThickness="1"
@@ -290,6 +293,7 @@
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
@@ -313,7 +317,22 @@
                                            Margin="0,0,12,0"
                                            Visibility="{Binding NativeIcon, Converter={StaticResource IconToVis}, ConverterParameter=Emoji}"/>
                                 
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <!-- Badge de catégorie -->
+                                <Border x:Name="CategoryBadge"
+                                        Grid.Column="1"
+                                        Background="{Binding Type, Converter={StaticResource TypeToBadgeColor}}"
+                                        CornerRadius="3"
+                                        Padding="5,2"
+                                        Margin="0,0,10,0"
+                                        VerticalAlignment="Center"
+                                        Visibility="{Binding DataContext.ShowCategoryBadges, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+                                    <TextBlock Text="{Binding Type, Converter={StaticResource TypeToBadgeText}}"
+                                               FontSize="9"
+                                               FontWeight="Bold"
+                                               Foreground="White"/>
+                                </Border>
+                                
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding Name}"
                                                FontSize="14"
                                                FontWeight="SemiBold"
@@ -327,7 +346,7 @@
                                 </StackPanel>
                                 
                                 <!-- Raccourcis contextuels quand sélectionné -->
-                                <StackPanel Grid.Column="2" 
+                                <StackPanel Grid.Column="3" 
                                             Orientation="Horizontal"
                                             VerticalAlignment="Center"
                                             Visibility="{Binding IsSelected, 

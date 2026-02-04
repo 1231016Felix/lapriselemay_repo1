@@ -71,7 +71,6 @@ public partial class SettingsWindow : Window
         // Général
         StartWithWindowsCheck.IsChecked = _settings.StartWithWindows;
         MinimizeOnStartupCheck.IsChecked = _settings.MinimizeOnStartup;
-        ShowInTaskbarCheck.IsChecked = _settings.ShowInTaskbar;
         CloseAfterLaunchCheck.IsChecked = _settings.CloseAfterLaunch;
         ShowIndexingStatusCheck.IsChecked = _settings.ShowIndexingStatus;
         ShowSettingsButtonCheck.IsChecked = _settings.ShowSettingsButton;
@@ -86,10 +85,22 @@ public partial class SettingsWindow : Window
         MaxHistoryValue.Text = _settings.MaxSearchHistory.ToString();
         
         // Apparence
-        SelectComboByTag(ThemeCombo, _settings.Theme);
+        SelectComboByTag(ThemeModeCombo, _settings.Theme);
+        // Afficher/masquer le panneau Auto selon le mode
+        AutoThemePanel.Visibility = _settings.Theme == "Auto" ? Visibility.Visible : Visibility.Collapsed;
+        // Heures pour mode Auto
+        if (!string.IsNullOrEmpty(_settings.LightThemeStartTime))
+            SelectComboByTag(LightStartCombo, _settings.LightThemeStartTime);
+        else
+            LightStartCombo.SelectedIndex = 2; // 07:00 par défaut
+        if (!string.IsNullOrEmpty(_settings.DarkThemeStartTime))
+            SelectComboByTag(DarkStartCombo, _settings.DarkThemeStartTime);
+        else
+            DarkStartCombo.SelectedIndex = 2; // 19:00 par défaut
+        // Badges de catégorie
+        ShowCategoryBadgesCheck.IsChecked = _settings.ShowCategoryBadges;
         OpacitySlider.Value = _settings.WindowOpacity;
         OpacityValue.Text = $"{(int)(_settings.WindowOpacity * 100)}%";
-        EnableAnimationsCheck.IsChecked = _settings.EnableAnimations;
         SelectComboByTag(AccentColorCombo, _settings.AccentColor);
         UpdateColorPreview(_settings.AccentColor);
         
@@ -331,13 +342,51 @@ public partial class SettingsWindow : Window
 
     // === Gestionnaires d'événements - Apparence ===
     
-    private void ThemeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void ThemeModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!_isLoading && ThemeCombo.SelectedItem is ComboBoxItem { Tag: string theme })
+        if (!_isLoading && ThemeModeCombo.SelectedItem is ComboBoxItem { Tag: string theme })
         {
             _settings.Theme = theme;
+            AutoThemePanel.Visibility = theme == "Auto" ? Visibility.Visible : Visibility.Collapsed;
+            
+            // Si mode Auto, appliquer le thème selon l'heure actuelle
+            if (theme == "Auto")
+            {
+                ApplyAutoTheme();
+            }
+            
             AutoSave();
         }
+    }
+    
+    private void AutoThemeTime_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoading)
+        {
+            if (LightStartCombo.SelectedItem is ComboBoxItem { Tag: string lightStart })
+                _settings.LightThemeStartTime = lightStart;
+            if (DarkStartCombo.SelectedItem is ComboBoxItem { Tag: string darkStart })
+                _settings.DarkThemeStartTime = darkStart;
+            
+            // Réappliquer le thème si en mode Auto
+            if (_settings.Theme == "Auto")
+            {
+                ApplyAutoTheme();
+            }
+            
+            AutoSave();
+        }
+    }
+    
+    private void ApplyAutoTheme()
+    {
+        var now = DateTime.Now.TimeOfDay;
+        var lightStart = TimeSpan.Parse(_settings.LightThemeStartTime ?? "07:00");
+        var darkStart = TimeSpan.Parse(_settings.DarkThemeStartTime ?? "19:00");
+        
+        string effectiveTheme = (now >= lightStart && now < darkStart) ? "Light" : "Dark";
+        // Appliquer le thème effectif via l'événement ou méthode appropriée
+        // TODO: Connecter à ThemeService si disponible
     }
     
     private void AccentColorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -511,14 +560,13 @@ public partial class SettingsWindow : Window
         // Synchroniser toutes les valeurs de checkboxes
         _settings.StartWithWindows = StartWithWindowsCheck.IsChecked == true;
         _settings.MinimizeOnStartup = MinimizeOnStartupCheck.IsChecked == true;
-        _settings.ShowInTaskbar = ShowInTaskbarCheck.IsChecked == true;
         _settings.CloseAfterLaunch = CloseAfterLaunchCheck.IsChecked == true;
         _settings.ShowIndexingStatus = ShowIndexingStatusCheck.IsChecked == true;
         _settings.ShowSettingsButton = ShowSettingsButtonCheck.IsChecked == true;
         _settings.SingleClickLaunch = SingleClickLaunchCheck.IsChecked == true;
         _settings.EnableSearchHistory = EnableSearchHistoryCheck.IsChecked == true;
-        _settings.EnableAnimations = EnableAnimationsCheck.IsChecked == true;
         _settings.IndexHiddenFolders = IndexHiddenFoldersCheck.IsChecked == true;
+        _settings.ShowCategoryBadges = ShowCategoryBadgesCheck.IsChecked == true;
         
         UpdateStartupRegistry();
         AutoSave();
@@ -672,7 +720,13 @@ public partial class SettingsWindow : Window
             _selectedSystemCommand = cmd;
             CommandPrefixBox.Text = cmd.Prefix;
             CommandIconBox.Text = cmd.Icon;
+            EditCommandName.Text = cmd.Name;
+            EditCommandDescription.Text = cmd.Description;
             CommandEditPanel.Visibility = Visibility.Visible;
+            
+            // Focus sur le champ préfixe
+            CommandPrefixBox.Focus();
+            CommandPrefixBox.SelectAll();
         }
     }
     

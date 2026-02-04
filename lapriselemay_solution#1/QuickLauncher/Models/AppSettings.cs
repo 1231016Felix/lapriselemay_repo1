@@ -11,6 +11,16 @@ public enum AutoReindexMode
 }
 
 /// <summary>
+/// Modes de thème pour l'apparence.
+/// </summary>
+public enum ThemeMode
+{
+    Dark,
+    Light,
+    Auto  // Basculer selon l'heure du jour
+}
+
+/// <summary>
 /// Paramètres de l'application avec sérialisation JSON optimisée.
 /// </summary>
 public sealed class AppSettings
@@ -53,10 +63,21 @@ public sealed class AppSettings
     // === Apparence ===
     public double WindowOpacity { get; set; } = 1.0;
     public string AccentColor { get; set; } = Constants.Colors.DefaultAccent;
-    public bool EnableAnimations { get; set; } = true;
     public string Theme { get; set; } = "Dark";
     public bool ShowSettingsButton { get; set; } = true;
     public bool ShowPreviewPanel { get; set; } = true;
+    
+    // === Mode thème automatique ===
+    public string LightThemeStartTime { get; set; } = "07:00";
+    public string DarkThemeStartTime { get; set; } = "19:00";
+    
+    // === Indicateurs de catégorie (badges colorés) ===
+    public bool ShowCategoryBadges { get; set; } = true;
+    
+    // === Thème automatique (jour/nuit) ===
+    public ThemeMode ThemeMode { get; set; } = ThemeMode.Dark;
+    public string AutoThemeLightStart { get; set; } = "07:00";  // Début mode clair
+    public string AutoThemeDarkStart { get; set; } = "19:00";   // Début mode sombre
     
     // === Surveillance fichiers ===
     public bool EnableFileWatcher { get; set; } = true;

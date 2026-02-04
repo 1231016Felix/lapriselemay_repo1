@@ -66,6 +66,12 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private int _selectedActionIndex;
     
+    [ObservableProperty]
+    private bool _showCategoryBadges;
+    
+    [ObservableProperty]
+    private bool _showSettingsButton;
+    
     public ObservableCollection<SearchResult> Results { get; } = [];
     public ObservableCollection<FileAction> AvailableActions { get; } = [];
     
@@ -95,6 +101,10 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
         _settings = AppSettings.Load();
         _aliasService = new AliasService();
+        
+        // Initialiser les propriétés d'apparence depuis les settings
+        ShowCategoryBadges = _settings.ShowCategoryBadges;
+        ShowSettingsButton = _settings.ShowSettingsButton;
         
         _indexingService.IndexingStarted += (_, _) => IsIndexing = true;
         _indexingService.IndexingCompleted += (_, _) => 
@@ -1417,6 +1427,8 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public void ReloadSettings()
     {
         _settings = AppSettings.Load();
+        ShowCategoryBadges = _settings.ShowCategoryBadges;
+        ShowSettingsButton = _settings.ShowSettingsButton;
     }
     
     public void Reset()
