@@ -35,9 +35,6 @@ public enum FileActionType
 {
     // Actions communes
     Open,
-    OpenLocation,
-    CopyPath,
-    CopyName,
     
     // Actions fichiers
     Delete,
@@ -46,7 +43,6 @@ public enum FileActionType
     
     // Actions applications
     RunAsAdmin,
-    CreateShortcut,
     
     // Actions favoris
     CopyUrl,
@@ -56,10 +52,9 @@ public enum FileActionType
     OpenInTerminal,
     OpenInExplorer,
     
-    // Actions épingles et alias
+    // Actions épingles
     Pin,
-    Unpin,
-    CreateAlias
+    Unpin
 }
 
 /// <summary>
@@ -120,10 +115,8 @@ public static class FileActionProvider
         // Actions communes à tous les types (sauf WebSearch et Calculator)
         if (result.Type is not (ResultType.WebSearch or ResultType.Calculator or ResultType.SystemCommand or ResultType.SystemControl))
         {
-            actions.AddRange(GetCommonActions());
-            
-            // Actions épingles et alias
-            actions.AddRange(GetPinAndAliasActions(result, isPinned));
+            // Actions épingles
+            actions.AddRange(GetPinActions(isPinned));
         }
         
         return actions;
@@ -139,36 +132,10 @@ public static class FileActionProvider
             Shortcut = "Ctrl+Entrée",
             ActionType = FileActionType.RunAsAdmin
         };
-        
-        yield return new FileAction
-        {
-            Name = "Ouvrir l'emplacement",
-            Icon = "📂",
-            Description = "Ouvrir le dossier contenant l'application",
-            Shortcut = "Ctrl+O",
-            ActionType = FileActionType.OpenLocation
-        };
-        
-        yield return new FileAction
-        {
-            Name = "Créer un raccourci",
-            Icon = "🔗",
-            Description = "Créer un raccourci sur le bureau",
-            ActionType = FileActionType.CreateShortcut
-        };
     }
     
     private static IEnumerable<FileAction> GetFileActions()
     {
-        yield return new FileAction
-        {
-            Name = "Ouvrir l'emplacement",
-            Icon = "📂",
-            Description = "Ouvrir le dossier contenant le fichier",
-            Shortcut = "Ctrl+O",
-            ActionType = FileActionType.OpenLocation
-        };
-        
         yield return new FileAction
         {
             Name = "Renommer",
@@ -265,27 +232,7 @@ public static class FileActionProvider
         };
     }
     
-    private static IEnumerable<FileAction> GetCommonActions()
-    {
-        yield return new FileAction
-        {
-            Name = "Copier le chemin",
-            Icon = "📋",
-            Description = "Copier le chemin complet",
-            Shortcut = "Ctrl+Maj+C",
-            ActionType = FileActionType.CopyPath
-        };
-        
-        yield return new FileAction
-        {
-            Name = "Copier le nom",
-            Icon = "📝",
-            Description = "Copier le nom du fichier",
-            ActionType = FileActionType.CopyName
-        };
-    }
-    
-    private static IEnumerable<FileAction> GetPinAndAliasActions(SearchResult result, bool isPinned)
+    private static IEnumerable<FileAction> GetPinActions(bool isPinned)
     {
         // Action épingler/désépingler
         if (isPinned)
@@ -295,7 +242,6 @@ public static class FileActionProvider
                 Name = "Désépingler",
                 Icon = "📌",
                 Description = "Retirer des favoris épinglés",
-                Shortcut = "Ctrl+P",
                 ActionType = FileActionType.Unpin
             };
         }
@@ -306,20 +252,7 @@ public static class FileActionProvider
                 Name = "Épingler",
                 Icon = "⭐",
                 Description = "Ajouter aux favoris épinglés",
-                Shortcut = "Ctrl+P",
                 ActionType = FileActionType.Pin
-            };
-        }
-        
-        // Action créer un alias (seulement pour les apps et fichiers)
-        if (result.Type is ResultType.Application or ResultType.StoreApp or ResultType.File or ResultType.Script or ResultType.Folder)
-        {
-            yield return new FileAction
-            {
-                Name = "Créer un alias",
-                Icon = "⌨️",
-                Description = "Créer un raccourci texte",
-                ActionType = FileActionType.CreateAlias
             };
         }
     }
@@ -340,14 +273,10 @@ public static class FileActionExecutor
             return actionType switch
             {
                 FileActionType.Open => OpenFile(path),
-                FileActionType.OpenLocation => OpenLocation(path),
-                FileActionType.CopyPath => CopyToClipboard(path),
-                FileActionType.CopyName => CopyToClipboard(Path.GetFileName(path)),
                 FileActionType.CopyUrl => CopyToClipboard(path),
                 FileActionType.Delete => DeleteFile(path),
                 FileActionType.Properties => ShowProperties(path),
                 FileActionType.RunAsAdmin => RunAsAdmin(path),
-                FileActionType.CreateShortcut => CreateShortcutOnDesktop(path),
                 FileActionType.OpenPrivate => OpenInPrivateMode(path),
                 FileActionType.OpenInTerminal => OpenInTerminal(path),
                 FileActionType.OpenInExplorer => OpenInExplorer(path),
@@ -369,23 +298,6 @@ public static class FileActionExecutor
             FileName = path,
             UseShellExecute = true
         });
-        return true;
-    }
-
-    private static bool OpenLocation(string path)
-    {
-        var folder = File.Exists(path) ? Path.GetDirectoryName(path) : path;
-        if (string.IsNullOrEmpty(folder)) return false;
-        
-        // Ouvrir l'explorateur et sélectionner le fichier
-        if (File.Exists(path))
-        {
-            Process.Start("explorer.exe", $"/select,\"{path}\"");
-        }
-        else
-        {
-            Process.Start("explorer.exe", folder);
-        }
         return true;
     }
 
@@ -451,23 +363,6 @@ public static class FileActionExecutor
             UseShellExecute = true,
             Verb = "runas"
         });
-        return true;
-    }
-
-    private static bool CreateShortcutOnDesktop(string path)
-    {
-        var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-        var shortcutName = Path.GetFileNameWithoutExtension(path) + ".lnk";
-        var shortcutPath = Path.Combine(desktopPath, shortcutName);
-        
-        // Utiliser IShellLink COM pour créer le raccourci
-        var link = (IShellLink)new ShellLink();
-        link.SetPath(path);
-        link.SetWorkingDirectory(Path.GetDirectoryName(path) ?? "");
-        
-        var file = (IPersistFile)link;
-        file.Save(shortcutPath, false);
-        
         return true;
     }
 
@@ -589,53 +484,3 @@ internal static class NativeMethods
     [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     public static extern bool ShellExecuteEx(ref SHELLEXECUTEINFO lpExecInfo);
 }
-
-/// <summary>
-/// Interface COM IShellLink pour la création de raccourcis.
-/// </summary>
-[ComImport]
-[Guid("000214F9-0000-0000-C000-000000000046")]
-[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-internal interface IShellLink
-{
-    void GetPath([Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder pszFile, int cch, IntPtr pfd, int fFlags);
-    void GetIDList(out IntPtr ppidl);
-    void SetIDList(IntPtr pidl);
-    void GetDescription([Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder pszName, int cch);
-    void SetDescription([MarshalAs(UnmanagedType.LPWStr)] string pszName);
-    void GetWorkingDirectory([Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder pszDir, int cch);
-    void SetWorkingDirectory([MarshalAs(UnmanagedType.LPWStr)] string pszDir);
-    void GetArguments([Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder pszArgs, int cch);
-    void SetArguments([MarshalAs(UnmanagedType.LPWStr)] string pszArgs);
-    void GetHotkey(out short pwHotkey);
-    void SetHotkey(short wHotkey);
-    void GetShowCmd(out int piShowCmd);
-    void SetShowCmd(int iShowCmd);
-    void GetIconLocation([Out, MarshalAs(UnmanagedType.LPWStr)] System.Text.StringBuilder pszIconPath, int cch, out int piIcon);
-    void SetIconLocation([MarshalAs(UnmanagedType.LPWStr)] string pszIconPath, int iIcon);
-    void SetRelativePath([MarshalAs(UnmanagedType.LPWStr)] string pszPathRel, int dwReserved);
-    void Resolve(IntPtr hwnd, int fFlags);
-    void SetPath([MarshalAs(UnmanagedType.LPWStr)] string pszFile);
-}
-
-/// <summary>
-/// Interface COM IPersistFile pour la sauvegarde des raccourcis.
-/// </summary>
-[ComImport]
-[Guid("0000010B-0000-0000-C000-000000000046")]
-[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-internal interface IPersistFile
-{
-    void GetCurFile([Out, MarshalAs(UnmanagedType.LPWStr)] out string ppszFileName);
-    void IsDirty();
-    void Load([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, int dwMode);
-    void Save([MarshalAs(UnmanagedType.LPWStr)] string pszFileName, [MarshalAs(UnmanagedType.Bool)] bool fRemember);
-    void SaveCompleted([MarshalAs(UnmanagedType.LPWStr)] string pszFileName);
-}
-
-/// <summary>
-/// Classe COM ShellLink pour la création de raccourcis.
-/// </summary>
-[ComImport]
-[Guid("00021401-0000-0000-C000-000000000046")]
-internal class ShellLink { }

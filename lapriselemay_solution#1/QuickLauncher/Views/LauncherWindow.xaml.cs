@@ -132,11 +132,6 @@ public partial class LauncherWindow : Window
                     e.Handled = true;
                     return;
                     
-                case Key.O:
-                    _viewModel.OpenLocationCommand.Execute(null);
-                    e.Handled = true;
-                    return;
-                    
                 case Key.T:
                     // Ouvrir terminal
                     if (_viewModel.SelectedIndex >= 0 && _viewModel.SelectedIndex < _viewModel.Results.Count)
@@ -147,14 +142,6 @@ public partial class LauncherWindow : Window
                     e.Handled = true;
                     return;
             }
-        }
-        
-        // Ctrl+Shift+C: Copier le chemin
-        if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.C)
-        {
-            _viewModel.CopyPathCommand.Execute(null);
-            e.Handled = true;
-            return;
         }
         
         // Ctrl+Enter: Exécuter en admin
@@ -440,10 +427,10 @@ public partial class LauncherWindow : Window
         return actionType switch
         {
             FileActionType.Open or FileActionType.RunAsAdmin or FileActionType.OpenPrivate => FileActionType.Open,
-            FileActionType.OpenLocation or FileActionType.OpenInExplorer or FileActionType.OpenInTerminal => FileActionType.OpenLocation,
-            FileActionType.CopyPath or FileActionType.CopyName or FileActionType.CopyUrl => FileActionType.CopyPath,
+            FileActionType.OpenInExplorer or FileActionType.OpenInTerminal => FileActionType.OpenInExplorer,
+            FileActionType.CopyUrl => FileActionType.CopyUrl,
             FileActionType.Rename or FileActionType.Delete or FileActionType.Properties => FileActionType.Rename,
-            FileActionType.Pin or FileActionType.Unpin or FileActionType.CreateAlias or FileActionType.CreateShortcut => FileActionType.Pin,
+            FileActionType.Pin or FileActionType.Unpin => FileActionType.Pin,
             _ => actionType
         };
     }
@@ -490,13 +477,6 @@ public partial class LauncherWindow : Window
             return;
         }
         
-        // Cas spécial pour CreateAlias
-        if (action.ActionType == FileActionType.CreateAlias)
-        {
-            _viewModel.TriggerCreateAlias(result.Name, result.Path);
-            return;
-        }
-        
         // Exécuter l'action
         var success = action.Execute(result.Path);
         
@@ -505,8 +485,6 @@ public partial class LauncherWindow : Window
             // Notification de succès
             var message = action.ActionType switch
             {
-                FileActionType.CopyPath => "Chemin copié",
-                FileActionType.CopyName => "Nom copié",
                 FileActionType.CopyUrl => "URL copiée",
                 _ => null
             };

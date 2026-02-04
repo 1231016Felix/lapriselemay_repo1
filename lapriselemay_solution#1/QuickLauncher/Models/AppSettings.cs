@@ -202,7 +202,7 @@ public sealed class AppSettings
                 Description = "Vider la corbeille" },
         new() { Type = SystemControlType.EmptyTemp, Name = "Vider Temp", Prefix = "emptytemp", Icon = "🧹", Category = "Système",
                 Description = "Vider le dossier temporaire" },
-        new() { Type = SystemControlType.OpenCmdAdmin, Name = "CMD Admin", Prefix = "cmd", Icon = "⬛", Category = "Système",
+        new() { Type = SystemControlType.OpenCmdAdmin, Name = "CMD Admin", Prefix = "cmd", Icon = "💻", Category = "Système",
                 Description = "Ouvrir l'invite de commandes (admin)" },
         new() { Type = SystemControlType.OpenPowerShellAdmin, Name = "PowerShell Admin", Prefix = "powershell", Icon = "🔵", Category = "Système",
                 Description = "Ouvrir PowerShell (admin)" },
@@ -211,15 +211,7 @@ public sealed class AppSettings
         new() { Type = SystemControlType.OpenStartupFolder, Name = "Démarrage", Prefix = "startup", Icon = "🚀", Category = "Système",
                 Description = "Ouvrir le dossier de démarrage Windows" },
         new() { Type = SystemControlType.OpenHostsFile, Name = "Fichier hosts", Prefix = "hosts", Icon = "📝", Category = "Système",
-                Description = "Ouvrir le fichier hosts (admin)" },
-
-        // ═══════════════════════════════════════════════════════════════════
-        // 🌍 UTILITAIRES WEB
-        // ═══════════════════════════════════════════════════════════════════
-        new() { Type = SystemControlType.Definition, Name = "Définition", Prefix = "def", Icon = "📖", Category = "Utilitaires Web",
-                Description = "Chercher la définition d'un mot", RequiresArgument = true, ArgumentHint = "[mot]" },
-        new() { Type = SystemControlType.Translate, Name = "Traduction", Prefix = "tr", Icon = "🌐", Category = "Utilitaires Web",
-                Description = "Traduire un texte", RequiresArgument = true, ArgumentHint = "[texte] en [langue]" }
+                Description = "Ouvrir le fichier hosts (admin)" }
     ];
     
     /// <summary>
@@ -495,9 +487,7 @@ public enum SystemControlType
     
     // Commandes supplémentaires
     OpenStartupFolder = 25,
-    OpenHostsFile = 26,
-    Definition = 27,
-    Translate = 28
+    OpenHostsFile = 26
 }
 
 /// <summary>

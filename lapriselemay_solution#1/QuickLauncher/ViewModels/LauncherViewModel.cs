@@ -80,21 +80,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public event EventHandler? RequestQuit;
     public event EventHandler? RequestReindex;
     public event EventHandler<string>? RequestRename;
-    public event EventHandler<(string Name, string Path)>? RequestCreateAlias;
     public event EventHandler<string>? ShowNotification;
-    
-    /// <summary>
-    /// Déclenche l'événement RequestCreateAlias depuis l'extérieur de la classe.
-    /// </summary>
-    public void TriggerCreateAlias(string name, string path)
-    {
-        RequestCreateAlias?.Invoke(this, (name, path));
-    }
-    
-    /// <summary>
-    /// Service d'alias exposé pour l'UI.
-    /// </summary>
-    public AliasService AliasService => _aliasService;
 
     public LauncherViewModel(IndexingService indexingService)
     {
@@ -662,34 +648,6 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                 });
                 break;
                 
-            case SystemControlType.Definition:
-                if (!string.IsNullOrEmpty(arg))
-                {
-                    Results.Insert(0, new SearchResult
-                    {
-                        Name = $"📖 Définition de \"{arg}\"",
-                        Description = "Appuyez sur Entrée pour chercher la définition",
-                        Type = ResultType.SystemControl,
-                        DisplayIcon = cmd.Icon,
-                        Path = fullQuery
-                    });
-                }
-                break;
-                
-            case SystemControlType.Translate:
-                if (!string.IsNullOrEmpty(arg))
-                {
-                    Results.Insert(0, new SearchResult
-                    {
-                        Name = $"🌐 Traduire \"{arg}\"",
-                        Description = "Appuyez sur Entrée pour traduire",
-                        Type = ResultType.SystemControl,
-                        DisplayIcon = cmd.Icon,
-                        Path = fullQuery
-                    });
-                }
-                break;
-                
             case SystemControlType.Note:
                 if (!string.IsNullOrEmpty(arg))
                 {
@@ -847,14 +805,6 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             return;
         }
         
-        // Cas spécial pour CreateAlias
-        if (action.ActionType == FileActionType.CreateAlias)
-        {
-            RequestCreateAlias?.Invoke(this, (result.Name, result.Path));
-            ShowActionsPanel = false;
-            return;
-        }
-        
         var success = action.Execute(result.Path);
         
         if (success)
@@ -862,8 +812,6 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             // Notification de succès
             var message = action.ActionType switch
             {
-                FileActionType.CopyPath => "Chemin copié",
-                FileActionType.CopyName => "Nom copié",
                 FileActionType.CopyUrl => "URL copiée",
                 FileActionType.Delete => "Envoyé à la corbeille",
                 _ => null
@@ -899,33 +847,6 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             FileActionExecutor.Execute(FileActionType.RunAsAdmin, result.Path);
             _indexingService.RecordUsage(result);
             RequestHide?.Invoke(this, EventArgs.Empty);
-        }
-    }
-    
-    /// <summary>
-    /// Ouvre l'emplacement du fichier.
-    /// </summary>
-    [RelayCommand]
-    private void OpenLocation()
-    {
-        if (SelectedIndex < 0 || SelectedIndex >= Results.Count) return;
-        
-        var result = Results[SelectedIndex];
-        FileActionExecutor.Execute(FileActionType.OpenLocation, result.Path);
-    }
-    
-    /// <summary>
-    /// Copie le chemin dans le presse-papiers.
-    /// </summary>
-    [RelayCommand]
-    private void CopyPath()
-    {
-        if (SelectedIndex < 0 || SelectedIndex >= Results.Count) return;
-        
-        var result = Results[SelectedIndex];
-        if (FileActionExecutor.Execute(FileActionType.CopyPath, result.Path))
-        {
-            ShowNotification?.Invoke(this, "Chemin copié");
         }
     }
     
@@ -1062,16 +983,6 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                         RequestHide?.Invoke(this, EventArgs.Empty);
                     }
                     return;
-                    
-                case SystemControlType.Definition:
-                    if (!string.IsNullOrEmpty(arg))
-                        OpenDefinition(arg);
-                    return;
-                    
-                case SystemControlType.Translate:
-                    if (!string.IsNullOrEmpty(arg))
-                        OpenTranslation(arg);
-                    return;
             }
         }
 
@@ -1157,8 +1068,6 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             SystemControlType.FlushDns => "flushdns",
             SystemControlType.OpenStartupFolder => "startup",
             SystemControlType.OpenHostsFile => "hosts",
-            SystemControlType.Definition => "definition",
-            SystemControlType.Translate => "translate",
             _ => prefix
         };
         
@@ -1212,84 +1121,6 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         _settings.Save();
         SearchText = string.Empty;
         RequestHide?.Invoke(this, EventArgs.Empty);
-    }
-    
-    /// <summary>
-    /// Ouvre la définition d'un mot dans le navigateur.
-    /// </summary>
-    private void OpenDefinition(string word)
-    {
-        try
-        {
-            // Utiliser Le Dictionnaire (fr) ou Wiktionary
-            var encodedWord = Uri.EscapeDataString(word.Trim());
-            var url = $"https://fr.wiktionary.org/wiki/{encodedWord}";
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = url,
-                UseShellExecute = true
-            });
-            ShowResult($"📖 Définition de \"{word}\"", "Ouverture dans le navigateur...");
-            RequestHide?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            ShowResult("❌ Erreur", ex.Message);
-        }
-    }
-    
-    /// <summary>
-    /// Ouvre Google Translate pour traduire le texte.
-    /// </summary>
-    private void OpenTranslation(string text)
-    {
-        try
-        {
-            // Parser le format ": texte en langue" ou juste "texte"
-            var targetLang = "fr"; // Langue par défaut
-            var textToTranslate = text;
-            
-            // Vérifier si le format contient " en " pour extraire la langue cible
-            var enIndex = text.LastIndexOf(" en ", StringComparison.OrdinalIgnoreCase);
-            if (enIndex > 0)
-            {
-                textToTranslate = text[..enIndex].Trim();
-                var langPart = text[(enIndex + 4)..].Trim().ToLowerInvariant();
-                
-                // Mapper les noms de langues vers les codes ISO
-                targetLang = langPart switch
-                {
-                    "français" or "french" or "fr" => "fr",
-                    "anglais" or "english" or "en" => "en",
-                    "espagnol" or "spanish" or "es" => "es",
-                    "allemand" or "german" or "de" => "de",
-                    "italien" or "italian" or "it" => "it",
-                    "portugais" or "portuguese" or "pt" => "pt",
-                    "chinois" or "chinese" or "zh" => "zh-CN",
-                    "japonais" or "japanese" or "ja" => "ja",
-                    "coréen" or "korean" or "ko" => "ko",
-                    "russe" or "russian" or "ru" => "ru",
-                    "arabe" or "arabic" or "ar" => "ar",
-                    "néerlandais" or "dutch" or "nl" => "nl",
-                    "polonais" or "polish" or "pl" => "pl",
-                    _ => langPart.Length == 2 ? langPart : "fr"
-                };
-            }
-            
-            var encodedText = Uri.EscapeDataString(textToTranslate);
-            var url = $"https://translate.google.com/?sl=auto&tl={targetLang}&text={encodedText}&op=translate";
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = url,
-                UseShellExecute = true
-            });
-            ShowResult($"🌐 Traduction vers {targetLang.ToUpperInvariant()}", "Ouverture dans le navigateur...");
-            RequestHide?.Invoke(this, EventArgs.Empty);
-        }
-        catch (Exception ex)
-        {
-            ShowResult("❌ Erreur", ex.Message);
-        }
     }
     
     private void ShowHelpCommands()

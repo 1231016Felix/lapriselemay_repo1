@@ -687,24 +687,8 @@
                                         <TextBlock Grid.Column="1" Text="Lancer l'élément" Foreground="#888" FontSize="11"/>
                                     </Grid>
                                     <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text="Tab" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Panneau d'actions" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text="Ctrl+P" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Épingler / Désépingler" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                         <TextBlock Text="Ctrl+Entrée" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
                                         <TextBlock Grid.Column="1" Text="Exécuter en admin" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text="Ctrl+O" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Ouvrir emplacement" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text="Ctrl+Maj+C" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Copier le chemin" Foreground="#888" FontSize="11"/>
                                     </Grid>
                                     <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                         <TextBlock Text="Échap" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
@@ -716,7 +700,7 @@
                             <TextBlock Text="Astuces" Style="{StaticResource SectionLabel}"/>
                             <Border Background="#2D3D2D" CornerRadius="6" Padding="12" BorderBrush="#4CAF50" BorderThickness="1">
                                 <StackPanel>
-                                    <TextBlock Text="• ⭐ Épinglez vos apps favorites (Tab → Épingler)" Foreground="#AAA" FontSize="11" Margin="0,2"/>
+                                    <TextBlock Text="• ⭐ Épinglez vos apps favorites (clic droit → Épingler)" Foreground="#AAA" FontSize="11" Margin="0,2"/>
                                     <TextBlock Text="• Les épinglés apparaissent quand la barre est vide" Foreground="#AAA" FontSize="11" Margin="0,2"/>
                                     <TextBlock Text="• Tapez ':help' pour voir toutes les commandes" Foreground="#AAA" FontSize="11" Margin="0,2"/>
                                     <TextBlock Text="• Calculatrice intégrée: tapez '2+2*3'" Foreground="#AAA" FontSize="11" Margin="0,2"/>
