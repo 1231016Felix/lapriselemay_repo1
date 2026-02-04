@@ -608,6 +608,64 @@ public static class SystemControlService
         }
     }
 
+    /// <summary>
+    /// Ouvre le dossier de démarrage Windows de l'utilisateur.
+    /// </summary>
+    public static bool OpenStartupFolder()
+    {
+        try
+        {
+            var startupPath = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = startupPath,
+                UseShellExecute = true
+            });
+            return true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SystemControl] OpenStartupFolder erreur: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Ouvre le fichier hosts en mode administrateur avec le Bloc-notes.
+    /// </summary>
+    public static bool OpenHostsFile()
+    {
+        try
+        {
+            var hostsPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.System),
+                @"drivers\etc\hosts");
+            
+            var psi = new ProcessStartInfo
+            {
+                FileName = "notepad.exe",
+                Arguments = hostsPath,
+                UseShellExecute = true,
+                Verb = "runas"
+            };
+            
+            var process = Process.Start(psi);
+            return process != null;
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            // L'utilisateur a annulé le prompt UAC
+            System.Diagnostics.Debug.WriteLine("[SystemControl] Hosts: UAC annulé par l'utilisateur");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SystemControl] OpenHostsFile erreur: {ex.Message}");
+            return false;
+        }
+    }
+
     #endregion
 
     #region Screenshot
@@ -786,6 +844,12 @@ public static class SystemControlService
             "flushdns" or "cleardns" => FlushDns() 
                 ? new SystemCommandResult(true, "Cache DNS vidé") 
                 : new SystemCommandResult(false, "Échec du vidage du cache DNS"),
+            "startup" => OpenStartupFolder() 
+                ? new SystemCommandResult(true, "Dossier de démarrage ouvert") 
+                : new SystemCommandResult(false, "Échec de l'ouverture"),
+            "hosts" => OpenHostsFile() 
+                ? new SystemCommandResult(true, "Fichier hosts ouvert (admin)") 
+                : new SystemCommandResult(false, "Échec de l'ouverture (annulé ou refusé)"),
             _ => null
         };
     }

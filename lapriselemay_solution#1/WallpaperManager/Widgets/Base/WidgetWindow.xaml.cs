@@ -78,7 +78,7 @@ public partial class WidgetWindow : Window
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     
     private static readonly IntPtr HWND_TOPMOST = new(-1);
-    private static readonly IntPtr HWND_NOTOPMOST = new(-2);
+    private static readonly IntPtr HWND_BOTTOM = new(1);
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOACTIVATE = 0x0010;
@@ -217,19 +217,16 @@ public partial class WidgetWindow : Window
             
             if (desktopActive && !_isDesktopMode)
             {
+                // Bureau visible: mettre en Topmost pour être au-dessus du bureau
                 _isDesktopMode = true;
                 SetWindowPos(_hwnd, HWND_TOPMOST, 0, 0, 0, 0, 
                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             }
             else if (!desktopActive && _isDesktopMode)
             {
+                // Une application est au premier plan: envoyer tout en bas de la pile Z
                 _isDesktopMode = false;
-                
-                var foreground = GetForegroundWindow();
-                SetWindowPos(_hwnd, foreground, 0, 0, 0, 0, 
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-                
-                SetWindowPos(_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, 
+                SetWindowPos(_hwnd, HWND_BOTTOM, 0, 0, 0, 0, 
                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             }
         }

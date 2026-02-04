@@ -595,6 +595,104 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             case SystemControlType.FlushDns:
                 // Ces commandes n'ont pas d'arguments, le résultat est déjà ajouté
                 break;
+                
+            case SystemControlType.Timer:
+                if (!string.IsNullOrEmpty(arg))
+                {
+                    var timerParts = arg.Split(' ', 2);
+                    var duration = timerParts[0];
+                    var label = timerParts.Length > 1 ? timerParts[1] : null;
+                    var parsedDuration = TimerWidgetService.ParseDuration(duration);
+                    
+                    if (parsedDuration != null)
+                    {
+                        var durationText = TimerWidgetService.FormatDuration(parsedDuration.Value);
+                        Results.Insert(0, new SearchResult
+                        {
+                            Name = $"⏱️ Créer minuterie: {durationText}",
+                            Description = string.IsNullOrEmpty(label) ? "Appuyez sur Entrée pour démarrer" : $"Label: {label}",
+                            Type = ResultType.SystemControl,
+                            DisplayIcon = cmd.Icon,
+                            Path = fullQuery
+                        });
+                    }
+                    else
+                    {
+                        Results.Insert(0, new SearchResult
+                        {
+                            Name = "Format invalide",
+                            Description = "Utilisez: 5m, 30s, 1h, 1h30m, etc.",
+                            Type = ResultType.SystemControl,
+                            DisplayIcon = "❌",
+                            Path = ""
+                        });
+                    }
+                }
+                break;
+                
+            case SystemControlType.OpenStartupFolder:
+                Results.Insert(0, new SearchResult
+                {
+                    Name = "Ouvrir le dossier de démarrage",
+                    Description = "Appuyez sur Entrée pour ouvrir",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = cmd.Icon,
+                    Path = fullQuery
+                });
+                break;
+                
+            case SystemControlType.OpenHostsFile:
+                Results.Insert(0, new SearchResult
+                {
+                    Name = "Ouvrir le fichier hosts (admin)",
+                    Description = "Appuyez sur Entrée pour ouvrir avec privilèges admin",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = cmd.Icon,
+                    Path = fullQuery
+                });
+                break;
+                
+            case SystemControlType.Definition:
+                if (!string.IsNullOrEmpty(arg))
+                {
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = $"📖 Définition de \"{arg}\"",
+                        Description = "Appuyez sur Entrée pour chercher la définition",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = cmd.Icon,
+                        Path = fullQuery
+                    });
+                }
+                break;
+                
+            case SystemControlType.Translate:
+                if (!string.IsNullOrEmpty(arg))
+                {
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = $"🌐 Traduire \"{arg}\"",
+                        Description = "Appuyez sur Entrée pour traduire",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = cmd.Icon,
+                        Path = fullQuery
+                    });
+                }
+                break;
+                
+            case SystemControlType.Note:
+                if (!string.IsNullOrEmpty(arg))
+                {
+                    Results.Insert(0, new SearchResult
+                    {
+                        Name = $"📝 Créer une note",
+                        Description = arg.Length > 50 ? arg[..47] + "..." : arg,
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = cmd.Icon,
+                        Path = fullQuery
+                    });
+                }
+                break;
         }
     }
     
@@ -606,19 +704,13 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             Results.Add(pinned.ToSearchResult());
         }
         
-        // Puis l'historique si activé
+        // Puis l'historique si activé (items récemment utilisés)
         if (_settings.EnableSearchHistory && _settings.SearchHistory.Count > 0)
         {
             var maxHistory = Math.Max(0, 5 - _settings.PinnedItems.Count);
-            foreach (var history in _settings.SearchHistory.Take(maxHistory))
+            foreach (var historyItem in _settings.SearchHistory.Take(maxHistory))
             {
-                Results.Add(new SearchResult
-                {
-                    Name = history,
-                    Description = "Recherche récente",
-                    Type = ResultType.SearchHistory,
-                    DisplayIcon = "🕐"
-                });
+                Results.Add(historyItem.ToSearchResult());
             }
         }
         
@@ -668,8 +760,13 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                 ExecuteSystemControl(item.Path);
                 break;
                 
+            case ResultType.Note:
+                // Les notes sont maintenant des widgets, pas d'action spéciale ici
+                break;
+                
             case ResultType.SearchHistory:
-                SearchText = item.Name;
+                // L'historique contient maintenant des items cliqués, on les relance
+                LaunchItem(item);
                 break;
                 
             default:
@@ -854,13 +951,19 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     
     private void LaunchItem(SearchResult item)
     {
-        if (!string.IsNullOrWhiteSpace(SearchText))
+        // Enregistrer l'item cliqué dans l'historique (au lieu de la requête de recherche)
+        if (_settings.EnableSearchHistory && !string.IsNullOrWhiteSpace(item.Path))
         {
-            if (_settings.EnableSearchHistory)
+            var historyItem = new HistoryItem
             {
-                _settings.AddToSearchHistory(SearchText);
-                _settings.Save();
-            }
+                Name = item.Name,
+                Path = item.Path,
+                Type = item.Type,
+                Icon = item.DisplayIcon,
+                LastUsed = DateTime.Now
+            };
+            _settings.AddToSearchHistory(historyItem);
+            _settings.Save();
         }
         
         _indexingService.RecordUsage(item);
@@ -907,6 +1010,60 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrEmpty(command))
             return;
+        
+        // Gérer les commandes timer et note
+        var parts = command.TrimStart(':').Split(' ', 2);
+        var cmdPrefix = parts[0];
+        var arg = parts.Length > 1 ? parts[1] : null;
+        
+        var matchedCmd = _settings.SystemCommands.FirstOrDefault(c => 
+            c.IsEnabled && c.Prefix.Equals(cmdPrefix, StringComparison.OrdinalIgnoreCase));
+        
+        if (matchedCmd != null)
+        {
+            switch (matchedCmd.Type)
+            {
+                case SystemControlType.Timer:
+                    if (!string.IsNullOrEmpty(arg))
+                    {
+                        var timerParts = arg.Split(' ', 2);
+                        var duration = timerParts[0];
+                        var label = timerParts.Length > 1 ? timerParts[1] : null;
+                        
+                        var timerWidget = TimerWidgetService.Instance.CreateWidget(duration, label);
+                        if (timerWidget != null)
+                        {
+                            var durationText = TimerWidgetService.FormatDuration(TimeSpan.FromSeconds(timerWidget.DurationSeconds));
+                            ShowResult($"⏱️ Minuterie créée: {durationText}", timerWidget.Label);
+                            RequestHide?.Invoke(this, EventArgs.Empty);
+                        }
+                        else
+                        {
+                            ShowResult("❌ Format invalide", "Utilisez: 5m, 30s, 1h, 1h30m, etc.");
+                        }
+                    }
+                    return;
+                    
+                case SystemControlType.Note:
+                    if (!string.IsNullOrEmpty(arg))
+                    {
+                        var widgetInfo = NoteWidgetService.Instance.CreateWidget(arg);
+                        ShowResult("📝 Note créée!", widgetInfo.Content.Length > 50 ? widgetInfo.Content[..47] + "..." : widgetInfo.Content);
+                        RequestHide?.Invoke(this, EventArgs.Empty);
+                    }
+                    return;
+                    
+                case SystemControlType.Definition:
+                    if (!string.IsNullOrEmpty(arg))
+                        OpenDefinition(arg);
+                    return;
+                    
+                case SystemControlType.Translate:
+                    if (!string.IsNullOrEmpty(arg))
+                        OpenTranslation(arg);
+                    return;
+            }
+        }
 
         // Convertir le préfixe personnalisé vers le format attendu par SystemControlService
         var normalizedCommand = NormalizeSystemCommand(command);
@@ -988,10 +1145,30 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             SystemControlType.OpenPowerShellAdmin => "powershell",
             SystemControlType.RestartExplorer => "restartexplorer",
             SystemControlType.FlushDns => "flushdns",
+            SystemControlType.OpenStartupFolder => "startup",
+            SystemControlType.OpenHostsFile => "hosts",
+            SystemControlType.Definition => "definition",
+            SystemControlType.Translate => "translate",
             _ => prefix
         };
         
         return string.IsNullOrEmpty(arg) ? $":{standardCmd}" : $":{standardCmd} {arg}";
+    }
+    
+    /// <summary>
+    /// Affiche un résultat simple (message de confirmation).
+    /// </summary>
+    private void ShowResult(string name, string description)
+    {
+        Results.Clear();
+        Results.Add(new SearchResult
+        {
+            Name = name,
+            Description = description,
+            Type = ResultType.SystemControl,
+            DisplayIcon = name.Contains("✅") ? "✅" : name.Contains("❌") ? "❌" : "ℹ️"
+        });
+        FinalizeResults();
     }
     
     private void ShowSearchHistory()
@@ -1010,15 +1187,9 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         }
         else
         {
-            foreach (var history in _settings.SearchHistory)
+            foreach (var historyItem in _settings.SearchHistory)
             {
-                Results.Add(new SearchResult
-                {
-                    Name = history,
-                    Description = "Recherche récente",
-                    Type = ResultType.SearchHistory,
-                    DisplayIcon = "🕐"
-                });
+                Results.Add(historyItem.ToSearchResult());
             }
         }
         
@@ -1032,7 +1203,85 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         SearchText = string.Empty;
         RequestHide?.Invoke(this, EventArgs.Empty);
     }
-
+    
+    /// <summary>
+    /// Ouvre la définition d'un mot dans le navigateur.
+    /// </summary>
+    private void OpenDefinition(string word)
+    {
+        try
+        {
+            // Utiliser Le Dictionnaire (fr) ou Wiktionary
+            var encodedWord = Uri.EscapeDataString(word.Trim());
+            var url = $"https://fr.wiktionary.org/wiki/{encodedWord}";
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+            ShowResult($"📖 Définition de \"{word}\"", "Ouverture dans le navigateur...");
+            RequestHide?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            ShowResult("❌ Erreur", ex.Message);
+        }
+    }
+    
+    /// <summary>
+    /// Ouvre Google Translate pour traduire le texte.
+    /// </summary>
+    private void OpenTranslation(string text)
+    {
+        try
+        {
+            // Parser le format ": texte en langue" ou juste "texte"
+            var targetLang = "fr"; // Langue par défaut
+            var textToTranslate = text;
+            
+            // Vérifier si le format contient " en " pour extraire la langue cible
+            var enIndex = text.LastIndexOf(" en ", StringComparison.OrdinalIgnoreCase);
+            if (enIndex > 0)
+            {
+                textToTranslate = text[..enIndex].Trim();
+                var langPart = text[(enIndex + 4)..].Trim().ToLowerInvariant();
+                
+                // Mapper les noms de langues vers les codes ISO
+                targetLang = langPart switch
+                {
+                    "français" or "french" or "fr" => "fr",
+                    "anglais" or "english" or "en" => "en",
+                    "espagnol" or "spanish" or "es" => "es",
+                    "allemand" or "german" or "de" => "de",
+                    "italien" or "italian" or "it" => "it",
+                    "portugais" or "portuguese" or "pt" => "pt",
+                    "chinois" or "chinese" or "zh" => "zh-CN",
+                    "japonais" or "japanese" or "ja" => "ja",
+                    "coréen" or "korean" or "ko" => "ko",
+                    "russe" or "russian" or "ru" => "ru",
+                    "arabe" or "arabic" or "ar" => "ar",
+                    "néerlandais" or "dutch" or "nl" => "nl",
+                    "polonais" or "polish" or "pl" => "pl",
+                    _ => langPart.Length == 2 ? langPart : "fr"
+                };
+            }
+            
+            var encodedText = Uri.EscapeDataString(textToTranslate);
+            var url = $"https://translate.google.com/?sl=auto&tl={targetLang}&text={encodedText}&op=translate";
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+            ShowResult($"🌐 Traduction vers {targetLang.ToUpperInvariant()}", "Ouverture dans le navigateur...");
+            RequestHide?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            ShowResult("❌ Erreur", ex.Message);
+        }
+    }
+    
     private void ShowHelpCommands()
     {
         Results.Clear();
@@ -1125,7 +1374,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         Results.Add(new SearchResult 
         { 
             Name = "Raccourcis clavier", 
-            Description = "Tab: Actions • Ctrl+Entrée: Admin • Ctrl+O: Emplacement • Ctrl+Maj+C: Copier chemin", 
+            Description = "Ctrl+Entrée: Admin • Ctrl+O: Emplacement • Ctrl+Maj+C: Copier chemin", 
             Type = ResultType.SystemCommand, 
             DisplayIcon = "⌨️" 
         });
@@ -1183,6 +1432,15 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         // Forcer l'affichage des épingles et historique
         // (OnSearchTextChanged ne se déclenche pas si SearchText était déjà vide)
         ShowRecentHistory();
+    }
+    
+    /// <summary>
+    /// Force le rafraîchissement des résultats de recherche.
+    /// </summary>
+    public void ForceRefresh()
+    {
+        _debounceTimer.Stop();
+        UpdateResultsInternal();
     }
     
     public void Dispose()

@@ -1,0 +1,132 @@
+<Window x:Class="QuickLauncher.Views.TimerWidget"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Timer"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="False"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        MinWidth="120"
+        MouseLeftButtonDown="Window_MouseLeftButtonDown">
+    
+    <Window.Resources>
+        <Style x:Key="WidgetButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="#888888"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Opacity" Value="0.5"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" 
+                                CornerRadius="9"
+                                x:Name="border">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                            VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="1"/>
+                                <Setter TargetName="border" Property="Background" Value="#33FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    
+    <!-- Conteneur principal avec ombre -->
+    <Border CornerRadius="10" 
+            Background="#1A1A2E"
+            BorderBrush="#2D2D44"
+            BorderThickness="1"
+            Padding="0"
+            Margin="8">
+        <Border.Effect>
+            <DropShadowEffect Color="Black" 
+                            BlurRadius="15" 
+                            ShadowDepth="3" 
+                            Opacity="0.6"/>
+        </Border.Effect>
+        
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            
+            <!-- Barre de titre compacte -->
+            <Grid Grid.Row="0" Background="#151525">
+                <Border CornerRadius="10,10,0,0" Background="#151525">
+                    <Grid Margin="8,4,4,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        
+                        <!-- Label du timer -->
+                        <TextBlock x:Name="LabelText"
+                                   Grid.Column="0" 
+                                   Text="⏱️ Timer" 
+                                   FontSize="11" 
+                                   VerticalAlignment="Center"
+                                   Foreground="#AAAAAA"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxWidth="150"/>
+                        
+                        <!-- Bouton pause/play -->
+                        <Button x:Name="PauseButton"
+                                Grid.Column="1" 
+                                Content="⏸" 
+                                Style="{StaticResource WidgetButtonStyle}"
+                                Click="PauseButton_Click"
+                                ToolTip="Pause/Reprendre"
+                                Margin="4,0,0,0"/>
+                        
+                        <!-- Bouton fermer -->
+                        <Button Grid.Column="2" 
+                                Content="✕" 
+                                Style="{StaticResource WidgetButtonStyle}"
+                                Click="CloseButton_Click"
+                                ToolTip="Annuler cette minuterie"
+                                Margin="2,0,0,0"/>
+                    </Grid>
+                </Border>
+            </Grid>
+            
+            <!-- Temps restant -->
+            <Border Grid.Row="1" Padding="12,8,12,12">
+                <StackPanel>
+                    <TextBlock x:Name="TimeDisplay"
+                               Text="00:00"
+                               FontSize="28"
+                               FontWeight="SemiBold"
+                               FontFamily="Consolas"
+                               Foreground="#00D4AA"
+                               HorizontalAlignment="Center"/>
+                    
+                    <!-- Barre de progression -->
+                    <Border Height="3" 
+                            CornerRadius="1.5" 
+                            Background="#333344"
+                            Margin="0,6,0,0">
+                        <Border x:Name="ProgressBar"
+                                Height="3"
+                                CornerRadius="1.5"
+                                Background="#00D4AA"
+                                HorizontalAlignment="Left"/>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

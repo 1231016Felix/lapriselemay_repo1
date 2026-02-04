@@ -52,6 +52,9 @@ public partial class App : Application
             _logger.Info("Démarrage indexation async...");
             _ = _indexingService.StartIndexingAsync();
             
+            _logger.Info("Restauration des widgets de notes...");
+            NoteWidgetService.Instance.RestoreWidgets();
+            
             _logger.Info("Création icône système...");
             CreateTrayIcon();
             
@@ -332,6 +335,9 @@ public partial class App : Application
         _hotkeyService?.Dispose();
         _indexingService?.Dispose();
         _trayIcon?.Dispose();
+        NoteWidgetService.Instance.CloseAll();
+        TimerWidgetService.Instance.CloseAll();
+        DesktopAttachHelper.Shutdown();
         ThemeService.Shutdown();
     }
 }

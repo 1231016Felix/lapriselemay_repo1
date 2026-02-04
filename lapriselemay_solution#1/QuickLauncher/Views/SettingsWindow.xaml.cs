@@ -1,11 +1,13 @@
-using Microsoft.Win32;
+﻿using Microsoft.Win32;
 using QuickLauncher.Models;
 using QuickLauncher.Services;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 
@@ -620,8 +622,47 @@ public partial class SettingsWindow : Window
     
     private void LoadSystemCommands()
     {
-        SystemCommandsList.ItemsSource = null;
-        SystemCommandsList.ItemsSource = _settings.SystemCommands;
+        try
+        {
+            SystemCommandsList.ItemsSource = null;
+            
+            if (_settings.SystemCommands != null && _settings.SystemCommands.Count > 0)
+            {
+                // Trier par catégorie puis par nom (sans groupement WPF)
+                var sortedCommands = _settings.SystemCommands
+                    .OrderBy(c => c.Category)
+                    .ThenBy(c => c.Name)
+                    .ToList();
+                SystemCommandsList.ItemsSource = sortedCommands;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Settings] ERREUR LoadSystemCommands: {ex.Message}");
+        }
+    }
+    
+    private void MainTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.Source != MainTabControl) return;
+        
+        try
+        {
+            var selectedIndex = MainTabControl.SelectedIndex;
+            Debug.WriteLine($"[Settings] Onglet sélectionné: {selectedIndex}");
+            
+            // Recharger les données de l'onglet Commandes si sélectionné
+            if (selectedIndex == 2 && !_isLoading)
+            {
+                LoadSystemCommands();
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Settings] ERREUR changement onglet: {ex.Message}");
+            MessageBox.Show($"Erreur lors du changement d'onglet: {ex.Message}", "Erreur", 
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
     
     private void SystemCommandItem_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)

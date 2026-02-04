@@ -1,6 +1,7 @@
-<Window x:Class="QuickLauncher.Views.SettingsWindow"
+﻿<Window x:Class="QuickLauncher.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:scm="clr-namespace:System.ComponentModel;assembly=WindowsBase"
         Title="QuickLauncher - Paramètres"
         Width="850" Height="650"
         MinWidth="700" MinHeight="500"
@@ -9,6 +10,13 @@
         ResizeMode="CanResize">
     
     <Window.Resources>
+        <!-- CollectionViewSource pour grouper les commandes système par catégorie -->
+        <CollectionViewSource x:Key="GroupedSystemCommands" Source="{Binding}">
+            <CollectionViewSource.GroupDescriptions>
+                <PropertyGroupDescription PropertyName="Category"/>
+            </CollectionViewSource.GroupDescriptions>
+        </CollectionViewSource>
+        
         <Style x:Key="SettingsCheckBox" TargetType="CheckBox">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="Margin" Value="0,6"/>
@@ -111,7 +119,7 @@
         </StackPanel>
         
         <!-- Onglets -->
-        <TabControl Grid.Row="1" Background="#252525" BorderThickness="0">
+        <TabControl x:Name="MainTabControl" Grid.Row="1" Background="#252525" BorderThickness="0" SelectionChanged="MainTabControl_SelectionChanged">
             
             <!-- ═══════════════════════════════════════════════════════════ -->
             <!-- ONGLET 1: GÉNÉRAL (Démarrage + Comportement + Apparence + Raccourcis) -->
@@ -451,72 +459,75 @@
                             <TextBlock Text="Contrôle Système" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
                             <TextBlock Text="Tapez ':' + préfixe dans la barre de recherche" Foreground="#888" FontSize="11" Margin="0,0,0,8"/>
                             
-                            <ItemsControl x:Name="SystemCommandsList" MaxHeight="350">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border Background="#2A2A2A" CornerRadius="3" Padding="8,5" Margin="0,0,5,5" Cursor="Hand" MouseLeftButtonUp="SystemCommandItem_Click">
-                                            <Border.ToolTip>
-                                                <ToolTip Background="#2D2D2D" BorderBrush="#555" BorderThickness="1" Padding="10">
-                                                    <StackPanel MaxWidth="250">
-                                                        <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="White"/>
-                                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="#CCC" Margin="0,4,0,0"/>
-                                                        <TextBlock Foreground="#888" FontSize="10" Margin="0,6,0,0">
-                                                            <Run Text="Commande: "/><Run Text=":" Foreground="#0078D4"/><Run Text="{Binding Prefix}" Foreground="#0078D4"/>
-                                                        </TextBlock>
+                            <ScrollViewer MaxHeight="400" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl x:Name="SystemCommandsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#2A2A2A" CornerRadius="4" Padding="10,8" Margin="0,3" Cursor="Hand" MouseLeftButtonUp="SystemCommandItem_Click">
+                                                <Border.ToolTip>
+                                                    <ToolTip Background="#2D2D2D" BorderBrush="#555" Padding="12">
+                                                        <StackPanel MaxWidth="280">
+                                                            <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="White" FontSize="13"/>
+                                                            <TextBlock Text="{Binding Description}" TextWrapping="Wrap" Foreground="#CCC" Margin="0,6,0,0"/>
+                                                            <TextBlock Text="{Binding Category, StringFormat='Catégorie: {0}'}" Foreground="#0078D4" FontSize="10" Margin="0,6,0,0"/>
+                                                        </StackPanel>
+                                                    </ToolTip>
+                                                </Border.ToolTip>
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Style.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="#353535"/>
+                                                            </Trigger>
+                                                            <DataTrigger Binding="{Binding IsEnabled}" Value="False">
+                                                                <Setter Property="Opacity" Value="0.4"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="{Binding Icon}" FontSize="18" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Prefix, StringFormat=:{0}}" Foreground="#0078D4" FontFamily="Consolas" FontSize="12" FontWeight="Bold"/>
+                                                        <TextBlock Text="{Binding Category}" Foreground="#888" FontSize="10" Margin="0,2,0,0"/>
                                                     </StackPanel>
-                                                </ToolTip>
-                                            </Border.ToolTip>
-                                            <Border.Style>
-                                                <Style TargetType="Border">
-                                                    <Style.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Background" Value="#353535"/>
-                                                        </Trigger>
-                                                        <DataTrigger Binding="{Binding IsEnabled}" Value="False">
-                                                            <Setter Property="Opacity" Value="0.4"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Border.Style>
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding Icon}" FontSize="12" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                                <TextBlock Text="{Binding Prefix, StringFormat=:{0}}" Foreground="#0078D4" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
-                                                <Border Width="28" Height="14" CornerRadius="7" VerticalAlignment="Center" Margin="8,0,0,0" MouseLeftButtonUp="ToggleSwitch_Click" Tag="{Binding}">
-                                                    <Border.Style>
-                                                        <Style TargetType="Border">
-                                                            <Setter Property="Background" Value="#404040"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsEnabled}" Value="True">
-                                                                    <Setter Property="Background" Value="#0078D4"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Border.Style>
-                                                    <Ellipse Width="10" Height="10" Fill="White" VerticalAlignment="Center">
-                                                        <Ellipse.Style>
-                                                            <Style TargetType="Ellipse">
-                                                                <Setter Property="HorizontalAlignment" Value="Left"/>
-                                                                <Setter Property="Margin" Value="2,0,0,0"/>
+                                                    <Border Grid.Column="2" Width="32" Height="16" CornerRadius="8" VerticalAlignment="Center" MouseLeftButtonUp="ToggleSwitch_Click" Tag="{Binding}">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Background" Value="#404040"/>
                                                                 <Style.Triggers>
                                                                     <DataTrigger Binding="{Binding IsEnabled}" Value="True">
-                                                                        <Setter Property="HorizontalAlignment" Value="Right"/>
-                                                                        <Setter Property="Margin" Value="0,0,2,0"/>
+                                                                        <Setter Property="Background" Value="#0078D4"/>
                                                                     </DataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
-                                                        </Ellipse.Style>
-                                                    </Ellipse>
-                                                </Border>
-                                            </StackPanel>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                                                        </Border.Style>
+                                                        <Ellipse Width="12" Height="12" Fill="White" VerticalAlignment="Center">
+                                                            <Ellipse.Style>
+                                                                <Style TargetType="Ellipse">
+                                                                    <Setter Property="HorizontalAlignment" Value="Left"/>
+                                                                    <Setter Property="Margin" Value="2,0,0,0"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsEnabled}" Value="True">
+                                                                            <Setter Property="HorizontalAlignment" Value="Right"/>
+                                                                            <Setter Property="Margin" Value="0,0,2,0"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Ellipse.Style>
+                                                        </Ellipse>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
                             
                             <!-- Panneau d'édition -->
                             <Border x:Name="CommandEditPanel" Background="#252525" CornerRadius="4" Padding="10" Margin="0,10,0,0" Visibility="Collapsed">

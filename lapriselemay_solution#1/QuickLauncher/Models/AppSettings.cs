@@ -83,8 +83,14 @@ public sealed class AppSettings
     public int AutoReindexIntervalMinutes { get; set; } = 60;
     public string AutoReindexScheduledTime { get; set; } = "03:00";
     
-    // === Historique de recherche ===
-    public List<string> SearchHistory { get; set; } = [];
+    // === Historique de recherche (items cliqués) ===
+    public List<HistoryItem> SearchHistory { get; set; } = [];
+    
+    // === Widgets de notes sur le bureau ===
+    public List<NoteWidgetInfo> NoteWidgets { get; set; } = [];
+    
+    // === Widgets de minuteries sur le bureau ===
+    public List<TimerWidgetInfo> TimerWidgets { get; set; } = [];
     
     // === Items épinglés ===
     public List<PinnedItem> PinnedItems { get; set; } = [];
@@ -94,6 +100,9 @@ public sealed class AppSettings
     
     // === Poids de scoring configurables ===
     public ScoringWeights ScoringWeights { get; set; } = new();
+    
+    // === Notes rapides ===
+    public List<NoteItem> Notes { get; set; } = [];
 
     private static List<string> GetDefaultIndexedFolders() =>
     [
@@ -113,63 +122,83 @@ public sealed class AppSettings
     
     private static List<SystemControlCommand> GetDefaultSystemCommands() =>
     [
-        // Recherche
-        new() { Type = SystemControlType.SystemSearch, Name = "Recherche système", Prefix = "find", Icon = "🔎", 
-                Description = "Rechercher des fichiers sur tout le système", RequiresArgument = true, ArgumentHint = "[terme de recherche]" },
-        
-        // Audio
-        new() { Type = SystemControlType.Volume, Name = "Volume", Prefix = "volume", Icon = "🔊", 
-                Description = "Régler le volume (0-100, up, down)", RequiresArgument = true, ArgumentHint = "[0-100|up|down]" },
-        new() { Type = SystemControlType.Mute, Name = "Muet", Prefix = "mute", Icon = "🔇", 
-                Description = "Basculer le mode muet" },
-        
-        // Affichage
-        new() { Type = SystemControlType.Brightness, Name = "Luminosité", Prefix = "brightness", Icon = "☀️", 
-                Description = "Régler la luminosité (0-100)", RequiresArgument = true, ArgumentHint = "[0-100]" },
-        
-        // Réseau
-        new() { Type = SystemControlType.Wifi, Name = "WiFi", Prefix = "wifi", Icon = "📶", 
-                Description = "Contrôler le WiFi", RequiresArgument = true, ArgumentHint = "[on|off|status]" },
-        new() { Type = SystemControlType.FlushDns, Name = "Vider DNS", Prefix = "flushdns", Icon = "🌐", 
-                Description = "Vider le cache DNS" },
-        
-        // Session/Alimentation
-        new() { Type = SystemControlType.Lock, Name = "Verrouiller", Prefix = "lock", Icon = "🔒", 
-                Description = "Verrouiller la session" },
-        new() { Type = SystemControlType.Sleep, Name = "Veille", Prefix = "sleep", Icon = "😴", 
-                Description = "Mettre en veille" },
-        new() { Type = SystemControlType.Hibernate, Name = "Hibernation", Prefix = "hibernate", Icon = "💤", 
-                Description = "Mettre en hibernation" },
-        new() { Type = SystemControlType.Shutdown, Name = "Éteindre", Prefix = "shutdown", Icon = "🔌", 
-                Description = "Éteindre l'ordinateur" },
-        new() { Type = SystemControlType.Restart, Name = "Redémarrer", Prefix = "restart", Icon = "🔄", 
-                Description = "Redémarrer l'ordinateur" },
-        new() { Type = SystemControlType.Logoff, Name = "Déconnexion", Prefix = "logoff", Icon = "🚪", 
-                Description = "Déconnecter la session" },
-        
-        // Capture
-        new() { Type = SystemControlType.Screenshot, Name = "Capture", Prefix = "screenshot", Icon = "📸", 
+        // ═══════════════════════════════════════════════════════════════
+        // 📝 PRODUCTIVITÉ
+        // ═══════════════════════════════════════════════════════════════
+        new() { Type = SystemControlType.Timer, Name = "Minuterie", Prefix = "timer", Icon = "⏱️", Category = "Productivité",
+                Description = "Créer une minuterie (ex: :timer 5m Pause café)", RequiresArgument = true, ArgumentHint = "[durée] [label]" },
+        new() { Type = SystemControlType.Note, Name = "Nouvelle note", Prefix = "note", Icon = "📝", Category = "Productivité",
+                Description = "Créer une note sur le bureau", RequiresArgument = true, ArgumentHint = "[contenu]" },
+        new() { Type = SystemControlType.SystemSearch, Name = "Recherche système", Prefix = "find", Icon = "🔎", Category = "Productivité",
+                Description = "Rechercher des fichiers sur tout le système", RequiresArgument = true, ArgumentHint = "[terme]" },
+        new() { Type = SystemControlType.Screenshot, Name = "Capture d'écran", Prefix = "screenshot", Icon = "📸", Category = "Productivité",
                 Description = "Prendre une capture d'écran", ArgumentHint = "[snip|primary]" },
-        
-        // Système
-        new() { Type = SystemControlType.EmptyRecycleBin, Name = "Vider corbeille", Prefix = "emptybin", Icon = "🗑️", 
-                Description = "Vider la corbeille" },
-        new() { Type = SystemControlType.OpenTaskManager, Name = "Gestionnaire tâches", Prefix = "taskmgr", Icon = "📊", 
+
+        // ═══════════════════════════════════════════════════════════════
+        // 🔊 MULTIMÉDIA
+        // ═══════════════════════════════════════════════════════════════
+        new() { Type = SystemControlType.Volume, Name = "Volume", Prefix = "volume", Icon = "🔊", Category = "Multimédia",
+                Description = "Régler le volume (0-100, up, down)", RequiresArgument = true, ArgumentHint = "[0-100|up|down]" },
+        new() { Type = SystemControlType.Mute, Name = "Muet", Prefix = "mute", Icon = "🔇", Category = "Multimédia",
+                Description = "Basculer le mode muet" },
+        new() { Type = SystemControlType.Brightness, Name = "Luminosité", Prefix = "brightness", Icon = "☀️", Category = "Multimédia",
+                Description = "Régler la luminosité (0-100)", RequiresArgument = true, ArgumentHint = "[0-100]" },
+
+        // ═══════════════════════════════════════════════════════════════
+        // 🌐 RÉSEAU
+        // ═══════════════════════════════════════════════════════════════
+        new() { Type = SystemControlType.Wifi, Name = "WiFi", Prefix = "wifi", Icon = "📶", Category = "Réseau",
+                Description = "Contrôler le WiFi", RequiresArgument = true, ArgumentHint = "[on|off|status]" },
+        new() { Type = SystemControlType.FlushDns, Name = "Vider DNS", Prefix = "flushdns", Icon = "🌐", Category = "Réseau",
+                Description = "Vider le cache DNS" },
+
+        // ═══════════════════════════════════════════════════════════════
+        // ⚡ SESSION
+        // ═══════════════════════════════════════════════════════════════
+        new() { Type = SystemControlType.Lock, Name = "Verrouiller", Prefix = "lock", Icon = "🔒", Category = "Session",
+                Description = "Verrouiller la session" },
+        new() { Type = SystemControlType.Logoff, Name = "Déconnexion", Prefix = "logoff", Icon = "🚪", Category = "Session",
+                Description = "Déconnecter la session" },
+        new() { Type = SystemControlType.Sleep, Name = "Veille", Prefix = "sleep", Icon = "😴", Category = "Session",
+                Description = "Mettre en veille" },
+        new() { Type = SystemControlType.Hibernate, Name = "Hibernation", Prefix = "hibernate", Icon = "💤", Category = "Session",
+                Description = "Mettre en hibernation" },
+        new() { Type = SystemControlType.Shutdown, Name = "Éteindre", Prefix = "shutdown", Icon = "🔌", Category = "Session",
+                Description = "Éteindre l'ordinateur" },
+        new() { Type = SystemControlType.Restart, Name = "Redémarrer", Prefix = "restart", Icon = "🔄", Category = "Session",
+                Description = "Redémarrer l'ordinateur" },
+
+        // ═══════════════════════════════════════════════════════════════
+        // 🔧 SYSTÈME
+        // ═══════════════════════════════════════════════════════════════
+        new() { Type = SystemControlType.OpenTaskManager, Name = "Gestionnaire tâches", Prefix = "taskmgr", Icon = "📊", Category = "Système",
                 Description = "Ouvrir le Gestionnaire des tâches" },
-        new() { Type = SystemControlType.OpenWindowsSettings, Name = "Paramètres Windows", Prefix = "winsettings", Icon = "⚙️", 
+        new() { Type = SystemControlType.OpenWindowsSettings, Name = "Paramètres Windows", Prefix = "winsettings", Icon = "⚙️", Category = "Système",
                 Description = "Ouvrir les Paramètres Windows" },
-        new() { Type = SystemControlType.OpenControlPanel, Name = "Panneau config.", Prefix = "control", Icon = "🎛️", 
+        new() { Type = SystemControlType.OpenControlPanel, Name = "Panneau config.", Prefix = "control", Icon = "🎛️", Category = "Système",
                 Description = "Ouvrir le Panneau de configuration" },
-        
-        // Maintenance
-        new() { Type = SystemControlType.EmptyTemp, Name = "Vider Temp", Prefix = "emptytemp", Icon = "🧹", 
+        new() { Type = SystemControlType.EmptyRecycleBin, Name = "Vider corbeille", Prefix = "emptybin", Icon = "🗑️", Category = "Système",
+                Description = "Vider la corbeille" },
+        new() { Type = SystemControlType.EmptyTemp, Name = "Vider Temp", Prefix = "emptytemp", Icon = "🧹", Category = "Système",
                 Description = "Vider le dossier temporaire" },
-        new() { Type = SystemControlType.OpenCmdAdmin, Name = "CMD Admin", Prefix = "cmd", Icon = "⬛", 
+        new() { Type = SystemControlType.OpenCmdAdmin, Name = "CMD Admin", Prefix = "cmd", Icon = "⬛", Category = "Système",
                 Description = "Ouvrir l'invite de commandes (admin)" },
-        new() { Type = SystemControlType.OpenPowerShellAdmin, Name = "PowerShell Admin", Prefix = "powershell", Icon = "🔵", 
+        new() { Type = SystemControlType.OpenPowerShellAdmin, Name = "PowerShell Admin", Prefix = "powershell", Icon = "🔵", Category = "Système",
                 Description = "Ouvrir PowerShell (admin)" },
-        new() { Type = SystemControlType.RestartExplorer, Name = "Redém. Explorer", Prefix = "restartexplorer", Icon = "📁", 
-                Description = "Redémarrer l'Explorateur Windows" }
+        new() { Type = SystemControlType.RestartExplorer, Name = "Redém. Explorer", Prefix = "restartexplorer", Icon = "📁", Category = "Système",
+                Description = "Redémarrer l'Explorateur Windows" },
+        new() { Type = SystemControlType.OpenStartupFolder, Name = "Démarrage", Prefix = "startup", Icon = "🚀", Category = "Système",
+                Description = "Ouvrir le dossier de démarrage Windows" },
+        new() { Type = SystemControlType.OpenHostsFile, Name = "Fichier hosts", Prefix = "hosts", Icon = "📝", Category = "Système",
+                Description = "Ouvrir le fichier hosts (admin)" },
+
+        // ═══════════════════════════════════════════════════════════════════
+        // 🌍 UTILITAIRES WEB
+        // ═══════════════════════════════════════════════════════════════════
+        new() { Type = SystemControlType.Definition, Name = "Définition", Prefix = "def", Icon = "📖", Category = "Utilitaires Web",
+                Description = "Chercher la définition d'un mot", RequiresArgument = true, ArgumentHint = "[mot]" },
+        new() { Type = SystemControlType.Translate, Name = "Traduction", Prefix = "tr", Icon = "🌐", Category = "Utilitaires Web",
+                Description = "Traduire un texte", RequiresArgument = true, ArgumentHint = "[texte] en [langue]" }
     ];
     
     /// <summary>
@@ -203,13 +232,17 @@ public sealed class AppSettings
     }
 
     /// <summary>
-    /// Ajoute les commandes système manquantes (migration).
+    /// Ajoute les commandes système manquantes et met à jour les catégories (migration).
     /// </summary>
     private void MigrateSystemCommands()
     {
         var defaultCommands = GetDefaultSystemCommands();
         var existingTypes = SystemCommands.Select(c => c.Type).ToHashSet();
         
+        // Supprimer les commandes obsolètes (Notes et Timers ont été remplacés par des widgets)
+        SystemCommands.RemoveAll(c => c.Type == SystemControlType.Notes || c.Type == SystemControlType.Timers);
+        
+        // Ajouter les commandes manquantes
         foreach (var cmd in defaultCommands)
         {
             if (!existingTypes.Contains(cmd.Type))
@@ -217,6 +250,26 @@ public sealed class AppSettings
                 SystemCommands.Add(cmd);
             }
         }
+        
+        // Mettre à jour les catégories des commandes existantes (si vides)
+        foreach (var existingCmd in SystemCommands)
+        {
+            if (string.IsNullOrEmpty(existingCmd.Category))
+            {
+                var defaultCmd = defaultCommands.FirstOrDefault(d => d.Type == existingCmd.Type);
+                if (defaultCmd != null)
+                {
+                    existingCmd.Category = defaultCmd.Category;
+                }
+            }
+        }
+        
+        // Réorganiser les commandes selon l'ordre par défaut (par catégorie)
+        var orderedTypes = defaultCommands.Select(c => c.Type).ToList();
+        SystemCommands = SystemCommands
+            .OrderBy(c => orderedTypes.IndexOf(c.Type))
+            .ThenBy(c => c.Category)
+            .ToList();
     }
 
     public void Save()
@@ -234,12 +287,13 @@ public sealed class AppSettings
         }
     }
     
-    public void AddToSearchHistory(string query)
+    public void AddToSearchHistory(HistoryItem item)
     {
-        if (!EnableSearchHistory || string.IsNullOrWhiteSpace(query)) return;
+        if (!EnableSearchHistory || item == null || string.IsNullOrWhiteSpace(item.Path)) return;
         
-        SearchHistory.Remove(query);
-        SearchHistory.Insert(0, query);
+        // Supprimer les doublons basés sur le chemin
+        SearchHistory.RemoveAll(h => h.Path.Equals(item.Path, StringComparison.OrdinalIgnoreCase));
+        SearchHistory.Insert(0, item);
         
         if (SearchHistory.Count > MaxSearchHistory)
             SearchHistory.RemoveRange(MaxSearchHistory, SearchHistory.Count - MaxSearchHistory);
@@ -412,7 +466,17 @@ public enum SystemControlType
     OpenCmdAdmin = 17,
     OpenPowerShellAdmin = 18,
     RestartExplorer = 19,
-    SystemSearch = 20
+    SystemSearch = 20,
+    Timer = 21,
+    Timers = 22,
+    Note = 23,
+    Notes = 24,
+    
+    // Commandes supplémentaires
+    OpenStartupFolder = 25,
+    OpenHostsFile = 26,
+    Definition = 27,
+    Translate = 28
 }
 
 /// <summary>
@@ -428,6 +492,7 @@ public sealed class SystemControlCommand
     public bool IsEnabled { get; set; } = true;
     public bool RequiresArgument { get; set; }
     public string ArgumentHint { get; set; } = string.Empty;
+    public string Category { get; set; } = string.Empty;
     
     /// <summary>
     /// Crée une copie de la commande.
@@ -441,7 +506,8 @@ public sealed class SystemControlCommand
         Description = Description,
         IsEnabled = IsEnabled,
         RequiresArgument = RequiresArgument,
-        ArgumentHint = ArgumentHint
+        ArgumentHint = ArgumentHint,
+        Category = Category,
     };
 }
 
@@ -586,4 +652,85 @@ public sealed class PinnedItem
         ResultType.Bookmark => "⭐",
         _ => "📌"
     };
+}
+
+/// <summary>
+/// Note rapide de l'utilisateur.
+/// </summary>
+public sealed class NoteItem
+{
+    public int Id { get; set; }
+    public string Content { get; set; } = string.Empty;
+    public DateTime CreatedAt { get; set; }
+    
+    /// <summary>
+    /// Retourne un aperçu tronqué de la note.
+    /// </summary>
+    public string Preview => Content.Length > 50 ? Content[..47] + "..." : Content;
+    
+    /// <summary>
+    /// Retourne la date formatée.
+    /// </summary>
+    public string DateFormatted => CreatedAt.ToString("dd/MM/yyyy HH:mm");
+}
+
+/// <summary>
+/// Item de l'historique (programme/fichier cliqué).
+/// </summary>
+public sealed class HistoryItem
+{
+    public string Name { get; set; } = string.Empty;
+    public string Path { get; set; } = string.Empty;
+    public ResultType Type { get; set; }
+    public string? Icon { get; set; }
+    public DateTime LastUsed { get; set; }
+    
+    /// <summary>
+    /// Convertit en SearchResult pour l'affichage.
+    /// </summary>
+    public SearchResult ToSearchResult() => new()
+    {
+        Name = Name,
+        Path = Path,
+        Type = Type,
+        Description = $"🕐 {LastUsed:dd/MM HH:mm}",
+        DisplayIcon = Icon ?? GetDefaultIcon()
+    };
+    
+    private string GetDefaultIcon() => Type switch
+    {
+        ResultType.Application => "🚀",
+        ResultType.StoreApp => "🪧",
+        ResultType.File => "📄",
+        ResultType.Folder => "📁",
+        ResultType.Script => "⚡",
+        ResultType.Bookmark => "⭐",
+        _ => "📌"
+    };
+}
+
+/// <summary>
+/// Information d'un widget de note sur le bureau.
+/// </summary>
+public sealed class NoteWidgetInfo
+{
+    public int Id { get; set; }
+    public string Content { get; set; } = string.Empty;
+    public double Left { get; set; }
+    public double Top { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Information d'un widget de minuterie sur le bureau.
+/// </summary>
+public sealed class TimerWidgetInfo
+{
+    public int Id { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public int DurationSeconds { get; set; }
+    public int RemainingSeconds { get; set; }
+    public double Left { get; set; }
+    public double Top { get; set; }
+    public DateTime CreatedAt { get; set; }
 }

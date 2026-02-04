@@ -225,6 +225,16 @@ public partial class LauncherWindow : Window
                     {
                         ConfirmAndDelete(item);
                     }
+                    else if (item.Type == ResultType.Note && item.Path.StartsWith(":note:id:"))
+                    {
+                        // Supprimer la note
+                        if (int.TryParse(item.Path[9..], out var noteId))
+                        {
+                            Services.NotesService.Instance.DeleteNote(noteId);
+                            OnShowNotification(this, "🗑️ Note supprimée");
+                            _viewModel.ForceRefresh();
+                        }
+                    }
                 }
                 e.Handled = true;
                 break;
