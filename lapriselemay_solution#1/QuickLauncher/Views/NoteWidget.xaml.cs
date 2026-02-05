@@ -11,6 +11,7 @@ public partial class NoteWidget : Window
 {
     private readonly int _noteId;
     private readonly Action<int>? _onClose;
+    private readonly Action<int, double, double>? _onPositionChanged;
     
     public string NoteText
     {
@@ -20,12 +21,13 @@ public partial class NoteWidget : Window
     
     public int NoteId => _noteId;
     
-    public NoteWidget(int noteId, string content, Action<int>? onClose = null)
+    public NoteWidget(int noteId, string content, Action<int>? onClose = null, Action<int, double, double>? onPositionChanged = null)
     {
         InitializeComponent();
         
         _noteId = noteId;
         _onClose = onClose;
+        _onPositionChanged = onPositionChanged;
         NoteContent.Text = content;
         
         // Positionner en bas à droite par défaut
@@ -50,7 +52,7 @@ public partial class NoteWidget : Window
         {
             DragMove();
             // Sauvegarder la position après le déplacement
-            Services.NoteWidgetService.Instance.SaveWidgetPosition(_noteId, Left, Top);
+            _onPositionChanged?.Invoke(_noteId, Left, Top);
         }
     }
     

@@ -15,6 +15,7 @@ public partial class TimerWidget : Window
     private readonly TimeSpan _totalDuration;
     private readonly Action<int>? _onClose;
     private readonly Action<int>? _onCompleted;
+    private readonly Action<int, double, double>? _onPositionChanged;
     private readonly DispatcherTimer _updateTimer;
     
     private DateTime _endsAt;
@@ -25,7 +26,7 @@ public partial class TimerWidget : Window
     public int TimerId => _timerId;
     public string Label { get; }
     
-    public TimerWidget(int timerId, string label, TimeSpan duration, Action<int>? onClose = null, Action<int>? onCompleted = null)
+    public TimerWidget(int timerId, string label, TimeSpan duration, Action<int>? onClose = null, Action<int>? onCompleted = null, Action<int, double, double>? onPositionChanged = null)
     {
         InitializeComponent();
         
@@ -33,6 +34,7 @@ public partial class TimerWidget : Window
         _totalDuration = duration;
         _onClose = onClose;
         _onCompleted = onCompleted;
+        _onPositionChanged = onPositionChanged;
         Label = label;
         
         _endsAt = DateTime.Now + duration;
@@ -150,7 +152,7 @@ public partial class TimerWidget : Window
         if (e.LeftButton == MouseButtonState.Pressed)
         {
             DragMove();
-            Services.TimerWidgetService.Instance.SaveWidgetPosition(_timerId, Left, Top);
+            _onPositionChanged?.Invoke(_timerId, Left, Top);
         }
     }
     

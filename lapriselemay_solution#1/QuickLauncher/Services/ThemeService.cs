@@ -13,11 +13,13 @@ namespace QuickLauncher.Services;
 /// <summary>
 /// Service de gestion des thèmes de l'application.
 /// Supporte les thèmes Sombre, Clair, Système (suit Windows) et Auto (selon l'heure).
+/// Utilise ISettingsProvider pour éviter les lectures disque répétées.
 /// </summary>
 public static class ThemeService
 {
     private static string _currentTheme = "Dark";
     private static DispatcherTimer? _autoThemeTimer;
+    private static ISettingsProvider? _settingsProvider;
     
     /// <summary>
     /// Événement déclenché quand le thème change.
@@ -30,11 +32,12 @@ public static class ThemeService
     public static string CurrentTheme => _currentTheme;
     
     /// <summary>
-    /// Initialise le service de thème et applique le thème des paramètres.
+    /// Initialise le service de thème avec le provider de settings centralisé.
     /// </summary>
-    public static void Initialize()
+    public static void Initialize(ISettingsProvider? settingsProvider = null)
     {
-        var settings = AppSettings.Load();
+        _settingsProvider = settingsProvider;
+        var settings = GetSettings();
         ApplyThemeFromSettings(settings);
         
         // Écouter les changements de thème Windows
@@ -45,11 +48,16 @@ public static class ThemeService
     }
     
     /// <summary>
+    /// Retourne les settings via le provider (priorité) ou chargement direct (fallback).
+    /// </summary>
+    private static AppSettings GetSettings() => _settingsProvider?.Current ?? AppSettings.Load();
+    
+    /// <summary>
     /// Applique le thème en fonction des paramètres (ThemeMode).
     /// </summary>
     public static void ApplyThemeFromSettings(AppSettings? settings = null)
     {
-        settings ??= AppSettings.Load();
+        settings ??= GetSettings();
         
         var actualTheme = settings.ThemeMode switch
         {
@@ -100,7 +108,7 @@ public static class ThemeService
         };
         _autoThemeTimer.Tick += (_, _) =>
         {
-            var settings = AppSettings.Load();
+            var settings = GetSettings();
             if (settings.ThemeMode == ThemeMode.Auto)
             {
                 var expectedTheme = GetAutoTheme(settings);
@@ -241,7 +249,7 @@ public static class ThemeService
     {
         if (e.Category != UserPreferenceCategory.General) return;
         
-        var settings = AppSettings.Load();
+        var settings = GetSettings();
         if (settings.Theme.Equals("System", StringComparison.OrdinalIgnoreCase))
         {
             // Réappliquer le thème système
@@ -282,7 +290,7 @@ public static class ThemeService
     /// </summary>
     public static string GetThemeModeDescription(ThemeMode mode, AppSettings? settings = null)
     {
-        settings ??= AppSettings.Load();
+        settings ??= GetSettings();
         return mode switch
         {
             ThemeMode.Dark => "🌙 Sombre",

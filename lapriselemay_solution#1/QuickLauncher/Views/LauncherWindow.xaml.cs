@@ -14,18 +14,27 @@ namespace QuickLauncher.Views;
 public partial class LauncherWindow : Window
 {
     private readonly LauncherViewModel _viewModel;
-    private AppSettings _settings;
+    private readonly ISettingsProvider _settingsProvider;
+    private readonly NotesService _notesService;
+    
+    /// <summary>
+    /// Accès rapide aux paramètres actuels (toujours à jour via ISettingsProvider).
+    /// </summary>
+    private AppSettings _settings => _settingsProvider.Current;
     
     public event EventHandler? RequestOpenSettings;
     public event EventHandler? RequestQuit;
     public event EventHandler? RequestReindex;
     
-    public LauncherWindow(IndexingService indexingService)
+    public LauncherWindow(IndexingService indexingService, ISettingsProvider settingsProvider,
+        AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
+        NotesService notesService, FileWatcherService? fileWatcherService = null)
     {
         InitializeComponent();
         
-        _settings = AppSettings.Load();
-        _viewModel = new LauncherViewModel(indexingService);
+        _settingsProvider = settingsProvider;
+        _notesService = notesService;
+        _viewModel = new LauncherViewModel(indexingService, settingsProvider, aliasService, noteWidgetService, timerWidgetService, notesService, fileWatcherService);
         DataContext = _viewModel;
         
         SetupEventHandlers();
@@ -81,7 +90,6 @@ public partial class LauncherWindow : Window
     
     private void ApplySettings()
     {
-        _settings = AppSettings.Load();
         Opacity = _settings.WindowOpacity;
         SettingsButton.Visibility = _settings.ShowSettingsButton ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -98,7 +106,7 @@ public partial class LauncherWindow : Window
     
     public void FocusSearchBox()
     {
-        _settings = AppSettings.Load();
+        _settingsProvider.Reload();
         ApplySettings();
         _viewModel.ReloadSettings();
         _viewModel.Reset();
@@ -218,7 +226,7 @@ public partial class LauncherWindow : Window
                         // Supprimer la note
                         if (int.TryParse(item.Path[9..], out var noteId))
                         {
-                            Services.NotesService.Instance.DeleteNote(noteId);
+                            _notesService.DeleteNote(noteId);
                             OnShowNotification(this, "🗑️ Note supprimée");
                             _viewModel.ForceRefresh();
                         }
@@ -259,10 +267,11 @@ public partial class LauncherWindow : Window
     {
         if (_settings.WindowPosition == "Remember")
         {
-            _settings = AppSettings.Load();
-            _settings.LastWindowLeft = Left;
-            _settings.LastWindowTop = Top;
-            _settings.Save();
+            _settingsProvider.Update(s =>
+            {
+                s.LastWindowLeft = Left;
+                s.LastWindowTop = Top;
+            });
         }
         
         _viewModel.Reset();
@@ -458,7 +467,7 @@ public partial class LauncherWindow : Window
         if (action.ActionType == FileActionType.Pin)
         {
             _settings.PinItem(result.Name, result.Path, result.Type, result.DisplayIcon);
-            _settings.Save();
+            _settingsProvider.Save();
             OnShowNotification(this, "⭐ Épinglé");
             return;
         }
@@ -467,7 +476,7 @@ public partial class LauncherWindow : Window
         if (action.ActionType == FileActionType.Unpin)
         {
             _settings.UnpinItem(result.Path);
-            _settings.Save();
+            _settingsProvider.Save();
             OnShowNotification(this, "📌 Désépinglé");
             // Rafraîchir si on était dans la vue des épingles
             if (string.IsNullOrWhiteSpace(_viewModel.SearchText))

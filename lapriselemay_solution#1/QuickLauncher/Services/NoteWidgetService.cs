@@ -7,36 +7,21 @@ namespace QuickLauncher.Services;
 
 /// <summary>
 /// Service de gestion des widgets de notes sur le bureau.
+/// Utilise ISettingsProvider pour éviter les lectures disque répétées.
 /// </summary>
 public sealed class NoteWidgetService
 {
-    private static NoteWidgetService? _instance;
-    private static readonly object _lock = new();
-    
     private readonly Dictionary<int, NoteWidget> _activeWidgets = [];
-    private readonly AppSettings _settings;
+    private readonly ISettingsProvider _settingsProvider;
     private int _nextId;
     
-    public static NoteWidgetService Instance
-    {
-        get
-        {
-            if (_instance == null)
-            {
-                lock (_lock)
-                {
-                    _instance ??= new NoteWidgetService();
-                }
-            }
-            return _instance;
-        }
-    }
+    private AppSettings Settings => _settingsProvider.Current;
     
-    private NoteWidgetService()
+    public NoteWidgetService(ISettingsProvider settingsProvider)
     {
-        _settings = AppSettings.Load();
-        _nextId = _settings.NoteWidgets.Count > 0 
-            ? _settings.NoteWidgets.Max(n => n.Id) + 1 
+        _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
+        _nextId = Settings.NoteWidgets.Count > 0 
+            ? Settings.NoteWidgets.Max(n => n.Id) + 1 
             : 1;
     }
     
@@ -58,7 +43,7 @@ public sealed class NoteWidgetService
         var top = workArea.Bottom - 150 - offsetY;
         
         // Créer le widget
-        var widget = new NoteWidget(noteId, content, OnWidgetClosed);
+        var widget = new NoteWidget(noteId, content, OnWidgetClosed, SaveWidgetPosition);
         widget.SetPosition(left, top);
         
         // Enregistrer dans les settings
@@ -71,8 +56,7 @@ public sealed class NoteWidgetService
             CreatedAt = DateTime.Now
         };
         
-        _settings.NoteWidgets.Add(info);
-        _settings.Save();
+        _settingsProvider.Update(s => s.NoteWidgets.Add(info));
         
         // Afficher le widget
         _activeWidgets[noteId] = widget;
@@ -88,14 +72,16 @@ public sealed class NoteWidgetService
     /// </summary>
     public void SaveWidgetPosition(int noteId, double left, double top)
     {
-        var info = _settings.NoteWidgets.FirstOrDefault(n => n.Id == noteId);
-        if (info != null)
+        _settingsProvider.Update(s =>
         {
-            info.Left = left;
-            info.Top = top;
-            _settings.Save();
-            Debug.WriteLine($"[NoteWidget] Position sauvegardée: ID={noteId}, Left={left}, Top={top}");
-        }
+            var info = s.NoteWidgets.FirstOrDefault(n => n.Id == noteId);
+            if (info != null)
+            {
+                info.Left = left;
+                info.Top = top;
+            }
+        });
+        Debug.WriteLine($"[NoteWidget] Position sauvegardée: ID={noteId}, Left={left}, Top={top}");
     }
     
     /// <summary>
@@ -105,13 +91,13 @@ public sealed class NoteWidgetService
     {
         _activeWidgets.Remove(noteId);
         
-        var info = _settings.NoteWidgets.FirstOrDefault(n => n.Id == noteId);
-        if (info != null)
+        _settingsProvider.Update(s =>
         {
-            _settings.NoteWidgets.Remove(info);
-            _settings.Save();
-            Debug.WriteLine($"[NoteWidget] Supprimé: ID={noteId}");
-        }
+            var info = s.NoteWidgets.FirstOrDefault(n => n.Id == noteId);
+            if (info != null)
+                s.NoteWidgets.Remove(info);
+        });
+        Debug.WriteLine($"[NoteWidget] Supprimé: ID={noteId}");
     }
     
     /// <summary>
@@ -119,14 +105,11 @@ public sealed class NoteWidgetService
     /// </summary>
     public void RestoreWidgets()
     {
-        // Recharger les settings pour avoir les dernières données
-        var freshSettings = AppSettings.Load();
-        
-        foreach (var info in freshSettings.NoteWidgets.ToList())
+        foreach (var info in Settings.NoteWidgets.ToList())
         {
             try
             {
-                var widget = new NoteWidget(info.Id, info.Content, OnWidgetClosed);
+                var widget = new NoteWidget(info.Id, info.Content, OnWidgetClosed, SaveWidgetPosition);
                 widget.SetPosition(info.Left, info.Top);
                 _activeWidgets[info.Id] = widget;
                 widget.Show();
@@ -139,9 +122,9 @@ public sealed class NoteWidgetService
         }
         
         // Mettre à jour nextId
-        if (freshSettings.NoteWidgets.Count > 0)
+        if (Settings.NoteWidgets.Count > 0)
         {
-            _nextId = freshSettings.NoteWidgets.Max(n => n.Id) + 1;
+            _nextId = Settings.NoteWidgets.Max(n => n.Id) + 1;
         }
     }
     

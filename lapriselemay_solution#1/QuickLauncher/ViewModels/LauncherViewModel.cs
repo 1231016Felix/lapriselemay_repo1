@@ -17,8 +17,11 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private readonly IndexingService _indexingService;
     private readonly FileWatcherService? _fileWatcherService;
     private readonly AliasService _aliasService;
+    private readonly ISettingsProvider _settingsProvider;
+    private readonly NoteWidgetService _noteWidgetService;
+    private readonly TimerWidgetService _timerWidgetService;
+    private readonly NotesService _notesService;
     private readonly System.Timers.Timer _debounceTimer;
-    private AppSettings _settings;
     private CancellationTokenSource? _searchCts;
     private bool _disposed;
     private string _pendingSearchText = string.Empty;
@@ -82,11 +85,22 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public event EventHandler<string>? RequestRename;
     public event EventHandler<string>? ShowNotification;
 
-    public LauncherViewModel(IndexingService indexingService)
+    /// <summary>
+    /// Accès rapide aux paramètres actuels (lecture seule, toujours à jour).
+    /// Pour les mutations, utiliser _settingsProvider.Update() ou _settingsProvider.Save().
+    /// </summary>
+    private AppSettings _settings => _settingsProvider.Current;
+
+    public LauncherViewModel(IndexingService indexingService, ISettingsProvider settingsProvider,
+        AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
+        NotesService notesService, FileWatcherService? fileWatcherService = null)
     {
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
-        _settings = AppSettings.Load();
-        _aliasService = new AliasService();
+        _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
+        _aliasService = aliasService ?? throw new ArgumentNullException(nameof(aliasService));
+        _noteWidgetService = noteWidgetService ?? throw new ArgumentNullException(nameof(noteWidgetService));
+        _timerWidgetService = timerWidgetService ?? throw new ArgumentNullException(nameof(timerWidgetService));
+        _notesService = notesService ?? throw new ArgumentNullException(nameof(notesService));
         
         // Initialiser les propriétés d'apparence depuis les settings
         ShowCategoryBadges = _settings.ShowCategoryBadges;
@@ -105,16 +119,10 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         _debounceTimer.AutoReset = false;
         _debounceTimer.Elapsed += OnDebounceTimerElapsed;
         
-        // Initialiser le FileWatcher
-        try
-        {
-            _fileWatcherService = new FileWatcherService();
+        // FileWatcher (injecté via DI, optionnel)
+        _fileWatcherService = fileWatcherService;
+        if (_fileWatcherService != null)
             _fileWatcherService.FilesChanged += OnFilesChanged;
-        }
-        catch
-        {
-            // FileWatcher optionnel - continuer sans
-        }
     }
 
     partial void OnSearchTextChanged(string value)
@@ -781,7 +789,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         if (action.ActionType == FileActionType.Pin)
         {
             _settings.PinItem(result.Name, result.Path, result.Type, result.DisplayIcon);
-            _settings.Save();
+            _settingsProvider.Save();
             ShowNotification?.Invoke(this, "⭐ Épinglé");
             UpdateAvailableActions(result); // Rafraîchir les actions
             ShowActionsPanel = false;
@@ -792,7 +800,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         if (action.ActionType == FileActionType.Unpin)
         {
             _settings.UnpinItem(result.Path);
-            _settings.Save();
+            _settingsProvider.Save();
             ShowNotification?.Invoke(this, "📌 Désépinglé");
             UpdateAvailableActions(result); // Rafraîchir les actions
             // Si on était dans la vue des épingles, rafraîchir
@@ -858,7 +866,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     {
         ShowPreviewPanel = !ShowPreviewPanel;
         _settings.ShowPreviewPanel = ShowPreviewPanel;
-        _settings.Save();
+        _settingsProvider.Save();
         
         if (ShowPreviewPanel && SelectedIndex >= 0 && SelectedIndex < Results.Count)
         {
@@ -894,7 +902,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                 LastUsed = DateTime.Now
             };
             _settings.AddToSearchHistory(historyItem);
-            _settings.Save();
+            _settingsProvider.Save();
         }
         
         _indexingService.RecordUsage(item);
@@ -961,7 +969,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                         var duration = timerParts[0];
                         var label = timerParts.Length > 1 ? timerParts[1] : null;
                         
-                        var timerWidget = TimerWidgetService.Instance.CreateWidget(duration, label);
+                        var timerWidget = _timerWidgetService.CreateWidget(duration, label);
                         if (timerWidget != null)
                         {
                             var durationText = TimerWidgetService.FormatDuration(TimeSpan.FromSeconds(timerWidget.DurationSeconds));
@@ -978,7 +986,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                 case SystemControlType.Note:
                     if (!string.IsNullOrEmpty(arg))
                     {
-                        var widgetInfo = NoteWidgetService.Instance.CreateWidget(arg);
+                        var widgetInfo = _noteWidgetService.CreateWidget(arg);
                         ShowResult("📝 Note créée!", widgetInfo.Content.Length > 50 ? widgetInfo.Content[..47] + "..." : widgetInfo.Content);
                         RequestHide?.Invoke(this, EventArgs.Empty);
                     }
@@ -1118,7 +1126,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private void ClearHistory()
     {
         _settings.ClearSearchHistory();
-        _settings.Save();
+        _settingsProvider.Save();
         SearchText = string.Empty;
         RequestHide?.Invoke(this, EventArgs.Empty);
     }
@@ -1257,7 +1265,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     /// </summary>
     public void ReloadSettings()
     {
-        _settings = AppSettings.Load();
+        _settingsProvider.Reload();
         ShowCategoryBadges = _settings.ShowCategoryBadges;
         ShowSettingsButton = _settings.ShowSettingsButton;
     }

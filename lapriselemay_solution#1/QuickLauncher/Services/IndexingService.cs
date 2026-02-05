@@ -18,8 +18,8 @@ public sealed partial class IndexingService : IDisposable
     private readonly ConcurrentDictionary<string, SearchResult> _cache = new();
     private readonly SemaphoreSlim _indexLock = new(1, 1);
     private readonly ILogger _logger;
+    private readonly ISettingsProvider _settingsProvider;
     
-    private AppSettings _settings;
     private CancellationTokenSource? _indexingCts;
     private bool _disposed;
     
@@ -30,8 +30,9 @@ public sealed partial class IndexingService : IDisposable
     public bool IsIndexing { get; private set; }
     public int IndexedItemsCount => _cache.Count;
 
-    public IndexingService(ILogger? logger = null)
+    public IndexingService(ISettingsProvider settingsProvider, ILogger? logger = null)
     {
+        _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
         _logger = logger ?? new FileLogger(Constants.AppName, Constants.LogFileName);
         
         var appData = Path.Combine(
@@ -42,8 +43,6 @@ public sealed partial class IndexingService : IDisposable
         _dbPath = Path.Combine(appData, Constants.DatabaseFileName);
         // Microsoft.Data.Sqlite utilise une syntaxe de connexion différente
         _connectionString = $"Data Source={_dbPath};Mode=ReadWriteCreate;Cache=Shared";
-        
-        _settings = AppSettings.Load();
         
         InitializeDatabase();
         LoadCacheFromDatabase();
@@ -120,7 +119,7 @@ public sealed partial class IndexingService : IDisposable
             _indexingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             IndexingStarted?.Invoke(this, EventArgs.Empty);
             
-            _settings = AppSettings.Load();
+            var settings = _settingsProvider.Current;
             _logger.Info("Démarrage de l'indexation...");
             
             var items = new ConcurrentBag<SearchResult>();
@@ -138,7 +137,7 @@ public sealed partial class IndexingService : IDisposable
             // Indexer les favoris des navigateurs en parallèle
             var bookmarksTask = Task.Run(() =>
             {
-                if (_settings.IndexBrowserBookmarks)
+                if (settings.IndexBrowserBookmarks)
                 {
                     var bookmarks = BookmarkService.GetAllBookmarks();
                     foreach (var bookmark in bookmarks)
@@ -148,15 +147,15 @@ public sealed partial class IndexingService : IDisposable
             }, token);
             
             // Indexer les dossiers en parallèle
-            var folderTasks = _settings.IndexedFolders
+            var folderTasks = settings.IndexedFolders
                 .Where(Directory.Exists)
-                .Select(folder => Task.Run(() => IndexFolder(folder, items, token), token))
+                .Select(folder => Task.Run(() => IndexFolder(folder, items, settings, token), token))
                 .ToArray();
             
             await Task.WhenAll([storeTask, bookmarksTask, ..folderTasks]);
 
             // Ajouter les scripts personnalisés
-            foreach (var script in _settings.Scripts)
+            foreach (var script in settings.Scripts)
             {
                 items.Add(new SearchResult
                 {
@@ -167,10 +166,14 @@ public sealed partial class IndexingService : IDisposable
                 });
             }
             
-            // Dédupliquer par nom (préférer les apps Store)
+            // Dédupliquer par (nom + type) pour éviter de masquer des fichiers différents portant le même nom.
+            // On regroupe uniquement les items qui ont le même nom ET le même type (ex: 2 raccourcis "Chrome").
+            // Les items de types différents avec le même nom sont conservés (ex: "Config" fichier + "Config" dossier).
             var deduplicated = items
-                .GroupBy(i => i.Name, StringComparer.OrdinalIgnoreCase)
-                .Select(g => g.OrderByDescending(i => i.Type == ResultType.StoreApp ? 1 : 0).First())
+                .GroupBy(i => (Name: i.Name.ToLowerInvariant(), i.Type))
+                .Select(g => g.OrderByDescending(i => i.Type == ResultType.StoreApp ? 1 : 0)
+                              .ThenByDescending(i => i.UseCount)
+                              .First())
                 .ToList();
             
             _logger.Info($"Total: {deduplicated.Count} éléments (après déduplication)");
@@ -188,22 +191,22 @@ public sealed partial class IndexingService : IDisposable
         }
     }
 
-    private void IndexFolder(string folderPath, ConcurrentBag<SearchResult> items, CancellationToken token)
+    private void IndexFolder(string folderPath, ConcurrentBag<SearchResult> items, AppSettings settings, CancellationToken token)
     {
         var count = 0;
-        IndexFolderRecursive(folderPath, items, ref count, 0, token);
+        IndexFolderRecursive(folderPath, items, settings, ref count, 0, token);
         _logger.Info($"Dossier '{Path.GetFileName(folderPath)}': {count} éléments");
     }
     
-    private void IndexFolderRecursive(string folderPath, ConcurrentBag<SearchResult> items, 
-        ref int count, int depth, CancellationToken token)
+    private void IndexFolderRecursive(string folderPath, ConcurrentBag<SearchResult> items,
+        AppSettings settings, ref int count, int depth, CancellationToken token)
     {
-        if (depth > _settings.SearchDepth || token.IsCancellationRequested) return;
+        if (depth > settings.SearchDepth || token.IsCancellationRequested) return;
         
         try
         {
             var dirInfo = new DirectoryInfo(folderPath);
-            if (!_settings.IndexHiddenFolders && (dirInfo.Attributes & FileAttributes.Hidden) != 0)
+            if (!settings.IndexHiddenFolders && (dirInfo.Attributes & FileAttributes.Hidden) != 0)
                 return;
             
             // Indexer les fichiers
@@ -212,8 +215,8 @@ public sealed partial class IndexingService : IDisposable
                 if (token.IsCancellationRequested) return;
                 
                 var ext = file.Extension.ToLowerInvariant();
-                if (!_settings.FileExtensions.Contains(ext)) continue;
-                if (!_settings.IndexHiddenFolders && (file.Attributes & FileAttributes.Hidden) != 0) continue;
+                if (!settings.FileExtensions.Contains(ext)) continue;
+                if (!settings.IndexHiddenFolders && (file.Attributes & FileAttributes.Hidden) != 0) continue;
                 
                 var result = CreateSearchResult(file.FullName);
                 if (result != null)
@@ -227,7 +230,7 @@ public sealed partial class IndexingService : IDisposable
             foreach (var subDir in dirInfo.EnumerateDirectories())
             {
                 if (token.IsCancellationRequested) return;
-                IndexFolderRecursive(subDir.FullName, items, ref count, depth + 1, token);
+                IndexFolderRecursive(subDir.FullName, items, settings, ref count, depth + 1, token);
             }
         }
         catch (UnauthorizedAccessException) { }
@@ -350,10 +353,10 @@ public sealed partial class IndexingService : IDisposable
             return [];
         
         var normalizedQuery = query.Trim().ToLowerInvariant();
-        _settings = AppSettings.Load();
+        var settings = _settingsProvider.Current;
         
         // Recherche web avec préfixe
-        foreach (var engine in _settings.SearchEngines)
+        foreach (var engine in settings.SearchEngines)
         {
             var prefix = $"{engine.Prefix} ";
             if (normalizedQuery.StartsWith(prefix))
@@ -403,7 +406,7 @@ public sealed partial class IndexingService : IDisposable
         return scored
             .OrderByDescending(x => x.Score)
             .ThenByDescending(x => x.Item.UseCount)
-            .Take(_settings.MaxResults)
+            .Take(settings.MaxResults)
             .Select(x =>
             {
                 x.Item.Score = x.Score;
@@ -415,7 +418,7 @@ public sealed partial class IndexingService : IDisposable
     private int CalculateScore(string query, SearchResult item)
     {
         // Utiliser le nouvel algorithme de fuzzy matching avec Levenshtein, recency et les poids configurables
-        return SearchAlgorithms.CalculateFuzzyScore(query, item.Name, item.UseCount, item.LastUsed, _settings.ScoringWeights);
+        return SearchAlgorithms.CalculateFuzzyScore(query, item.Name, item.UseCount, item.LastUsed, _settingsProvider.Current.ScoringWeights);
     }
     
     [GeneratedRegex(@"^[\d\s\+\-\*\/\(\)\.\,\^]+$")]

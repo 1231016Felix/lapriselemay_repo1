@@ -32,6 +32,9 @@
     
     <!-- OleDb pour Windows Search API -->
     <PackageReference Include="System.Data.OleDb" />
+    
+    <!-- Injection de dépendances -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
   <ItemGroup>

@@ -19,7 +19,7 @@ public sealed class FileWatcherService : IDisposable
     private readonly Timer _processTimer;
     private readonly object _processLock = new();
     
-    private AppSettings _settings;
+    private readonly ISettingsProvider _settingsProvider;
     private bool _disposed;
     private bool _isProcessing;
 
@@ -33,10 +33,10 @@ public sealed class FileWatcherService : IDisposable
     /// </summary>
     public int PendingChangesCount => _changeQueue.Count;
 
-    public FileWatcherService(ILogger? logger = null)
+    public FileWatcherService(ISettingsProvider settingsProvider, ILogger? logger = null)
     {
+        _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
         _logger = logger ?? new FileLogger(Constants.AppName, Constants.LogFileName);
-        _settings = AppSettings.Load();
         
         // Timer pour traiter les changements par lots (évite le spam)
         _processTimer = new Timer(ProcessChanges, null, Timeout.Infinite, Timeout.Infinite);
@@ -47,9 +47,9 @@ public sealed class FileWatcherService : IDisposable
     /// </summary>
     public void Start()
     {
-        _settings = AppSettings.Load();
+        var settings = _settingsProvider.Current;
         
-        foreach (var folder in _settings.IndexedFolders.Where(Directory.Exists))
+        foreach (var folder in settings.IndexedFolders.Where(Directory.Exists))
         {
             StartWatching(folder);
         }
@@ -192,7 +192,7 @@ public sealed class FileWatcherService : IDisposable
             return false;
         
         // Vérifier les extensions autorisées
-        return _settings.FileExtensions.Contains(ext);
+        return _settingsProvider.Current.FileExtensions.Contains(ext);
     }
 
     private void EnqueueChange(FileChangeType type, string path)

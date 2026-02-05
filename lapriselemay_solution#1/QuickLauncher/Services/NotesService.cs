@@ -5,35 +5,20 @@ namespace QuickLauncher.Services;
 
 /// <summary>
 /// Service de gestion des notes rapides.
+/// Utilise ISettingsProvider pour éviter les lectures disque répétées.
 /// </summary>
 public sealed class NotesService
 {
-    private static NotesService? _instance;
-    private static readonly object _lock = new();
-    
-    private readonly AppSettings _settings;
-    
-    public static NotesService Instance
-    {
-        get
-        {
-            if (_instance == null)
-            {
-                lock (_lock)
-                {
-                    _instance ??= new NotesService();
-                }
-            }
-            return _instance;
-        }
-    }
+    private readonly ISettingsProvider _settingsProvider;
     
     public event EventHandler? NotesChanged;
     
-    private NotesService()
+    public NotesService(ISettingsProvider settingsProvider)
     {
-        _settings = AppSettings.Load();
+        _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
     }
+    
+    private AppSettings Settings => _settingsProvider.Current;
     
     /// <summary>
     /// Ajoute une nouvelle note.
@@ -45,13 +30,12 @@ public sealed class NotesService
         
         var note = new NoteItem
         {
-            Id = _settings.Notes.Count > 0 ? _settings.Notes.Max(n => n.Id) + 1 : 1,
+            Id = Settings.Notes.Count > 0 ? Settings.Notes.Max(n => n.Id) + 1 : 1,
             Content = content.Trim(),
             CreatedAt = DateTime.Now
         };
         
-        _settings.Notes.Insert(0, note); // Ajouter au début
-        _settings.Save();
+        _settingsProvider.Update(s => s.Notes.Insert(0, note));
         
         NotesChanged?.Invoke(this, EventArgs.Empty);
         Debug.WriteLine($"[Notes] Ajoutée: {note.Content}");
@@ -64,11 +48,10 @@ public sealed class NotesService
     /// </summary>
     public bool DeleteNote(int id)
     {
-        var note = _settings.Notes.FirstOrDefault(n => n.Id == id);
+        var note = Settings.Notes.FirstOrDefault(n => n.Id == id);
         if (note != null)
         {
-            _settings.Notes.Remove(note);
-            _settings.Save();
+            _settingsProvider.Update(s => s.Notes.Remove(note));
             NotesChanged?.Invoke(this, EventArgs.Empty);
             Debug.WriteLine($"[Notes] Supprimée: {note.Content}");
             return true;
@@ -81,8 +64,7 @@ public sealed class NotesService
     /// </summary>
     public void ClearAllNotes()
     {
-        _settings.Notes.Clear();
-        _settings.Save();
+        _settingsProvider.Update(s => s.Notes.Clear());
         NotesChanged?.Invoke(this, EventArgs.Empty);
         Debug.WriteLine("[Notes] Toutes les notes supprimées");
     }
@@ -90,7 +72,7 @@ public sealed class NotesService
     /// <summary>
     /// Retourne toutes les notes.
     /// </summary>
-    public IReadOnlyList<NoteItem> GetAllNotes() => _settings.Notes.AsReadOnly();
+    public IReadOnlyList<NoteItem> GetAllNotes() => Settings.Notes.AsReadOnly();
     
     /// <summary>
     /// Recherche dans les notes.
@@ -98,21 +80,9 @@ public sealed class NotesService
     public IEnumerable<NoteItem> SearchNotes(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
-            return _settings.Notes;
+            return Settings.Notes;
         
-        var queryLower = query.ToLowerInvariant();
-        return _settings.Notes.Where(n => 
+        return Settings.Notes.Where(n => 
             n.Content.Contains(query, StringComparison.OrdinalIgnoreCase));
-    }
-    
-    /// <summary>
-    /// Recharge les notes depuis les paramètres.
-    /// </summary>
-    public void Reload()
-    {
-        var freshSettings = AppSettings.Load();
-        _settings.Notes.Clear();
-        foreach (var note in freshSettings.Notes)
-            _settings.Notes.Add(note);
     }
 }

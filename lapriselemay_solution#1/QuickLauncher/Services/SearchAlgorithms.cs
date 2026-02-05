@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using QuickLauncher.Models;
 
@@ -8,24 +8,25 @@ namespace QuickLauncher.Services;
 /// Algorithmes de recherche avancée pour QuickLauncher.
 /// Implémente la distance de Levenshtein, le fuzzy matching amélioré,
 /// et le scoring basé sur la fréquence d'utilisation.
+/// 
+/// Optimisations v2:
+/// - Cache LRU au lieu de ConcurrentDictionary+Clear() brutal
+/// - Levenshtein avec ArrayPool (zéro allocation sur le heap pour les petites chaînes)
+/// - ReadOnlySpan&lt;char&gt; pour éviter les allocations de sous-chaînes
 /// </summary>
 public static class SearchAlgorithms
 {
     /// <summary>
-    /// Cache pour les calculs de distance de Levenshtein
+    /// Cache LRU thread-safe pour les calculs de distance de Levenshtein.
+    /// Évince progressivement les entrées les moins utilisées au lieu de tout supprimer d'un coup.
     /// </summary>
-    private static readonly ConcurrentDictionary<(string, string), int> _levenshteinCache = new();
-    
-    /// <summary>
-    /// Limite du cache pour éviter une utilisation mémoire excessive
-    /// </summary>
-    private const int MaxCacheSize = 10000;
+    private static readonly LruCache<(string, string), int> _levenshteinCache = new(10_000);
 
     #region Levenshtein Distance
 
     /// <summary>
     /// Calcule la distance de Levenshtein entre deux chaînes.
-    /// Utilise un cache pour les résultats fréquents.
+    /// Utilise un cache LRU pour les résultats fréquents.
     /// </summary>
     /// <param name="source">Chaîne source</param>
     /// <param name="target">Chaîne cible</param>
@@ -40,87 +41,93 @@ public static class SearchAlgorithms
         var s = source.ToLowerInvariant();
         var t = target.ToLowerInvariant();
         
-        // Vérifier le cache
+        // Vérifier le cache LRU
         var key = (s, t);
-        if (_levenshteinCache.TryGetValue(key, out var cached))
+        if (_levenshteinCache.TryGet(key, out var cached))
             return cached;
 
-        // Nettoyage périodique du cache
-        if (_levenshteinCache.Count > MaxCacheSize)
-        {
-            _levenshteinCache.Clear();
-        }
-
-        var result = ComputeLevenshteinDistance(s, t);
-        _levenshteinCache.TryAdd(key, result);
+        var result = ComputeLevenshteinDistance(s.AsSpan(), t.AsSpan());
+        _levenshteinCache.Set(key, result);
         return result;
     }
 
     /// <summary>
-    /// Implémentation optimisée de Levenshtein avec un seul tableau (O(n) espace)
+    /// Implémentation optimisée de Levenshtein avec :
+    /// - Span&lt;char&gt; pour éviter les copies
+    /// - ArrayPool pour les tableaux temporaires (zéro allocation GC pour chaînes courtes)
+    /// - Optimisations préfixe/suffixe commun
     /// </summary>
-    private static int ComputeLevenshteinDistance(string source, string target)
+    internal static int ComputeLevenshteinDistance(ReadOnlySpan<char> source, ReadOnlySpan<char> target)
     {
         var sourceLength = source.Length;
         var targetLength = target.Length;
 
-        // Optimisation: si une chaîne est vide
         if (sourceLength == 0) return targetLength;
         if (targetLength == 0) return sourceLength;
-
-        // Optimisation: chaînes identiques
-        if (source == target) return 0;
+        if (source.SequenceEqual(target)) return 0;
 
         // Optimisation: préfixe commun
         var prefixLength = 0;
-        while (prefixLength < sourceLength && prefixLength < targetLength && 
-               source[prefixLength] == target[prefixLength])
-        {
+        var minLen = Math.Min(sourceLength, targetLength);
+        while (prefixLength < minLen && source[prefixLength] == target[prefixLength])
             prefixLength++;
-        }
 
         // Optimisation: suffixe commun
         var suffixLength = 0;
         while (suffixLength < sourceLength - prefixLength && 
                suffixLength < targetLength - prefixLength &&
                source[sourceLength - 1 - suffixLength] == target[targetLength - 1 - suffixLength])
-        {
             suffixLength++;
-        }
 
-        // Ajuster les longueurs
-        sourceLength -= prefixLength + suffixLength;
-        targetLength -= prefixLength + suffixLength;
+        // Ajuster en découpant la zone utile
+        var srcSlice = source.Slice(prefixLength, sourceLength - prefixLength - suffixLength);
+        var tgtSlice = target.Slice(prefixLength, targetLength - prefixLength - suffixLength);
+        
+        var sLen = srcSlice.Length;
+        var tLen = tgtSlice.Length;
 
-        if (sourceLength == 0) return targetLength;
-        if (targetLength == 0) return sourceLength;
+        if (sLen == 0) return tLen;
+        if (tLen == 0) return sLen;
 
-        // Algorithme optimisé avec un seul tableau
-        var previousRow = new int[targetLength + 1];
-        var currentRow = new int[targetLength + 1];
-
-        for (var j = 0; j <= targetLength; j++)
-            previousRow[j] = j;
-
-        for (var i = 1; i <= sourceLength; i++)
+        // Utiliser ArrayPool pour éviter les allocations GC sur le heap
+        // 2 lignes de (tLen + 1) entiers chacune
+        var poolSize = (tLen + 1) * 2;
+        var pool = ArrayPool<int>.Shared.Rent(poolSize);
+        
+        try
         {
-            currentRow[0] = i;
-            var sourceChar = source[prefixLength + i - 1];
+            var previousRow = pool.AsSpan(0, tLen + 1);
+            var currentRow = pool.AsSpan(tLen + 1, tLen + 1);
 
-            for (var j = 1; j <= targetLength; j++)
+            for (var j = 0; j <= tLen; j++)
+                previousRow[j] = j;
+
+            for (var i = 1; i <= sLen; i++)
             {
-                var targetChar = target[prefixLength + j - 1];
-                var cost = sourceChar == targetChar ? 0 : 1;
+                currentRow[0] = i;
+                var sourceChar = srcSlice[i - 1];
 
-                currentRow[j] = Math.Min(
-                    Math.Min(currentRow[j - 1] + 1, previousRow[j] + 1),
-                    previousRow[j - 1] + cost);
+                for (var j = 1; j <= tLen; j++)
+                {
+                    var cost = sourceChar == tgtSlice[j - 1] ? 0 : 1;
+
+                    currentRow[j] = Math.Min(
+                        Math.Min(currentRow[j - 1] + 1, previousRow[j] + 1),
+                        previousRow[j - 1] + cost);
+                }
+
+                // Swap les lignes (copie de référence via Span)
+                var temp = previousRow;
+                previousRow = currentRow;
+                currentRow = temp;
             }
 
-            (previousRow, currentRow) = (currentRow, previousRow);
+            return previousRow[tLen];
         }
-
-        return previousRow[targetLength];
+        finally
+        {
+            ArrayPool<int>.Shared.Return(pool);
+        }
     }
 
     /// <summary>
@@ -229,10 +236,6 @@ public static class SearchAlgorithms
     /// Effectue un fuzzy match amélioré avec scoring détaillé.
     /// Utilise les poids par défaut.
     /// </summary>
-    /// <param name="query">Requête de recherche</param>
-    /// <param name="target">Texte cible</param>
-    /// <param name="useCount">Nombre d'utilisations (pour le scoring)</param>
-    /// <returns>Score de correspondance (0 = pas de match, plus c'est haut mieux c'est)</returns>
     public static int CalculateFuzzyScore(string query, string target, int useCount = 0)
     {
         return CalculateFuzzyScore(query, target, useCount, null, DefaultWeights);
@@ -241,11 +244,6 @@ public static class SearchAlgorithms
     /// <summary>
     /// Effectue un fuzzy match amélioré avec scoring détaillé et poids configurables.
     /// </summary>
-    /// <param name="query">Requête de recherche</param>
-    /// <param name="target">Texte cible</param>
-    /// <param name="useCount">Nombre d'utilisations (pour le scoring)</param>
-    /// <param name="weights">Poids de scoring configurables</param>
-    /// <returns>Score de correspondance (0 = pas de match, plus c'est haut mieux c'est)</returns>
     public static int CalculateFuzzyScore(string query, string target, int useCount, ScoringWeights weights)
     {
         return CalculateFuzzyScore(query, target, useCount, null, weights);
@@ -254,24 +252,16 @@ public static class SearchAlgorithms
     /// <summary>
     /// Effectue un fuzzy match amélioré avec scoring détaillé, poids configurables et recency decay.
     /// </summary>
-    /// <param name="query">Requête de recherche</param>
-    /// <param name="target">Texte cible</param>
-    /// <param name="useCount">Nombre d'utilisations (pour le scoring)</param>
-    /// <param name="lastUsed">Date de dernière utilisation (pour le recency bonus)</param>
-    /// <param name="weights">Poids de scoring configurables</param>
-    /// <returns>Score de correspondance (0 = pas de match, plus c'est haut mieux c'est)</returns>
     public static int CalculateFuzzyScore(string query, string target, int useCount, DateTime? lastUsed, ScoringWeights weights)
     {
         if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(target))
             return 0;
         
-        // Utiliser les poids par défaut si null
         weights ??= DefaultWeights;
 
         var queryLower = query.ToLowerInvariant();
         var targetLower = target.ToLowerInvariant();
 
-        // Score de base
         int score = 0;
         
         // 0. Vérifier les abréviations communes (priorité haute)
@@ -281,21 +271,18 @@ public static class SearchAlgorithms
             {
                 if (targetLower.Contains(possibleTarget))
                 {
-                    // Score très élevé pour une correspondance d'abréviation
                     score = weights.ExactMatch - 100;
                     break;
                 }
             }
         }
         
-        // Si on a déjà trouvé une correspondance d'abréviation, passer aux bonus
+        // Si correspondance d'abréviation trouvée, ajouter les bonus et retourner
         if (score > 0)
         {
-            // Ajouter les bonus habituels
             if (useCount > 0)
                 score += Math.Min(useCount * weights.UsageBonusPerUse, weights.MaxUsageBonus);
             
-            // Ajouter le recency bonus
             if (weights.EnableRecencyBonus && lastUsed.HasValue && lastUsed.Value > DateTime.MinValue)
             {
                 var daysSinceLastUse = (DateTime.UtcNow - lastUsed.Value).TotalDays;
@@ -312,13 +299,13 @@ public static class SearchAlgorithms
         // 2. Commence par la requête
         else if (targetLower.StartsWith(queryLower))
         {
-            score = weights.StartsWith + (queryLower.Length * 10); // Bonus pour les correspondances plus longues
+            score = weights.StartsWith + (queryLower.Length * 10);
         }
         // 3. Contient la requête
         else if (targetLower.Contains(queryLower))
         {
             var index = targetLower.IndexOf(queryLower);
-            score = weights.Contains - (index * 5); // Pénalité si la correspondance est plus loin
+            score = weights.Contains - (index * 5);
         }
         // 4. Match par initiales (ex: "vs" -> "Visual Studio")
         else if (MatchesInitials(queryLower, targetLower))
@@ -345,7 +332,7 @@ public static class SearchAlgorithms
                 foreach (var word in words)
                 {
                     var wordSimilarity = LevenshteinSimilarity(queryLower, word);
-                    if (wordSimilarity >= weights.FuzzyMatchThreshold + 0.1) // Seuil légèrement plus élevé pour les mots partiels
+                    if (wordSimilarity >= weights.FuzzyMatchThreshold + 0.1)
                     {
                         score = Math.Max(score, (int)(wordSimilarity * weights.FuzzyMatchMultiplier * 0.8));
                     }
@@ -389,7 +376,7 @@ public static class SearchAlgorithms
     /// Vérifie si la requête correspond aux initiales du texte cible.
     /// Ex: "vs" -> "Visual Studio", "np" -> "Notepad++"
     /// </summary>
-    private static bool MatchesInitials(string query, string target)
+    internal static bool MatchesInitials(string query, string target)
     {
         var words = target.Split([' ', '-', '_', '.'], StringSplitOptions.RemoveEmptyEntries);
         if (words.Length < query.Length) return false;
@@ -414,20 +401,10 @@ public static class SearchAlgorithms
     }
 
     /// <summary>
-    /// Vérifie si la requête est une sous-séquence du texte cible.
-    /// Ex: "vsc" -> "Visual Studio Code"
-    /// Utilise les poids par défaut.
-    /// </summary>
-    private static bool IsSubsequenceMatch(string query, string target, out int matchScore)
-    {
-        return IsSubsequenceMatch(query, target, DefaultWeights, out matchScore);
-    }
-    
-    /// <summary>
     /// Vérifie si la requête est une sous-séquence du texte cible avec poids configurables.
     /// Ex: "vsc" -> "Visual Studio Code"
     /// </summary>
-    private static bool IsSubsequenceMatch(string query, string target, ScoringWeights weights, out int matchScore)
+    internal static bool IsSubsequenceMatch(string query, string target, ScoringWeights weights, out int matchScore)
     {
         matchScore = 0;
         var queryIndex = 0;
@@ -440,7 +417,6 @@ public static class SearchAlgorithms
             {
                 queryIndex++;
                 
-                // Bonus pour les correspondances consécutives
                 if (i == lastMatchIndex + 1)
                 {
                     consecutiveMatches++;
@@ -451,7 +427,6 @@ public static class SearchAlgorithms
                     consecutiveMatches = 0;
                 }
                 
-                // Bonus si le match est au début d'un mot
                 if (i == 0 || !char.IsLetterOrDigit(target[i - 1]))
                 {
                     matchScore += weights.WordBoundaryBonus;
@@ -463,7 +438,6 @@ public static class SearchAlgorithms
 
         if (queryIndex == query.Length)
         {
-            // Bonus basé sur la compacité du match
             var spread = lastMatchIndex - (target.Length - query.Length);
             matchScore += Math.Max(0, 50 - spread);
             return true;
