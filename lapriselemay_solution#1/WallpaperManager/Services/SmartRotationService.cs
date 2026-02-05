@@ -125,6 +125,38 @@ public sealed class SmartRotationService : IDisposable
     }
     
     /// <summary>
+    /// Force une vérification immédiate de la période.
+    /// Utile après un réveil du système ou un changement d'heure.
+    /// </summary>
+    public void ForceCheckPeriod()
+    {
+        if (!Settings.Enabled) return;
+        
+        System.Diagnostics.Debug.WriteLine("SmartRotation: Vérification forcée de la période");
+        
+        var newPeriod = GetCurrentPeriod();
+        
+        if (newPeriod != _currentPeriod)
+        {
+            var oldPeriod = _currentPeriod;
+            _currentPeriod = newPeriod;
+            
+            System.Diagnostics.Debug.WriteLine($"SmartRotation: Période changée pendant veille/absence {oldPeriod} → {newPeriod}");
+            
+            PeriodChanged?.Invoke(this, newPeriod);
+            
+            if (Settings.ChangeOnPeriodTransition)
+            {
+                ApplyRandomFromCurrentPeriod();
+            }
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine($"SmartRotation: Période inchangée ({_currentPeriod})");
+        }
+    }
+    
+    /// <summary>
     /// Vérifie si la période a changé et applique un nouveau fond si nécessaire.
     /// </summary>
     private void OnPeriodCheckTick(object? sender, EventArgs e)

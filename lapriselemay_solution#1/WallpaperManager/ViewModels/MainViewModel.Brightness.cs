@@ -37,7 +37,8 @@ public partial class MainViewModel
         Icon = "🎬"
     };
     
-    private SmartRotationService? _smartRotationService;
+    // Référence au service global (pas d'instance locale)
+    private SmartRotationService? SmartRotationServiceRef => App.SmartRotationServiceOrNull;
     
     [ObservableProperty]
     private bool _isAnalyzingBrightness;
@@ -77,7 +78,7 @@ public partial class MainViewModel
     private bool _isInitializingSmartRotation;
     
     /// <summary>
-    /// Initialise le service de rotation intelligente.
+    /// Initialise la liaison avec le service de rotation intelligente global.
     /// </summary>
     private void InitializeSmartRotation()
     {
@@ -85,27 +86,22 @@ public partial class MainViewModel
         
         try
         {
-            _smartRotationService = new SmartRotationService(
-                GetWallpapersByCategory,
-                ApplyWallpaperDirect);
-            
-            // Charger les paramètres depuis les settings
+            // Charger les paramètres depuis les settings pour l'UI
             var settings = SettingsService.Current;
             DayStartTime = settings.SmartRotationDayStart.ToString(@"hh\:mm");
             NightStartTime = settings.SmartRotationNightStart.ToString(@"hh\:mm");
             
-            // Appliquer les paramètres au service AVANT de définir SmartRotationEnabled
-            _smartRotationService.Settings.Enabled = settings.SmartRotationEnabled;
-            if (TimeSpan.TryParse(DayStartTime, out var dayStart))
-                _smartRotationService.Settings.DayStartTime = dayStart;
-            if (TimeSpan.TryParse(NightStartTime, out var nightStart))
-                _smartRotationService.Settings.NightStartTime = nightStart;
-            
             // Mettre à jour les compteurs
             UpdateBrightnessCounters();
             
-            // Écouter les changements de période
-            _smartRotationService.PeriodChanged += OnPeriodChanged;
+            // Écouter les changements de période du service global
+            if (SmartRotationServiceRef != null)
+            {
+                SmartRotationServiceRef.PeriodChanged += OnPeriodChanged;
+            }
+            
+            // S'abonner à l'événement de réveil système
+            App.SystemResumed += OnSystemResumed;
             
             // Afficher la période actuelle
             UpdateCurrentPeriodDisplay();
@@ -113,12 +109,6 @@ public partial class MainViewModel
             // Définir la propriété (sans déclencher le démarrage grâce au flag)
             _smartRotationEnabled = settings.SmartRotationEnabled;
             OnPropertyChanged(nameof(SmartRotationEnabled));
-            
-            // Démarrer si activé (une seule fois, sans appliquer de wallpaper immédiatement)
-            if (settings.SmartRotationEnabled)
-            {
-                _smartRotationService.StartWithoutApply();
-            }
         }
         finally
         {
@@ -131,9 +121,10 @@ public partial class MainViewModel
     /// </summary>
     private void UpdateCurrentPeriodDisplay()
     {
-        if (_smartRotationService == null) return;
+        var service = SmartRotationServiceRef;
+        if (service == null) return;
         
-        var period = _smartRotationService.GetCurrentPeriod();
+        var period = service.GetCurrentPeriod();
         var icon = SmartRotationService.GetPeriodIcon(period);
         var name = SmartRotationService.GetPeriodName(period);
         CurrentPeriodName = $"{icon} {name}";
@@ -149,15 +140,22 @@ public partial class MainViewModel
         });
     }
     
+    private void OnSystemResumed(object? sender, EventArgs e)
+    {
+        OnSystemResume();
+    }
+    
     partial void OnSmartRotationEnabledChanged(bool value)
     {
+        var service = SmartRotationServiceRef;
+        
         // Ne rien faire pendant l'initialisation (géré séparément)
-        if (_isInitializingSmartRotation || _smartRotationService == null) return;
+        if (_isInitializingSmartRotation || service == null) return;
         
         SettingsService.Current.SmartRotationEnabled = value;
         SettingsService.Save();
         
-        _smartRotationService.Settings.Enabled = value;
+        service.Settings.Enabled = value;
         
         if (value)
         {
@@ -173,12 +171,12 @@ public partial class MainViewModel
                 IsCollectionRotationActive = false;
             }
             
-            _smartRotationService.Start();
+            service.Start();
             StatusMessage = "Rotation intelligente activée (rotation automatique désactivée)";
         }
         else
         {
-            _smartRotationService.Stop();
+            service.Stop();
             StatusMessage = "Rotation intelligente désactivée";
         }
         
@@ -197,15 +195,16 @@ public partial class MainViewModel
     /// </summary>
     private void UpdateSmartRotationSettings()
     {
-        if (_smartRotationService == null) return;
+        var service = SmartRotationServiceRef;
+        if (service == null) return;
         
         if (TimeSpan.TryParse(DayStartTime, out var dayStart))
-            _smartRotationService.Settings.DayStartTime = dayStart;
+            service.Settings.DayStartTime = dayStart;
         
         if (TimeSpan.TryParse(NightStartTime, out var nightStart))
-            _smartRotationService.Settings.NightStartTime = nightStart;
+            service.Settings.NightStartTime = nightStart;
         
-        _smartRotationService.Settings.Enabled = SmartRotationEnabled;
+        service.Settings.Enabled = SmartRotationEnabled;
         
         UpdateCurrentPeriodDisplay();
     }
@@ -419,7 +418,20 @@ public partial class MainViewModel
     [RelayCommand]
     private void ApplyRandomFromCurrentPeriod()
     {
-        _smartRotationService?.ApplyRandomFromCurrentPeriod();
+        SmartRotationServiceRef?.ApplyRandomFromCurrentPeriod();
+    }
+    
+    /// <summary>
+    /// Force une vérification de la période après un réveil système.
+    /// </summary>
+    public void OnSystemResume()
+    {
+        var service = SmartRotationServiceRef;
+        if (service != null && SmartRotationEnabled)
+        {
+            System.Diagnostics.Debug.WriteLine("MainViewModel: Réveil système détecté, mise à jour de l'affichage");
+            UpdateCurrentPeriodDisplay();
+        }
     }
     
     /// <summary>
@@ -429,15 +441,19 @@ public partial class MainViewModel
         SelectedCollection != null && SystemCollectionIds.IsBrightnessCollection(SelectedCollection.Id);
     
     /// <summary>
-    /// Nettoie le service de rotation intelligente.
+    /// Nettoie les abonnements à la rotation intelligente.
+    /// Note: Le service lui-même est géré par App.xaml.cs
     /// </summary>
     private void CleanupSmartRotation()
     {
-        if (_smartRotationService != null)
+        // Se désabonner de l'événement de réveil système
+        App.SystemResumed -= OnSystemResumed;
+        
+        // Se désabonner des événements du service global
+        var service = SmartRotationServiceRef;
+        if (service != null)
         {
-            _smartRotationService.PeriodChanged -= OnPeriodChanged;
-            _smartRotationService.Dispose();
-            _smartRotationService = null;
+            service.PeriodChanged -= OnPeriodChanged;
         }
     }
     

@@ -84,6 +84,9 @@ public partial class SettingsWindow : Window
         MaxHistorySlider.Value = _settings.MaxSearchHistory;
         MaxHistoryValue.Text = _settings.MaxSearchHistory.ToString();
         
+        // Recherche intelligente (recency)
+        EnableRecencyBonusCheck.IsChecked = _settings.ScoringWeights.EnableRecencyBonus;
+        
         // Apparence
         SelectComboByTag(ThemeModeCombo, _settings.Theme);
         // Afficher/masquer le panneau Auto selon le mode
@@ -566,6 +569,7 @@ public partial class SettingsWindow : Window
         _settings.EnableSearchHistory = EnableSearchHistoryCheck.IsChecked == true;
         _settings.IndexHiddenFolders = IndexHiddenFoldersCheck.IsChecked == true;
         _settings.ShowCategoryBadges = ShowCategoryBadgesCheck.IsChecked == true;
+        _settings.ScoringWeights.EnableRecencyBonus = EnableRecencyBonusCheck.IsChecked == true;
         
         UpdateStartupRegistry();
         AutoSave();

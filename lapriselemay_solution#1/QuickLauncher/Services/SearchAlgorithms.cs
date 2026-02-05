@@ -235,7 +235,7 @@ public static class SearchAlgorithms
     /// <returns>Score de correspondance (0 = pas de match, plus c'est haut mieux c'est)</returns>
     public static int CalculateFuzzyScore(string query, string target, int useCount = 0)
     {
-        return CalculateFuzzyScore(query, target, useCount, DefaultWeights);
+        return CalculateFuzzyScore(query, target, useCount, null, DefaultWeights);
     }
     
     /// <summary>
@@ -247,6 +247,20 @@ public static class SearchAlgorithms
     /// <param name="weights">Poids de scoring configurables</param>
     /// <returns>Score de correspondance (0 = pas de match, plus c'est haut mieux c'est)</returns>
     public static int CalculateFuzzyScore(string query, string target, int useCount, ScoringWeights weights)
+    {
+        return CalculateFuzzyScore(query, target, useCount, null, weights);
+    }
+    
+    /// <summary>
+    /// Effectue un fuzzy match amélioré avec scoring détaillé, poids configurables et recency decay.
+    /// </summary>
+    /// <param name="query">Requête de recherche</param>
+    /// <param name="target">Texte cible</param>
+    /// <param name="useCount">Nombre d'utilisations (pour le scoring)</param>
+    /// <param name="lastUsed">Date de dernière utilisation (pour le recency bonus)</param>
+    /// <param name="weights">Poids de scoring configurables</param>
+    /// <returns>Score de correspondance (0 = pas de match, plus c'est haut mieux c'est)</returns>
+    public static int CalculateFuzzyScore(string query, string target, int useCount, DateTime? lastUsed, ScoringWeights weights)
     {
         if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(target))
             return 0;
@@ -280,6 +294,13 @@ public static class SearchAlgorithms
             // Ajouter les bonus habituels
             if (useCount > 0)
                 score += Math.Min(useCount * weights.UsageBonusPerUse, weights.MaxUsageBonus);
+            
+            // Ajouter le recency bonus
+            if (weights.EnableRecencyBonus && lastUsed.HasValue && lastUsed.Value > DateTime.MinValue)
+            {
+                var daysSinceLastUse = (DateTime.UtcNow - lastUsed.Value).TotalDays;
+                score += Math.Max(0, weights.MaxRecencyBonus - (int)(daysSinceLastUse * weights.RecencyDecayPerDay));
+            }
             return score;
         }
 
@@ -337,8 +358,16 @@ public static class SearchAlgorithms
         {
             score += Math.Min(useCount * weights.UsageBonusPerUse, weights.MaxUsageBonus);
         }
+        
+        // 8. Bonus de recency (items récemment utilisés remontent)
+        if (score > 0 && weights.EnableRecencyBonus && lastUsed.HasValue && lastUsed.Value > DateTime.MinValue)
+        {
+            var daysSinceLastUse = (DateTime.UtcNow - lastUsed.Value).TotalDays;
+            var recencyBonus = Math.Max(0, weights.MaxRecencyBonus - (int)(daysSinceLastUse * weights.RecencyDecayPerDay));
+            score += recencyBonus;
+        }
 
-        // 8. Bonus pour les mots qui matchent exactement
+        // 9. Bonus pour les mots qui matchent exactement
         if (score > 0)
         {
             var queryWords = queryLower.Split(' ', StringSplitOptions.RemoveEmptyEntries);

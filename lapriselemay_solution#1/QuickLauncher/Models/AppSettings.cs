@@ -589,6 +589,24 @@ public sealed class ScoringWeights
     /// </summary>
     public int WordBoundaryBonus { get; set; } = 20;
     
+    // === Recency Decay (bonus pour les items récemment utilisés) ===
+    
+    /// <summary>
+    /// Active/désactive le bonus de recency (items récemment utilisés).
+    /// </summary>
+    public bool EnableRecencyBonus { get; set; } = true;
+    
+    /// <summary>
+    /// Bonus maximum pour un item utilisé aujourd'hui.
+    /// </summary>
+    public int MaxRecencyBonus { get; set; } = 150;
+    
+    /// <summary>
+    /// Nombre de points perdus par jour depuis la dernière utilisation.
+    /// Exemple: avec DecayPerDay=5 et MaxRecencyBonus=150, le bonus atteint 0 après 30 jours.
+    /// </summary>
+    public int RecencyDecayPerDay { get; set; } = 5;
+    
     /// <summary>
     /// Réinitialise tous les poids aux valeurs par défaut.
     /// </summary>
@@ -606,6 +624,9 @@ public sealed class ScoringWeights
         FuzzyMatchThreshold = 0.6;
         ConsecutiveMatchBonus = 10;
         WordBoundaryBonus = 20;
+        EnableRecencyBonus = true;
+        MaxRecencyBonus = 150;
+        RecencyDecayPerDay = 5;
     }
     
     /// <summary>
@@ -624,7 +645,10 @@ public sealed class ScoringWeights
         ExactWordBonus = ExactWordBonus,
         FuzzyMatchThreshold = FuzzyMatchThreshold,
         ConsecutiveMatchBonus = ConsecutiveMatchBonus,
-        WordBoundaryBonus = WordBoundaryBonus
+        WordBoundaryBonus = WordBoundaryBonus,
+        EnableRecencyBonus = EnableRecencyBonus,
+        MaxRecencyBonus = MaxRecencyBonus,
+        RecencyDecayPerDay = RecencyDecayPerDay
     };
 }
 

@@ -24,6 +24,7 @@ public partial class App : Application
     private static HotkeyService? _hotkeyService;
     private static TransitionService? _transitionService;
     private static WidgetManagerService? _widgetManagerService;
+    private static SmartRotationService? _smartRotationService;
     private static bool _isInitialized;
     private static bool _mainWindowVisible;
 
@@ -100,6 +101,18 @@ public partial class App : Application
         // Initialiser le service de widgets
         _widgetManagerService = new WidgetManagerService();
         
+        // Initialiser le service de rotation intelligente
+        _smartRotationService = new SmartRotationService(
+            GetWallpapersByBrightnessCategory,
+            ApplyWallpaperFromSmartRotation);
+        
+        // Configurer les paramètres de la rotation intelligente
+        var settings = SettingsService.Current;
+        _smartRotationService.Settings.Enabled = settings.SmartRotationEnabled;
+        _smartRotationService.Settings.DayStartTime = settings.SmartRotationDayStart;
+        _smartRotationService.Settings.NightStartTime = settings.SmartRotationNightStart;
+        _smartRotationService.Settings.ChangeOnPeriodTransition = settings.SmartRotationChangeOnTransition;
+        
         // Connecter l'événement pour les wallpapers animés/vidéo dans la rotation
         _rotationService.AnimatedWallpaperRequested += OnAnimatedWallpaperRequested;
         
@@ -110,6 +123,32 @@ public partial class App : Application
         _hotkeyService.TogglePauseRequested += OnTogglePauseHotkey;
         
         _isInitialized = true;
+    }
+    
+    /// <summary>
+    /// Obtient les wallpapers d'une catégorie de luminosité pour la rotation intelligente.
+    /// </summary>
+    private static List<Wallpaper> GetWallpapersByBrightnessCategory(BrightnessCategory category)
+    {
+        return SettingsService.Wallpapers
+            .Where(w => w.BrightnessCategory == category && w.Exists)
+            .ToList();
+    }
+    
+    /// <summary>
+    /// Applique un wallpaper depuis la rotation intelligente.
+    /// </summary>
+    private static void ApplyWallpaperFromSmartRotation(Wallpaper wallpaper)
+    {
+        if (wallpaper.Type == WallpaperType.Static)
+        {
+            _rotationService?.ApplyWallpaper(wallpaper);
+        }
+        else
+        {
+            _animatedService?.Play(wallpaper);
+        }
+        System.Diagnostics.Debug.WriteLine($"SmartRotation App: Appliqué '{wallpaper.DisplayName}'");
     }
     
     private static void OnAnimatedWallpaperRequested(object? sender, Wallpaper wallpaper)
@@ -204,9 +243,17 @@ public partial class App : Application
 
     private static void StartRotationIfEnabled()
     {
+        // Démarrer la rotation standard si activée
         if (SettingsService.Current.RotationEnabled)
         {
             _rotationService?.Start();
+        }
+        
+        // Démarrer la rotation intelligente si activée (sans appliquer immédiatement)
+        if (SettingsService.Current.SmartRotationEnabled)
+        {
+            _smartRotationService?.StartWithoutApply();
+            System.Diagnostics.Debug.WriteLine($"SmartRotation démarrée. Période: {_smartRotationService?.CurrentPeriod}");
         }
         
         // Démarrer les widgets après un court délai pour s'assurer que l'UI est prête
@@ -322,6 +369,14 @@ public partial class App : Application
             _widgetManagerService = null;
         }
         
+        // Disposer le service de rotation intelligente
+        if (_smartRotationService != null)
+        {
+            _smartRotationService.Stop();
+            _smartRotationService.Dispose();
+            _smartRotationService = null;
+        }
+        
         // Libérer le mutex
         try
         {
@@ -359,12 +414,28 @@ public partial class App : Application
                 
             case PowerModes.Resume:
                 System.Diagnostics.Debug.WriteLine("Réveil du système - Reprise des services");
+                
+                // Reprendre la rotation standard si activée
                 if (SettingsService.Current.RotationEnabled)
                 {
                     _rotationService?.Resume();
                 }
+                
                 // Rafraîchir le wallpaper dynamique si actif
                 _dynamicService?.Refresh();
+                
+                // Forcer la vérification de période pour la rotation intelligente
+                if (SettingsService.Current.SmartRotationEnabled && _smartRotationService != null)
+                {
+                    System.Diagnostics.Debug.WriteLine("SmartRotation: Vérification forcée après réveil");
+                    _smartRotationService.ForceCheckPeriod();
+                }
+                
+                // Notifier les ViewModels du réveil (pour mise à jour UI)
+                Current?.Dispatcher.BeginInvoke(() =>
+                {
+                    SystemResumed?.Invoke(null, EventArgs.Empty);
+                });
                 
                 if (_systemMonitorService != null && !_systemMonitorService.ShouldPauseAnimated())
                 {
@@ -484,9 +555,30 @@ public partial class App : Application
         }
     }
     
+    public static SmartRotationService SmartRotationService
+    {
+        get
+        {
+            if (!_isInitialized || _smartRotationService == null)
+                throw new InvalidOperationException("App non initialisée");
+            return _smartRotationService;
+        }
+    }
+    
+    /// <summary>
+    /// Obtient le service de rotation intelligente s'il est disponible, sinon null.
+    /// </summary>
+    public static SmartRotationService? SmartRotationServiceOrNull => _smartRotationService;
+    
     public static bool IsInitialized => _isInitialized;
     
     public static void SetMainWindowVisible(bool visible) => _mainWindowVisible = visible;
+    
+    /// <summary>
+    /// Événement déclenché lors du réveil du système.
+    /// Permet aux ViewModels de réagir (ex: vérification de période Smart Rotation).
+    /// </summary>
+    public static event EventHandler? SystemResumed;
     
     #endregion
 }

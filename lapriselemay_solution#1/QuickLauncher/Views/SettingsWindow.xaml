@@ -169,6 +169,24 @@
                             </StackPanel>
                             <Slider x:Name="MaxHistorySlider" Minimum="5" Maximum="30" Value="10" Width="250" HorizontalAlignment="Left" ValueChanged="MaxHistorySlider_ValueChanged"/>
                             <Button Content="🗑️ Effacer l'historique" Click="ClearHistory_Click" Style="{StaticResource ActionButton}" HorizontalAlignment="Left" Margin="0,8,0,0"/>
+                            
+                            <!-- Recherche intelligente -->
+                            <TextBlock Text="Recherche intelligente" Style="{StaticResource SectionLabel}"/>
+                            <CheckBox x:Name="EnableRecencyBonusCheck" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed">
+                                <CheckBox.Content>
+                                    <TextBlock Text="Prioriser les éléments récents" TextWrapping="Wrap"/>
+                                </CheckBox.Content>
+                                <CheckBox.ToolTip>
+                                    <ToolTip MaxWidth="300">
+                                        <StackPanel>
+                                            <TextBlock Text="Bonus de récence" FontWeight="Bold" Margin="0,0,0,5"/>
+                                            <TextBlock TextWrapping="Wrap" Text="Lorsque cette option est activée, les applications et fichiers que vous avez utilisés récemment apparaîtront plus haut dans les résultats de recherche."/>
+                                            <TextBlock TextWrapping="Wrap" Margin="0,8,0,0" Foreground="#888" Text="Exemple: Si vous utilisez Chrome tous les jours, il apparaîtra avant Firefox même si vous tapez 'fire'."/>
+                                        </StackPanel>
+                                    </ToolTip>
+                                </CheckBox.ToolTip>
+                            </CheckBox>
+                            <TextBlock Text="Les éléments utilisés récemment remontent dans les résultats" Foreground="#666" FontSize="10" Margin="20,0,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                         
                         <!-- Colonne droite -->
