@@ -145,6 +145,85 @@ public static class SearchAlgorithms
     /// Instance des poids par défaut utilisée lorsqu'aucun poids n'est fourni.
     /// </summary>
     private static readonly ScoringWeights DefaultWeights = new();
+    
+    /// <summary>
+    /// Dictionnaire d'abréviations communes pour améliorer la recherche.
+    /// Permet de trouver "Visual Studio" en tapant "vs", etc.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> CommonAbbreviations = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Développement
+        ["vs"] = ["visual studio", "visual studio code"],
+        ["vsc"] = ["visual studio code"],
+        ["vscode"] = ["visual studio code"],
+        ["code"] = ["visual studio code"],
+        ["np"] = ["notepad"],
+        ["npp"] = ["notepad++"],
+        ["notepad"] = ["notepad++"],
+        ["sublime"] = ["sublime text"],
+        ["st"] = ["sublime text"],
+        ["idea"] = ["intellij"],
+        ["pycharm"] = ["pycharm"],
+        ["rider"] = ["rider"],
+        ["ws"] = ["webstorm"],
+        
+        // Navigateurs
+        ["ff"] = ["firefox", "mozilla firefox"],
+        ["chrome"] = ["google chrome", "chrome"],
+        ["gc"] = ["google chrome"],
+        ["edge"] = ["microsoft edge"],
+        ["brave"] = ["brave browser"],
+        ["opera"] = ["opera gx", "opera browser"],
+        
+        // Microsoft Office
+        ["word"] = ["microsoft word"],
+        ["excel"] = ["microsoft excel"],
+        ["ppt"] = ["powerpoint", "microsoft powerpoint"],
+        ["powerpoint"] = ["microsoft powerpoint"],
+        ["outlook"] = ["microsoft outlook"],
+        ["onenote"] = ["microsoft onenote"],
+        ["teams"] = ["microsoft teams"],
+        
+        // Adobe
+        ["ps"] = ["photoshop", "adobe photoshop"],
+        ["ai"] = ["illustrator", "adobe illustrator"],
+        ["ae"] = ["after effects", "adobe after effects"],
+        ["pr"] = ["premiere", "premiere pro", "adobe premiere"],
+        ["id"] = ["indesign", "adobe indesign"],
+        ["lr"] = ["lightroom", "adobe lightroom"],
+        ["xd"] = ["adobe xd"],
+        ["acrobat"] = ["adobe acrobat"],
+        
+        // Utilitaires Windows
+        ["cmd"] = ["command prompt", "invite de commandes", "cmd.exe"],
+        ["wt"] = ["windows terminal", "terminal"],
+        ["term"] = ["windows terminal", "terminal"],
+        ["calc"] = ["calculator", "calculatrice"],
+        ["paint"] = ["mspaint", "paint 3d"],
+        ["explorer"] = ["file explorer", "explorateur de fichiers"],
+        ["snip"] = ["snipping tool", "outil capture"],
+        ["task"] = ["task manager", "gestionnaire des tâches", "taskmgr"],
+        
+        // Autres applications courantes
+        ["vlc"] = ["vlc media player"],
+        ["obs"] = ["obs studio"],
+        ["discord"] = ["discord"],
+        ["slack"] = ["slack"],
+        ["zoom"] = ["zoom"],
+        ["spotify"] = ["spotify"],
+        ["steam"] = ["steam"],
+        ["git"] = ["git bash", "github desktop"],
+        ["gh"] = ["github desktop"],
+        ["docker"] = ["docker desktop"],
+        ["postman"] = ["postman"],
+        ["insomnia"] = ["insomnia"],
+        ["figma"] = ["figma"],
+        ["notion"] = ["notion"],
+        ["evernote"] = ["evernote"],
+        ["7z"] = ["7-zip"],
+        ["zip"] = ["7-zip", "winzip", "winrar"],
+        ["rar"] = ["winrar"],
+    };
 
     /// <summary>
     /// Effectue un fuzzy match amélioré avec scoring détaillé.
@@ -180,6 +259,29 @@ public static class SearchAlgorithms
 
         // Score de base
         int score = 0;
+        
+        // 0. Vérifier les abréviations communes (priorité haute)
+        if (CommonAbbreviations.TryGetValue(queryLower, out var possibleTargets))
+        {
+            foreach (var possibleTarget in possibleTargets)
+            {
+                if (targetLower.Contains(possibleTarget))
+                {
+                    // Score très élevé pour une correspondance d'abréviation
+                    score = weights.ExactMatch - 100;
+                    break;
+                }
+            }
+        }
+        
+        // Si on a déjà trouvé une correspondance d'abréviation, passer aux bonus
+        if (score > 0)
+        {
+            // Ajouter les bonus habituels
+            if (useCount > 0)
+                score += Math.Min(useCount * weights.UsageBonusPerUse, weights.MaxUsageBonus);
+            return score;
+        }
 
         // 1. Correspondance exacte (score maximum)
         if (targetLower == queryLower)

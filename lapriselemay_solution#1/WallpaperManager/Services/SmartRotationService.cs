@@ -84,7 +84,7 @@ public sealed class SmartRotationService : IDisposable
     }
     
     /// <summary>
-    /// Démarre la surveillance des périodes.
+    /// Démarre la surveillance des périodes et applique un fond d'écran.
     /// </summary>
     public void Start()
     {
@@ -100,6 +100,20 @@ public sealed class SmartRotationService : IDisposable
         }
         
         System.Diagnostics.Debug.WriteLine($"SmartRotation démarré. Période actuelle: {_currentPeriod}");
+    }
+    
+    /// <summary>
+    /// Démarre la surveillance des périodes sans appliquer de fond d'écran.
+    /// Utilisé lors de l'initialisation pour éviter un changement inutile.
+    /// </summary>
+    public void StartWithoutApply()
+    {
+        if (!Settings.Enabled) return;
+        
+        _currentPeriod = GetCurrentPeriod();
+        _periodCheckTimer.Start();
+        
+        System.Diagnostics.Debug.WriteLine($"SmartRotation démarré (sans application). Période actuelle: {_currentPeriod}");
     }
     
     /// <summary>

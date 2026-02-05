@@ -165,12 +165,41 @@ public static class DesktopAttachHelper
         if (classNameStr == "WorkerW" || classNameStr == "Progman")
             return true;
         
+        // Ignorer les fenêtres système du tray et de la barre des tâches
+        // Ces fenêtres ne devraient pas masquer les widgets
+        if (IsSystemTrayWindow(classNameStr))
+            return true;
+        
         // Vérifier si la fenêtre au premier plan contient SHELLDLL_DefView
         var shellView = FindWindowEx(foreground, IntPtr.Zero, "SHELLDLL_DefView", null);
         if (shellView != IntPtr.Zero)
             return true;
         
         return false;
+    }
+    
+    /// <summary>
+    /// Vérifie si la fenêtre est une fenêtre système du tray ou de la barre des tâches.
+    /// </summary>
+    private static bool IsSystemTrayWindow(string className)
+    {
+        // Liste des classes de fenêtres système qui ne devraient pas masquer les widgets
+        return className switch
+        {
+            "Shell_TrayWnd" => true,           // Barre des tâches
+            "NotifyIconOverflowWindow" => true, // Flèche des icônes cachées du tray
+            "Shell_SecondaryTrayWnd" => true,  // Barre des tâches secondaire (multi-écrans)
+            "Windows.UI.Core.CoreWindow" => true, // Centre d'action Windows / Notifications
+            "XamlExplorerHostIslandWindow" => true, // Éléments XAML de l'explorer
+            "TopLevelWindowForOverflowXamlIsland" => true, // Overflow XAML du tray
+            "ToolbarWindow32" => true,         // Toolbars système
+            "SysPager" => true,                // Zone de notification
+            "TrayNotifyWnd" => true,           // Fenêtre de notification du tray
+            "ReBarWindow32" => true,           // ReBar de la barre des tâches
+            "MSTaskSwWClass" => true,          // Boutons de la barre des tâches
+            "MSTaskListWClass" => true,        // Liste des tâches
+            _ => false
+        };
     }
 
     private static void UpdateAllWindows(bool isDesktopVisible)

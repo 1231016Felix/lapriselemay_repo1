@@ -73,37 +73,56 @@ public partial class MainViewModel
     [ObservableProperty]
     private string _nightStartTime = "19:00";
     
+    // Flag pour éviter le démarrage automatique pendant l'initialisation
+    private bool _isInitializingSmartRotation;
+    
     /// <summary>
     /// Initialise le service de rotation intelligente.
     /// </summary>
     private void InitializeSmartRotation()
     {
-        _smartRotationService = new SmartRotationService(
-            GetWallpapersByCategory,
-            ApplyWallpaperDirect);
+        _isInitializingSmartRotation = true;
         
-        // Charger les paramètres
-        var settings = SettingsService.Current;
-        SmartRotationEnabled = settings.SmartRotationEnabled;
-        DayStartTime = settings.SmartRotationDayStart.ToString(@"hh\:mm");
-        NightStartTime = settings.SmartRotationNightStart.ToString(@"hh\:mm");
-        
-        // Appliquer les paramètres au service
-        UpdateSmartRotationSettings();
-        
-        // Mettre à jour les compteurs
-        UpdateBrightnessCounters();
-        
-        // Écouter les changements de période
-        _smartRotationService.PeriodChanged += OnPeriodChanged;
-        
-        // Afficher la période actuelle
-        UpdateCurrentPeriodDisplay();
-        
-        // Démarrer si activé
-        if (SmartRotationEnabled)
+        try
         {
-            _smartRotationService.Start();
+            _smartRotationService = new SmartRotationService(
+                GetWallpapersByCategory,
+                ApplyWallpaperDirect);
+            
+            // Charger les paramètres depuis les settings
+            var settings = SettingsService.Current;
+            DayStartTime = settings.SmartRotationDayStart.ToString(@"hh\:mm");
+            NightStartTime = settings.SmartRotationNightStart.ToString(@"hh\:mm");
+            
+            // Appliquer les paramètres au service AVANT de définir SmartRotationEnabled
+            _smartRotationService.Settings.Enabled = settings.SmartRotationEnabled;
+            if (TimeSpan.TryParse(DayStartTime, out var dayStart))
+                _smartRotationService.Settings.DayStartTime = dayStart;
+            if (TimeSpan.TryParse(NightStartTime, out var nightStart))
+                _smartRotationService.Settings.NightStartTime = nightStart;
+            
+            // Mettre à jour les compteurs
+            UpdateBrightnessCounters();
+            
+            // Écouter les changements de période
+            _smartRotationService.PeriodChanged += OnPeriodChanged;
+            
+            // Afficher la période actuelle
+            UpdateCurrentPeriodDisplay();
+            
+            // Définir la propriété (sans déclencher le démarrage grâce au flag)
+            _smartRotationEnabled = settings.SmartRotationEnabled;
+            OnPropertyChanged(nameof(SmartRotationEnabled));
+            
+            // Démarrer si activé (une seule fois, sans appliquer de wallpaper immédiatement)
+            if (settings.SmartRotationEnabled)
+            {
+                _smartRotationService.StartWithoutApply();
+            }
+        }
+        finally
+        {
+            _isInitializingSmartRotation = false;
         }
     }
     
@@ -132,7 +151,8 @@ public partial class MainViewModel
     
     partial void OnSmartRotationEnabledChanged(bool value)
     {
-        if (_smartRotationService == null) return;
+        // Ne rien faire pendant l'initialisation (géré séparément)
+        if (_isInitializingSmartRotation || _smartRotationService == null) return;
         
         SettingsService.Current.SmartRotationEnabled = value;
         SettingsService.Save();

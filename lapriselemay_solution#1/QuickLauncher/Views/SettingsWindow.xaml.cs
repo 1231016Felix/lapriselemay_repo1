@@ -114,7 +114,6 @@ public partial class SettingsWindow : Window
         
         // Indexation
         IndexedFoldersList.ItemsSource = _settings.IndexedFolders;
-        FileExtensionsBox.Text = string.Join(", ", _settings.FileExtensions);
         SearchDepthSlider.Value = _settings.SearchDepth;
         SearchDepthValue.Text = _settings.SearchDepth.ToString();
         IndexHiddenFoldersCheck.IsChecked = _settings.IndexHiddenFolders;
@@ -918,26 +917,6 @@ public partial class SettingsWindow : Window
                 Process.Start(exePath);
                 Application.Current.Shutdown();
             }
-        }
-    }
-
-    // === Extensions (sauvegarde sur perte de focus) ===
-    
-    private void FileExtensionsBox_LostFocus(object sender, RoutedEventArgs e)
-    {
-        if (_isLoading) return;
-        
-        var extensions = FileExtensionsBox.Text
-            .Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries)
-            .Select(ext => ext.Trim().ToLowerInvariant())
-            .Where(ext => ext.StartsWith('.'))
-            .Distinct()
-            .ToList();
-        
-        if (extensions.Count > 0)
-        {
-            _settings.FileExtensions = extensions;
-            AutoSave();
         }
     }
     

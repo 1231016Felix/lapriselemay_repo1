@@ -273,15 +273,11 @@
                         <StackPanel Grid.Column="0">
                             <!-- Dossiers indexés -->
                             <TextBlock Text="Dossiers indexés" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
-                            <ListBox x:Name="IndexedFoldersList" Height="100" Background="#2D2D2D" Foreground="White" BorderThickness="0"/>
+                            <ListBox x:Name="IndexedFoldersList" Height="180" Background="#2D2D2D" Foreground="White" BorderThickness="0"/>
                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                 <Button Content="➕" Click="AddFolder_Click" Style="{StaticResource PrimaryButton}" Padding="10,6" Margin="0,0,5,0" ToolTip="Ajouter"/>
                                 <Button Content="➖" Click="RemoveFolder_Click" Style="{StaticResource ActionButton}" Padding="10,6" ToolTip="Supprimer"/>
                             </StackPanel>
-                            
-                            <!-- Extensions -->
-                            <TextBlock Text="Extensions" Style="{StaticResource SectionLabel}"/>
-                            <TextBox x:Name="FileExtensionsBox" Background="#2D2D2D" Foreground="White" BorderThickness="0" Padding="10" FontFamily="Consolas" TextWrapping="Wrap" Height="50" LostFocus="FileExtensionsBox_LostFocus"/>
                             
                             <!-- Options -->
                             <TextBlock Text="Options" Style="{StaticResource SectionLabel}"/>

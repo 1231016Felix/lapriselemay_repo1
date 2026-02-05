@@ -152,12 +152,24 @@ public sealed class TransitionService : IDisposable
 /// <summary>
 /// Fenêtre plein écran transparente pour afficher les transitions.
 /// Placée derrière les icônes du bureau pour éviter le scintillement.
+/// Configurée comme une tool window pour ne pas déclencher le mode "Ne pas déranger".
 /// </summary>
 internal class TransitionWindow : Window
 {
     private readonly System.Windows.Controls.Image _newImageControl;
     private readonly Grid _container;
     private bool _isEmbedded;
+    
+    // Constantes Win32 pour les styles de fenêtre
+    private const int GWL_EXSTYLE = -20;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int WS_EX_NOACTIVATE = 0x08000000;
+    
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
     
     public TransitionWindow()
     {
@@ -192,8 +204,41 @@ internal class TransitionWindow : Window
         _container.Children.Add(_newImageControl);
         Content = _container;
         
+        // Configurer les styles de fenêtre AVANT l'affichage
+        SourceInitialized += OnSourceInitialized;
+        
         // Placer derrière les icônes une fois la fenêtre chargée
         Loaded += OnLoaded;
+    }
+    
+    /// <summary>
+    /// Configure les styles de fenêtre pour éviter que Windows détecte la fenêtre
+    /// comme une application plein écran (ce qui déclencherait le mode "Ne pas déranger").
+    /// </summary>
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        try
+        {
+            var helper = new WindowInteropHelper(this);
+            var hwnd = helper.Handle;
+            
+            if (hwnd != IntPtr.Zero)
+            {
+                // Ajouter WS_EX_TOOLWINDOW et WS_EX_NOACTIVATE pour éviter:
+                // - L'apparition dans la taskbar
+                // - La détection comme application plein écran
+                // - Le focus automatique
+                var exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+                exStyle |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
+                SetWindowLong(hwnd, GWL_EXSTYLE, exStyle);
+                
+                System.Diagnostics.Debug.WriteLine("TransitionWindow: Styles configurés pour éviter DND");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Erreur configuration styles: {ex.Message}");
+        }
     }
     
     private void OnLoaded(object sender, RoutedEventArgs e)
