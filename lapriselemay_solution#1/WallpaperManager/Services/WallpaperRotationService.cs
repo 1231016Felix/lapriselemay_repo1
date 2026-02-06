@@ -77,10 +77,14 @@ public sealed class WallpaperRotationService : IDisposable
                 {
                     playlistCount = _playlist.Count;
                 }
+                System.Diagnostics.Debug.WriteLine($"RotationService.Start: Playlist chargée depuis bibliothèque: {playlistCount} wallpapers");
             }
             
             if (playlistCount == 0)
+            {
+                System.Diagnostics.Debug.WriteLine("RotationService.Start: ABANDON - playlist vide!");
                 return;
+            }
             
             var intervalMs = Math.Max(SettingsService.Current.RotationIntervalMinutes, 1) * 60 * 1000;
             _timer.Interval = intervalMs;
@@ -88,6 +92,8 @@ public sealed class WallpaperRotationService : IDisposable
             _lastTickTime = DateTime.UtcNow;
             _timer.Start();
             _isPaused = false;
+            
+            System.Diagnostics.Debug.WriteLine($"RotationService.Start: Timer démarré, interval={intervalMs / 1000}s, playlist={playlistCount}, AutoReset={_timer.AutoReset}");
         }
         
         RotationStateChanged?.Invoke(this, true);
@@ -172,7 +178,10 @@ public sealed class WallpaperRotationService : IDisposable
         {
             var count = _playlist.Count;
             if (count == 0)
+            {
+                System.Diagnostics.Debug.WriteLine("RotationService.Next: Playlist vide, rien à faire");
                 return;
+            }
             
             if (SettingsService.Current.RandomOrder)
             {
@@ -186,6 +195,8 @@ public sealed class WallpaperRotationService : IDisposable
             {
                 _currentIndex = (_currentIndex + 1) % count;
             }
+            
+            System.Diagnostics.Debug.WriteLine($"RotationService.Next: index={_currentIndex}/{count}, wallpaper='{_playlist[_currentIndex].DisplayName}'");
         }
         
         ApplyCurrentWallpaper();
@@ -356,6 +367,14 @@ public sealed class WallpaperRotationService : IDisposable
             _lastTickTime = DateTime.UtcNow;
             shouldProceed = !_isPaused;
         }
+        
+        int playlistCount;
+        lock (_playlistLock)
+        {
+            playlistCount = _playlist.Count;
+        }
+        
+        System.Diagnostics.Debug.WriteLine($"RotationService Timer: shouldProceed={shouldProceed}, playlistCount={playlistCount}, interval={_timer.Interval / 1000}s");
         
         if (shouldProceed)
         {

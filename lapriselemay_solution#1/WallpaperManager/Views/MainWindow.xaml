@@ -212,6 +212,7 @@
                             </Button.Style>
                             <Button.ContextMenu>
                                 <ContextMenu Placement="Bottom">
+                                    <MenuItem Header="1 minute" Command="{Binding SetIntervalCommand}" CommandParameter="1"/>
                                     <MenuItem Header="5 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="5"/>
                                     <MenuItem Header="10 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="10"/>
                                     <MenuItem Header="15 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="15"/>
@@ -673,6 +674,7 @@
                                         </StackPanel>
                                         <Button.ContextMenu>
                                             <ContextMenu Placement="Bottom">
+                                                <MenuItem Header="1 minute" Command="{Binding SetIntervalCommand}" CommandParameter="1"/>
                                                 <MenuItem Header="5 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="5"/>
                                                 <MenuItem Header="10 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="10"/>
                                                 <MenuItem Header="15 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="15"/>
@@ -742,6 +744,7 @@
                                 </StackPanel>
                                 <Button.ContextMenu>
                                     <ContextMenu Placement="Bottom">
+                                        <MenuItem Header="1 minute" Command="{Binding SetIntervalCommand}" CommandParameter="1"/>
                                         <MenuItem Header="5 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="5"/>
                                         <MenuItem Header="10 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="10"/>
                                         <MenuItem Header="15 minutes" Command="{Binding SetIntervalCommand}" CommandParameter="15"/>

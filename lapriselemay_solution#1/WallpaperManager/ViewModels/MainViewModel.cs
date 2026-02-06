@@ -170,9 +170,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _pexelsService = new PexelsService();
         _pixabayService = new PixabayService();
         SelectedWallpapers.CollectionChanged += (s, e) => OnPropertyChanged(nameof(SelectedCount));
+        InitializeSmartRotation(); // Doit être avant LoadData pour que le flag soit prêt
         LoadData();
         InitializeWidgets();
-        InitializeSmartRotation();
     }
     
     /// <summary>
@@ -191,7 +191,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         
         ApplyFiltersAndSort();
         
-        IsRotationEnabled = SettingsService.Current.RotationEnabled;
+        // Si la rotation intelligente est active, elle gère l'état de rotation
+        // On utilise le backing field pour éviter que le handler arrête le service
+        if (_smartRotationEnabled)
+        {
+            _isRotationEnabled = true;
+            OnPropertyChanged(nameof(IsRotationEnabled));
+            OnPropertyChanged(nameof(RotationStatusText));
+        }
+        else
+        {
+            IsRotationEnabled = SettingsService.Current.RotationEnabled;
+        }
         RotationInterval = SettingsService.Current.RotationIntervalMinutes;
         UnsplashApiKey = SettingsService.Current.UnsplashApiKey ?? string.Empty;
         PexelsApiKey = SettingsService.Current.PexelsApiKey ?? string.Empty;
@@ -836,13 +847,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     
     partial void OnIsRotationEnabledChanged(bool value)
     {
-        // Empêcher l'activation si la rotation intelligente est active
-        if (value && SmartRotationEnabled)
+        // Si la rotation intelligente gère le service de rotation, ne pas interférer
+        if (SmartRotationEnabled)
         {
-            // Forcer à false si on essaie d'activer pendant que la rotation intelligente est active
-            _isRotationEnabled = false;
-            OnPropertyChanged(nameof(IsRotationEnabled));
-            StatusMessage = "Désactivez d'abord la rotation intelligente";
+            if (value)
+            {
+                // Empêcher l'activation manuelle pendant la rotation intelligente
+                _isRotationEnabled = false;
+                OnPropertyChanged(nameof(IsRotationEnabled));
+                StatusMessage = "Désactivez d'abord la rotation intelligente";
+            }
+            // Dans tous les cas, ne pas toucher au RotationService quand SmartRotation le gère
             return;
         }
         

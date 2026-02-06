@@ -86,6 +86,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public event EventHandler<string>? RequestRename;
     public event EventHandler<string>? ShowNotification;
     public event EventHandler? RequestCaretAtEnd;
+    public event EventHandler<string?>? RequestScreenCapture;
 
     /// <summary>
     /// Accès rapide aux paramètres actuels (lecture seule, toujours à jour).
@@ -837,8 +838,8 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                 {
                     Results.Insert(0, new SearchResult
                     {
-                        Name = "Capture de région",
-                        Description = "Ouvrir l'outil de capture Windows",
+                        Name = "✂️ Capture de région",
+                        Description = "Sélectionner une zone à capturer avec annotation",
                         Type = ResultType.SystemControl,
                         DisplayIcon = "✂️",
                         Path = fullQuery
@@ -1309,6 +1310,19 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                         ShowResult("📝 Note créée!", widgetInfo.Content.Length > 50 ? widgetInfo.Content[..47] + "..." : widgetInfo.Content);
                         RequestHide?.Invoke(this, EventArgs.Empty);
                     }
+                    return;
+                    
+                case SystemControlType.Screenshot:
+                    RequestHide?.Invoke(this, EventArgs.Empty);
+                    // Petit délai pour laisser le launcher se cacher avant la capture
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(200);
+                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            RequestScreenCapture?.Invoke(this, arg);
+                        });
+                    });
                     return;
             }
         }

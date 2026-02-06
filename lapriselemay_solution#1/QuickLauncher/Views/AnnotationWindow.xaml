@@ -1,0 +1,187 @@
+<Window x:Class="QuickLauncher.Views.AnnotationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Annotation — QuickLauncher"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
+        Background="#1E1E1E"
+        KeyDown="Window_KeyDown"
+        Closing="Window_Closing">
+
+    <Window.Resources>
+        <!-- Style RadioButton outil -->
+        <Style x:Key="ToolButton" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="#CCC"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="GroupName" Value="Tools"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3F3F3F"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#0E639C"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style bouton action -->
+        <Style x:Key="ActionButton" TargetType="Button">
+            <Setter Property="Foreground" Value="#CCC"/>
+            <Setter Property="Background" Value="#3F3F3F"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#555"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#666"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style pastille couleur -->
+        <Style x:Key="ColorSwatch" TargetType="Border">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="#999"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Style séparateur -->
+        <Style x:Key="ToolSeparator" TargetType="Separator">
+            <Setter Property="Width" Value="1"/>
+            <Setter Property="Margin" Value="6,4"/>
+            <Setter Property="Background" Value="#555"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ═══ TOOLBAR ═══ -->
+        <Border Grid.Row="0" Background="#2D2D2D" Padding="8,6" BorderBrush="#3F3F3F" BorderThickness="0,0,0,1">
+            <WrapPanel>
+                <!-- Outils de dessin -->
+                <RadioButton x:Name="BtnPen" Content="✏️ Crayon" Style="{StaticResource ToolButton}"
+                             IsChecked="True" Checked="Tool_Changed" Tag="Pen"/>
+                <RadioButton x:Name="BtnHighlight" Content="🖍️ Surligneur" Style="{StaticResource ToolButton}"
+                             Checked="Tool_Changed" Tag="Highlight"/>
+                <RadioButton x:Name="BtnRect" Content="▭ Rectangle" Style="{StaticResource ToolButton}"
+                             Checked="Tool_Changed" Tag="Rectangle"/>
+                <RadioButton x:Name="BtnArrow" Content="➜ Flèche" Style="{StaticResource ToolButton}"
+                             Checked="Tool_Changed" Tag="Arrow"/>
+                <RadioButton x:Name="BtnText" Content="A Texte" Style="{StaticResource ToolButton}"
+                             Checked="Tool_Changed" Tag="Text"/>
+                <RadioButton x:Name="BtnEraser" Content="🧹 Gomme" Style="{StaticResource ToolButton}"
+                             Checked="Tool_Changed" Tag="Eraser"/>
+
+                <Separator Style="{StaticResource ToolSeparator}"/>
+
+                <!-- Couleurs -->
+                <Border x:Name="ColorRed" Style="{StaticResource ColorSwatch}" Background="#FF3B30"
+                        MouseLeftButtonDown="Color_Click" Tag="#FFFF3B30"/>
+                <Border x:Name="ColorBlue" Style="{StaticResource ColorSwatch}" Background="#007AFF"
+                        MouseLeftButtonDown="Color_Click" Tag="#FF007AFF"/>
+                <Border x:Name="ColorGreen" Style="{StaticResource ColorSwatch}" Background="#34C759"
+                        MouseLeftButtonDown="Color_Click" Tag="#FF34C759"/>
+                <Border x:Name="ColorYellow" Style="{StaticResource ColorSwatch}" Background="#FFCC00"
+                        MouseLeftButtonDown="Color_Click" Tag="#FFFFCC00"/>
+                <Border x:Name="ColorWhite" Style="{StaticResource ColorSwatch}" Background="White"
+                        MouseLeftButtonDown="Color_Click" Tag="#FFFFFFFF"/>
+                <Border x:Name="ColorBlack" Style="{StaticResource ColorSwatch}" Background="Black"
+                        BorderBrush="#666" MouseLeftButtonDown="Color_Click" Tag="#FF000000"/>
+
+                <Separator Style="{StaticResource ToolSeparator}"/>
+
+                <!-- Épaisseur -->
+                <TextBlock Text="Épaisseur:" Foreground="#AAA" VerticalAlignment="Center" Margin="4,0"/>
+                <Slider x:Name="StrokeSlider" Minimum="1" Maximum="20" Value="3" Width="100"
+                        VerticalAlignment="Center" ValueChanged="StrokeSlider_ValueChanged"/>
+                <TextBlock x:Name="StrokeLabel" Text="3" Foreground="#CCC" VerticalAlignment="Center"
+                           Margin="4,0" Width="20"/>
+
+                <Separator Style="{StaticResource ToolSeparator}"/>
+
+                <!-- Actions -->
+                <Button Content="↩ Annuler" Style="{StaticResource ActionButton}" Click="Undo_Click"
+                        ToolTip="Ctrl+Z"/>
+                <Button Content="↪ Rétablir" Style="{StaticResource ActionButton}" Click="Redo_Click"
+                        ToolTip="Ctrl+Y"/>
+
+                <Separator Style="{StaticResource ToolSeparator}"/>
+
+                <Button Content="📋 Copier" Style="{StaticResource ActionButton}" Click="Copy_Click"
+                        ToolTip="Ctrl+C"/>
+                <Button x:Name="BtnSave" Content="💾 Sauvegarder" Click="Save_Click" ToolTip="Ctrl+S">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource ActionButton}">
+                            <Setter Property="Background" Value="#0E639C"/>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                <Button Content="✕ Fermer" Style="{StaticResource ActionButton}" Click="Close_Click"
+                        ToolTip="Échap"/>
+            </WrapPanel>
+        </Border>
+
+        <!-- ═══ CANVAS ZONE ═══ -->
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                      Background="#1E1E1E" x:Name="ScrollArea">
+            <Grid x:Name="CanvasHost" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20"
+                  ClipToBounds="True">
+                <!-- Image capturée -->
+                <Image x:Name="CapturedImage" Stretch="None" IsHitTestVisible="False"/>
+                
+                <!-- InkCanvas pour crayon/surligneur/gomme -->
+                <InkCanvas x:Name="DrawingCanvas" Background="Transparent"
+                           EditingMode="Ink" Cursor="Cross"
+                           StrokeCollected="DrawingCanvas_StrokeCollected"
+                           StrokeErased="DrawingCanvas_StrokeErased"/>
+
+                <!-- Canvas pour formes (rectangles, flèches, texte) -->
+                <Canvas x:Name="ShapeCanvas" Background="Transparent" IsHitTestVisible="False"
+                        MouseLeftButtonDown="ShapeCanvas_MouseLeftButtonDown"
+                        MouseMove="ShapeCanvas_MouseMove"
+                        MouseLeftButtonUp="ShapeCanvas_MouseLeftButtonUp"/>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</Window>

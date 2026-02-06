@@ -135,6 +135,16 @@ public partial class MainViewModel
         System.Windows.Application.Current?.Dispatcher.Invoke(() =>
         {
             UpdateCurrentPeriodDisplay();
+            
+            // Mettre à jour la playlist de rotation pour la nouvelle période
+            UpdateRotationPlaylistForPeriod(period);
+            
+            // Appliquer immédiatement un wallpaper de la nouvelle période
+            if (App.IsInitialized)
+            {
+                App.RotationService.Next();
+            }
+            
             var category = SmartRotationService.GetCategoryForPeriod(period);
             StatusMessage = $"Période changée: {SmartRotationService.GetPeriodName(period)} ({ImageBrightnessAnalyzer.GetCategoryName(category)})";
         });
@@ -152,31 +162,68 @@ public partial class MainViewModel
         // Ne rien faire pendant l'initialisation (géré séparément)
         if (_isInitializingSmartRotation || service == null) return;
         
-        SettingsService.Current.SmartRotationEnabled = value;
-        SettingsService.Save();
+        System.Diagnostics.Debug.WriteLine($"=== SmartRotation Toggle: {value} ===");
         
         service.Settings.Enabled = value;
         
         if (value)
         {
-            // Désactiver automatiquement la rotation automatique de la bibliothèque
-            if (IsRotationEnabled)
-            {
-                IsRotationEnabled = false;
-            }
-            
             // Désactiver la rotation de collection si active
             if (IsCollectionRotationActive)
             {
                 IsCollectionRotationActive = false;
             }
             
-            service.Start();
-            StatusMessage = "Rotation intelligente activée (rotation automatique désactivée)";
+            // Désactiver l'application directe par le SmartRotationService
+            // car c'est maintenant le RotationService qui gère via sa playlist filtrée
+            service.Settings.ChangeOnPeriodTransition = false;
+            
+            // Démarrer le surveillant de période (sans appliquer immédiatement)
+            service.StartWithoutApply();
+            
+            // Mettre à jour la playlist de rotation avec les wallpapers de la période actuelle
+            UpdateRotationPlaylistForPeriod(service.CurrentPeriod);
+            
+            // S'assurer que le service de rotation tourne (bypass du toggle IsRotationEnabled)
+            if (App.IsInitialized)
+            {
+                // D'abord mettre l'état UI
+                _isRotationEnabled = true;
+                OnPropertyChanged(nameof(IsRotationEnabled));
+                OnPropertyChanged(nameof(RotationStatusText));
+                
+                // Démarrer/redémarrer la rotation avec la playlist filtrée
+                App.RotationService.Start();
+                
+                // Appliquer immédiatement un wallpaper de la période
+                App.RotationService.Next();
+                
+                System.Diagnostics.Debug.WriteLine($"SmartRotation: Service de rotation démarré, IsRunning={App.RotationService.IsRunning}");
+            }
+            
+            // Sauvegarder les deux settings ensemble
+            SettingsService.Current.SmartRotationEnabled = true;
+            SettingsService.Current.RotationEnabled = true;
+            SettingsService.Save();
+            
+            StatusMessage = "Rotation intelligente activée";
         }
         else
         {
             service.Stop();
+            
+            // Restaurer le comportement par défaut
+            service.Settings.ChangeOnPeriodTransition = SettingsService.Current.SmartRotationChangeOnTransition;
+            
+            // Restaurer la playlist complète de la bibliothèque
+            if (App.IsInitialized)
+            {
+                App.RotationService.RefreshPlaylist();
+            }
+            
+            SettingsService.Current.SmartRotationEnabled = false;
+            SettingsService.Save();
+            
             StatusMessage = "Rotation intelligente désactivée";
         }
         
@@ -189,6 +236,28 @@ public partial class MainViewModel
     /// Désactivé quand la rotation intelligente ou la rotation de collection est active.
     /// </summary>
     public bool IsRotationToggleEnabled => !SmartRotationEnabled && !IsCollectionRotationActive;
+    
+    /// <summary>
+    /// Met à jour la playlist du service de rotation pour ne contenir que les wallpapers
+    /// correspondant à la période donnée (Sombres pour Nuit, Clairs pour Jour).
+    /// </summary>
+    private void UpdateRotationPlaylistForPeriod(DayPeriod period)
+    {
+        if (!App.IsInitialized) return;
+        
+        var category = SmartRotationService.GetCategoryForPeriod(period);
+        var wallpapers = GetWallpapersByCategory(category);
+        
+        if (wallpapers.Count > 0)
+        {
+            App.RotationService.SetPlaylist(wallpapers);
+            System.Diagnostics.Debug.WriteLine($"SmartRotation: Playlist mise à jour pour {period} ({wallpapers.Count} wallpapers {category})");
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine($"SmartRotation: Aucun wallpaper pour la catégorie {category}, playlist non modifiée");
+        }
+    }
     
     /// <summary>
     /// Met à jour les paramètres du service de rotation.

@@ -249,11 +249,36 @@ public partial class App : Application
             _rotationService?.Start();
         }
         
-        // Démarrer la rotation intelligente si activée (sans appliquer immédiatement)
-        if (SettingsService.Current.SmartRotationEnabled)
+        // Démarrer la rotation intelligente si activée
+        if (SettingsService.Current.SmartRotationEnabled && _smartRotationService != null)
         {
-            _smartRotationService?.StartWithoutApply();
-            System.Diagnostics.Debug.WriteLine($"SmartRotation démarrée. Période: {_smartRotationService?.CurrentPeriod}");
+            // Désactiver l'application directe par SmartRotationService
+            // car c'est le RotationService qui gère via sa playlist filtrée
+            _smartRotationService.Settings.ChangeOnPeriodTransition = false;
+            
+            _smartRotationService.StartWithoutApply();
+            
+            // Filtrer la playlist de rotation selon la période courante
+            var period = _smartRotationService.CurrentPeriod;
+            var category = Services.SmartRotationService.GetCategoryForPeriod(period);
+            var periodWallpapers = GetWallpapersByBrightnessCategory(category);
+            
+            if (periodWallpapers.Count > 0 && _rotationService != null)
+            {
+                _rotationService.SetPlaylist(periodWallpapers);
+                
+                // S'assurer que la rotation tourne
+                if (!_rotationService.IsRunning)
+                {
+                    _rotationService.Start();
+                }
+                
+                System.Diagnostics.Debug.WriteLine($"SmartRotation démarrée. Période: {period}, Playlist: {periodWallpapers.Count} wallpapers ({category})");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"SmartRotation démarrée. Période: {period}, aucun wallpaper pour {category}");
+            }
         }
         
         // Démarrer les widgets après un court délai pour s'assurer que l'UI est prête

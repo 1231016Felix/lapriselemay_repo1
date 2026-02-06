@@ -50,6 +50,7 @@ public partial class LauncherWindow : Window
         _viewModel.RequestRename += OnRequestRename;
         _viewModel.ShowNotification += OnShowNotification;
         _viewModel.RequestCaretAtEnd += (_, _) => Dispatcher.BeginInvoke(() => SearchBox.CaretIndex = SearchBox.Text.Length);
+        _viewModel.RequestScreenCapture += OnRequestScreenCapture;
         
         _viewModel.PropertyChanged += (_, e) =>
         {
@@ -87,6 +88,71 @@ public partial class LauncherWindow : Window
         // Pour l'instant, on peut utiliser une notification simple
         // TODO: Implémenter un toast notification
         System.Diagnostics.Debug.WriteLine($"[Notification] {message}");
+    }
+
+    private void OnRequestScreenCapture(object? sender, string? mode)
+    {
+        try
+        {
+            var captureMode = mode?.ToLowerInvariant();
+            
+            System.Drawing.Bitmap? bitmap = null;
+            
+            if (captureMode is "snip" or "region" or "select")
+            {
+                // Capture de région avec overlay
+                var overlay = new ScreenshotOverlayWindow();
+                if (overlay.ShowDialog() == true && overlay.CapturedRegion != null)
+                    bitmap = overlay.CapturedRegion;
+            }
+            else if (captureMode is "primary" or "main")
+            {
+                bitmap = CaptureScreen(primaryOnly: true);
+            }
+            else
+            {
+                bitmap = CaptureScreen(primaryOnly: false);
+            }
+
+            if (bitmap != null)
+            {
+                var annotationWindow = new AnnotationWindow(bitmap);
+                annotationWindow.ShowDialog();
+
+                if (!string.IsNullOrEmpty(annotationWindow.SavedFilePath))
+                {
+                    // Ouvrir le dossier avec le fichier sélectionné
+                    System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{annotationWindow.SavedFilePath}\"");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ScreenCapture ERROR] {ex}");
+            MessageBox.Show($"Erreur lors de la capture :\n{ex.GetType().Name}: {ex.Message}\n\nStack:\n{ex.StackTrace}", "Erreur",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private static System.Drawing.Bitmap? CaptureScreen(bool primaryOnly)
+    {
+        try
+        {
+            var bounds = primaryOnly
+                ? System.Windows.Forms.Screen.PrimaryScreen!.Bounds
+                : System.Windows.Forms.Screen.AllScreens
+                    .Select(s => s.Bounds)
+                    .Aggregate(System.Drawing.Rectangle.Union);
+
+            var bitmap = new System.Drawing.Bitmap(bounds.Width, bounds.Height);
+            using var graphics = System.Drawing.Graphics.FromImage(bitmap);
+            graphics.CopyFromScreen(bounds.Location, System.Drawing.Point.Empty, bounds.Size);
+            return bitmap;
+        }
+        catch
+        {
+            return null;
+        }
     }
     
     private void ApplySettings()
