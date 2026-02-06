@@ -21,6 +21,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private readonly NoteWidgetService _noteWidgetService;
     private readonly TimerWidgetService _timerWidgetService;
     private readonly NotesService _notesService;
+    private readonly WebIntegrationService _webIntegrationService;
     private readonly System.Timers.Timer _debounceTimer;
     private CancellationTokenSource? _searchCts;
     private bool _disposed;
@@ -84,6 +85,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public event EventHandler? RequestReindex;
     public event EventHandler<string>? RequestRename;
     public event EventHandler<string>? ShowNotification;
+    public event EventHandler? RequestCaretAtEnd;
 
     /// <summary>
     /// Accès rapide aux paramètres actuels (lecture seule, toujours à jour).
@@ -93,7 +95,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
 
     public LauncherViewModel(IndexingService indexingService, ISettingsProvider settingsProvider,
         AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
-        NotesService notesService, FileWatcherService? fileWatcherService = null)
+        NotesService notesService, WebIntegrationService webIntegrationService, FileWatcherService? fileWatcherService = null)
     {
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
@@ -101,6 +103,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         _noteWidgetService = noteWidgetService ?? throw new ArgumentNullException(nameof(noteWidgetService));
         _timerWidgetService = timerWidgetService ?? throw new ArgumentNullException(nameof(timerWidgetService));
         _notesService = notesService ?? throw new ArgumentNullException(nameof(notesService));
+        _webIntegrationService = webIntegrationService ?? throw new ArgumentNullException(nameof(webIntegrationService));
         
         // Initialiser les propriétés d'apparence depuis les settings
         ShowCategoryBadges = _settings.ShowCategoryBadges;
@@ -270,6 +273,35 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             }
         }
         
+        // Commande :weather pour la météo en direct
+        var weatherCmd = _settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.Weather);
+        var weatherPrefix = weatherCmd?.Prefix ?? "weather";
+        var weatherEnabled = weatherCmd?.IsEnabled ?? true;
+        
+        if (weatherEnabled && queryLower.StartsWith($":{weatherPrefix}"))
+        {
+            var weatherArg = query.Length > weatherPrefix.Length + 2 
+                ? query[(weatherPrefix.Length + 2)..].Trim() 
+                : null;
+            _ = PerformWeatherSearchAsync(weatherArg, _searchCts.Token);
+            return;
+        }
+        
+        // Commande :translate pour la traduction en direct
+        var translateCmd = _settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.Translate);
+        var translatePrefix = translateCmd?.Prefix ?? "translate";
+        var translateEnabled = translateCmd?.IsEnabled ?? true;
+        
+        if (translateEnabled && queryLower.StartsWith($":{translatePrefix} ") && query.Length > translatePrefix.Length + 2)
+        {
+            var translateArg = query[(translatePrefix.Length + 2)..].Trim();
+            if (translateArg.Length >= 1)
+            {
+                _ = PerformTranslationAsync(translateArg, _searchCts.Token);
+                return;
+            }
+        }
+        
         // Vérifier d'abord les commandes de contrôle système personnalisables
         if (IsSystemControlCommand(queryLower))
         {
@@ -375,6 +407,261 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         {
             IsSearching = false;
         }
+    }
+
+    /// <summary>
+    /// Recherche la météo et affiche les résultats directement dans le launcher.
+    /// </summary>
+    private async Task PerformWeatherSearchAsync(string? city, CancellationToken token)
+    {
+        IsSearching = true;
+        
+        try
+        {
+            var targetCity = string.IsNullOrWhiteSpace(city) ? _settings.WeatherCity : city;
+            
+            // Indicateur de chargement
+            Results.Add(new SearchResult
+            {
+                Name = $"🌤️ Chargement météo pour {targetCity}...",
+                Description = "Requête en cours...",
+                Type = ResultType.SystemControl,
+                DisplayIcon = "⏳"
+            });
+            FinalizeResults();
+            
+            var result = await _webIntegrationService.GetWeatherAsync(targetCity, _settings.WeatherUnit, token);
+            
+            if (token.IsCancellationRequested) return;
+            
+            Results.Clear();
+            
+            if (result == null)
+            {
+                Results.Add(new SearchResult
+                {
+                    Name = "❌ Erreur météo",
+                    Description = "Impossible de récupérer la météo",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = "❌"
+                });
+            }
+            else if (result.HasError)
+            {
+                Results.Add(new SearchResult
+                {
+                    Name = $"❌ {result.Error}",
+                    Description = "Vérifiez le nom de la ville",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = "❌"
+                });
+            }
+            else
+            {
+                // Ligne principale: température et conditions
+                var locationText = result.Country != null ? $"{result.City}, {result.Country}" : result.City;
+                Results.Add(new SearchResult
+                {
+                    Name = $"{result.WeatherIcon} {result.Temperature:F0}{result.UnitSymbol} — {result.WeatherDescription}",
+                    Description = $"📍 {locationText}",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = result.WeatherIcon,
+                    Path = ":weather:current",
+                    IsInfoBlock = true
+                });
+                
+                // Détails: ressenti, humidité, vent
+                Results.Add(new SearchResult
+                {
+                    Name = $"Ressenti {result.FeelsLike:F0}{result.UnitSymbol} • Humidité {result.Humidity}%",
+                    Description = $"💨 Vent {result.WindSpeed:F0} km/h {result.WindDirection}",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = "🌡️",
+                    IsInfoBlock = true
+                });
+                
+                // Prévisions
+                foreach (var forecast in result.Forecasts.Skip(1))
+                {
+                    Results.Add(new SearchResult
+                    {
+                        Name = $"{forecast.Icon} {forecast.DayName}: {forecast.MaxTemp:F0}°/{forecast.MinTemp:F0}°",
+                        Description = $"🌧️ Précipitations {forecast.PrecipitationProbability}%",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = forecast.Icon,
+                        IsInfoBlock = true
+                    });
+                }
+            }
+            
+            FinalizeResults();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Results.Clear();
+            Results.Add(new SearchResult
+            {
+                Name = "❌ Erreur météo",
+                Description = ex.Message,
+                Type = ResultType.SystemControl,
+                DisplayIcon = "⚠️"
+            });
+            FinalizeResults();
+        }
+        finally
+        {
+            IsSearching = false;
+        }
+    }
+    
+    /// <summary>
+    /// Traduit du texte et affiche le résultat directement dans le launcher.
+    /// Formats supportés:
+    ///   :translate hello          → traduit vers la langue par défaut
+    ///   :translate fr hello       → traduit vers le français
+    ///   :translate fr>en bonjour  → traduit du français vers l'anglais
+    /// </summary>
+    private async Task PerformTranslationAsync(string input, CancellationToken token)
+    {
+        IsSearching = true;
+        
+        try
+        {
+            // Parser l'input: [lang] texte ou [src>dst] texte
+            var (sourceLang, targetLang, textToTranslate) = ParseTranslationInput(input);
+            
+            if (string.IsNullOrWhiteSpace(textToTranslate))
+            {
+                Results.Clear();
+                Results.Add(new SearchResult
+                {
+                    Name = "🌐 Entrez du texte à traduire",
+                    Description = "Formats: :translate hello • :translate fr hello • :translate fr>en bonjour",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = "🌐"
+                });
+                FinalizeResults();
+                return;
+            }
+            
+            // Indicateur de chargement
+            Results.Clear();
+            Results.Add(new SearchResult
+            {
+                Name = $"🌐 Traduction en cours...",
+                Description = textToTranslate,
+                Type = ResultType.SystemControl,
+                DisplayIcon = "⏳"
+            });
+            FinalizeResults();
+            
+            var result = await _webIntegrationService.TranslateAsync(textToTranslate, targetLang, sourceLang, token);
+            
+            if (token.IsCancellationRequested) return;
+            
+            Results.Clear();
+            
+            if (result == null)
+            {
+                Results.Add(new SearchResult
+                {
+                    Name = "❌ Erreur de traduction",
+                    Description = "Impossible d'obtenir la traduction",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = "❌"
+                });
+            }
+            else if (result.HasError)
+            {
+                Results.Add(new SearchResult
+                {
+                    Name = $"❌ {result.Error}",
+                    Description = "Réessayez plus tard",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = "❌"
+                });
+            }
+            else
+            {
+                // Résultat principal (cliquable pour copier)
+                Results.Add(new SearchResult
+                {
+                    Name = result.TranslatedText,
+                    Description = $"{result.SourceLanguageName} → {result.TargetLanguageName} • Entrée pour copier",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = "🌐",
+                    Path = $":translate:copy:{result.TranslatedText}",
+                    IsInfoBlock = true
+                });
+                
+                // Texte original
+                Results.Add(new SearchResult
+                {
+                    Name = $"📝 {result.OriginalText}",
+                    Description = $"Texte original ({result.SourceLanguageName})",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = "📝",
+                    IsInfoBlock = true
+                });
+            }
+            
+            FinalizeResults();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Results.Clear();
+            Results.Add(new SearchResult
+            {
+                Name = "❌ Erreur de traduction",
+                Description = ex.Message,
+                Type = ResultType.SystemControl,
+                DisplayIcon = "⚠️"
+            });
+            FinalizeResults();
+        }
+        finally
+        {
+            IsSearching = false;
+        }
+    }
+    
+    /// <summary>
+    /// Parse l'input de traduction pour en extraire la langue cible et le texte.
+    /// </summary>
+    private (string Source, string Target, string Text) ParseTranslationInput(string input)
+    {
+        var defaultTarget = _settings.TranslateTargetLang;
+        var defaultSource = _settings.TranslateSourceLang;
+        var parts = input.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        
+        if (parts.Length < 1)
+            return (defaultSource, defaultTarget, string.Empty);
+        
+        var firstWord = parts[0].ToLowerInvariant().Trim('[', ']');
+        
+        // Format "fr>en texte" ou "eng>fra texte" (source>target)
+        if (firstWord.Contains('>'))
+        {
+            var langs = firstWord.Split('>', 2);
+            var resolvedSrc = WebIntegrationService.ResolveLanguageCode(langs[0]);
+            var resolvedDst = langs.Length == 2 ? WebIntegrationService.ResolveLanguageCode(langs[1]) : null;
+            if (resolvedSrc != null && resolvedDst != null)
+            {
+                return (resolvedSrc, resolvedDst, parts.Length > 1 ? parts[1] : string.Empty);
+            }
+        }
+        
+        // Format "fr texte" ou "eng texte" (juste la langue cible)
+        var resolvedLang = WebIntegrationService.ResolveLanguageCode(firstWord);
+        if (parts.Length >= 2 && resolvedLang != null)
+        {
+            return (defaultSource, resolvedLang, parts[1]);
+        }
+        
+        // Pas de langue spécifiée, tout est du texte
+        return (defaultSource, defaultTarget, input);
     }
 
     /// <summary>
@@ -950,6 +1237,19 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         if (string.IsNullOrEmpty(command))
             return;
         
+        // Gérer le copier-coller depuis :translate
+        if (command.StartsWith(":translate:copy:"))
+        {
+            var textToCopy = command[":translate:copy:".Length..];
+            if (!string.IsNullOrEmpty(textToCopy))
+            {
+                System.Windows.Clipboard.SetText(textToCopy);
+                ShowNotification?.Invoke(this, "📋 Traduction copiée");
+                RequestHide?.Invoke(this, EventArgs.Empty);
+            }
+            return;
+        }
+        
         // Gérer les commandes timer et note
         var parts = command.TrimStart(':').Split(' ', 2);
         var cmdPrefix = parts[0];
@@ -962,6 +1262,25 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         {
             switch (matchedCmd.Type)
             {
+                case SystemControlType.Weather:
+                    // Lancer la recherche météo (arg = ville optionnelle)
+                    _ = PerformWeatherSearchAsync(arg, _searchCts?.Token ?? CancellationToken.None);
+                    return;
+                    
+                case SystemControlType.Translate:
+                    // Si on a un argument, lancer la traduction
+                    if (!string.IsNullOrEmpty(arg))
+                    {
+                        _ = PerformTranslationAsync(arg, _searchCts?.Token ?? CancellationToken.None);
+                    }
+                    else
+                    {
+                        // Autocomplete la commande dans la barre de recherche
+                        SearchText = $":{matchedCmd.Prefix} ";
+                        RequestCaretAtEnd?.Invoke(this, EventArgs.Empty);
+                    }
+                    return;
+                    
                 case SystemControlType.Timer:
                     if (!string.IsNullOrEmpty(arg))
                     {

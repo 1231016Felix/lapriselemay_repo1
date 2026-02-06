@@ -42,6 +42,11 @@ public sealed class SearchResult : INotifyPropertyChanged
     public string Path { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public ResultType Type { get; set; }
+    
+    /// <summary>
+    /// Si true, masque l'icône et le badge de catégorie (bloc info unifié, ex: météo).
+    /// </summary>
+    public bool IsInfoBlock { get; set; }
     public int Score { get; set; }
     public DateTime LastUsed { get; set; }
     public int UseCount { get; set; }

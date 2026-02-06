@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -23,6 +24,7 @@ public partial class SettingsWindow : Window
 {
     private readonly AppSettings _settings;
     private readonly IndexingService? _indexingService;
+    private readonly WebIntegrationService _webService = new();
     
     private const string StartupRegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
     private const string AppName = "QuickLauncher";
@@ -142,6 +144,10 @@ public partial class SettingsWindow : Window
         
         // Commandes système
         LoadSystemCommands();
+        
+        // Intégrations web
+        WeatherCityBox.Text = _settings.WeatherCity;
+        SelectComboByTag(WeatherUnitCombo, _settings.WeatherUnit);
         
         // À propos
         DataPathText.Text = AppSettings.GetSettingsPath();
@@ -580,6 +586,102 @@ public partial class SettingsWindow : Window
         if (!_isLoading && WindowPositionCombo.SelectedItem is ComboBoxItem { Tag: string pos })
         {
             _settings.WindowPosition = pos;
+            AutoSave();
+        }
+    }
+
+    // === Gestionnaires d'événements - Intégrations web ===
+    
+    private void WeatherCityBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        // Validation automatique à la perte de focus seulement si la valeur a changé
+        var city = WeatherCityBox.Text.Trim();
+        if (!_isLoading && !string.IsNullOrEmpty(city) && city != _settings.WeatherCity)
+        {
+            _ = ValidateAndSaveWeatherCityAsync(city);
+        }
+    }
+    
+    private void WeatherCityBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter)
+        {
+            var city = WeatherCityBox.Text.Trim();
+            if (!string.IsNullOrEmpty(city))
+            {
+                _ = ValidateAndSaveWeatherCityAsync(city);
+                e.Handled = true;
+            }
+        }
+    }
+    
+    private void WeatherValidateBtn_Click(object sender, RoutedEventArgs e)
+    {
+        var city = WeatherCityBox.Text.Trim();
+        if (!string.IsNullOrEmpty(city))
+        {
+            _ = ValidateAndSaveWeatherCityAsync(city);
+        }
+    }
+    
+    private async Task ValidateAndSaveWeatherCityAsync(string city)
+    {
+        // Feedback: en cours
+        WeatherValidationPanel.Visibility = Visibility.Visible;
+        WeatherValidationPanel.Background = new SolidColorBrush(Color.FromRgb(0x2D, 0x2D, 0x1A));
+        WeatherValidationText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xB9, 0x00));
+        WeatherValidationText.Text = $"🔍 Vérification de « {city} »...";
+        WeatherValidateBtn.IsEnabled = false;
+        WeatherCityBox.IsEnabled = false;
+        
+        try
+        {
+            var result = await _webService.ValidateCityAsync(city);
+            
+            if (result.HasValue)
+            {
+                var (resolvedCity, country) = result.Value;
+                var display = country != null ? $"{resolvedCity}, {country}" : resolvedCity;
+                
+                // Utiliser le nom résolu par l'API
+                WeatherCityBox.Text = resolvedCity;
+                _settings.WeatherCity = resolvedCity;
+                AutoSave();
+                
+                // Feedback: succès
+                WeatherValidationPanel.Background = new SolidColorBrush(Color.FromRgb(0x1A, 0x2D, 0x1A));
+                WeatherValidationText.Foreground = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
+                WeatherValidationText.Text = $"✅ Ville trouvée : {display}";
+            }
+            else
+            {
+                // Feedback: échec — ne pas sauvegarder
+                WeatherCityBox.Text = _settings.WeatherCity;
+                WeatherValidationPanel.Background = new SolidColorBrush(Color.FromRgb(0x3D, 0x1A, 0x1A));
+                WeatherValidationText.Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0x11, 0x23));
+                WeatherValidationText.Text = $"❌ Ville « {city} » introuvable. Valeur restaurée.";
+            }
+        }
+        catch
+        {
+            // Erreur réseau — ne pas sauvegarder
+            WeatherCityBox.Text = _settings.WeatherCity;
+            WeatherValidationPanel.Background = new SolidColorBrush(Color.FromRgb(0x3D, 0x2D, 0x1A));
+            WeatherValidationText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xB9, 0x00));
+            WeatherValidationText.Text = "⚠️ Impossible de valider (pas de connexion). Valeur restaurée.";
+        }
+        finally
+        {
+            WeatherValidateBtn.IsEnabled = true;
+            WeatherCityBox.IsEnabled = true;
+        }
+    }
+    
+    private void WeatherUnitCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoading && WeatherUnitCombo.SelectedItem is ComboBoxItem { Tag: string unit })
+        {
+            _settings.WeatherUnit = unit;
             AutoSave();
         }
     }

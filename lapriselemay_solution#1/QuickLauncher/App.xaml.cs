@@ -116,6 +116,9 @@ public partial class App : Application
         services.AddSingleton<NoteWidgetService>();
         services.AddSingleton<TimerWidgetService>();
         
+        // Intégrations web (météo, traduction)
+        services.AddSingleton<WebIntegrationService>();
+        
         _logger.Info("Services DI configurés");
     }
 
@@ -218,11 +221,12 @@ public partial class App : Application
             var noteWidgetService = Services.GetRequiredService<NoteWidgetService>();
             var timerWidgetService = Services.GetRequiredService<TimerWidgetService>();
             var notesService = Services.GetRequiredService<NotesService>();
+            var webIntegrationService = Services.GetRequiredService<WebIntegrationService>();
             var fileWatcherService = Services.GetService<FileWatcherService>();
             
             if (_launcherWindow is not { IsLoaded: true })
             {
-                _launcherWindow = new LauncherWindow(indexingService, settingsProvider, aliasService, noteWidgetService, timerWidgetService, notesService, fileWatcherService);
+                _launcherWindow = new LauncherWindow(indexingService, settingsProvider, aliasService, noteWidgetService, timerWidgetService, notesService, webIntegrationService, fileWatcherService);
                 _launcherWindow.Closed += (_, _) => _launcherWindow = null;
                 _launcherWindow.RequestOpenSettings += (_, _) => Dispatcher.Invoke(ShowSettings);
                 _launcherWindow.RequestQuit += (_, _) => Dispatcher.Invoke(ExitApplication);

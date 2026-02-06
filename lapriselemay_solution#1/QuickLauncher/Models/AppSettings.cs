@@ -124,6 +124,12 @@ public sealed class AppSettings
     
     // === Notes rapides ===
     public List<NoteItem> Notes { get; set; } = [];
+    
+    // === Intégrations web ===
+    public string WeatherCity { get; set; } = "Montreal";
+    public string WeatherUnit { get; set; } = "celsius";  // "celsius" ou "fahrenheit"
+    public string TranslateTargetLang { get; set; } = "en";
+    public string TranslateSourceLang { get; set; } = "auto";
 
     private static List<string> GetDefaultIndexedFolders() =>
     [
@@ -154,6 +160,14 @@ public sealed class AppSettings
                 Description = "Rechercher des fichiers sur tout le système", RequiresArgument = true, ArgumentHint = "[terme]" },
         new() { Type = SystemControlType.Screenshot, Name = "Capture d'écran", Prefix = "screenshot", Icon = "📸", Category = "Productivité",
                 Description = "Prendre une capture d'écran", ArgumentHint = "[snip|primary]" },
+
+        // ═══════════════════════════════════════════════════════════════
+        // 🌐 INTÉGRATIONS WEB
+        // ═══════════════════════════════════════════════════════════════
+        new() { Type = SystemControlType.Weather, Name = "Météo", Prefix = "weather", Icon = "🌤️", Category = "Intégrations web",
+                Description = "Afficher la météo actuelle (ex: :weather ou :weather Paris)", ArgumentHint = "[ville]" },
+        new() { Type = SystemControlType.Translate, Name = "Traduction", Prefix = "translate", Icon = "🌐", Category = "Intégrations web",
+                Description = "Traduire du texte (ex: :translate hello ou :translate fr bonjour)", RequiresArgument = true, ArgumentHint = "[lang] <texte>" },
 
         // ═══════════════════════════════════════════════════════════════
         // 🔊 MULTIMÉDIA
@@ -487,7 +501,11 @@ public enum SystemControlType
     
     // Commandes supplémentaires
     OpenStartupFolder = 25,
-    OpenHostsFile = 26
+    OpenHostsFile = 26,
+    
+    // Intégrations web (APIs directes)
+    Weather = 27,
+    Translate = 28
 }
 
 /// <summary>

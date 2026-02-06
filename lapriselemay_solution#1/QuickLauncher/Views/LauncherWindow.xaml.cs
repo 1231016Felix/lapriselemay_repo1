@@ -28,13 +28,13 @@ public partial class LauncherWindow : Window
     
     public LauncherWindow(IndexingService indexingService, ISettingsProvider settingsProvider,
         AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
-        NotesService notesService, FileWatcherService? fileWatcherService = null)
+        NotesService notesService, WebIntegrationService webIntegrationService, FileWatcherService? fileWatcherService = null)
     {
         InitializeComponent();
         
         _settingsProvider = settingsProvider;
         _notesService = notesService;
-        _viewModel = new LauncherViewModel(indexingService, settingsProvider, aliasService, noteWidgetService, timerWidgetService, notesService, fileWatcherService);
+        _viewModel = new LauncherViewModel(indexingService, settingsProvider, aliasService, noteWidgetService, timerWidgetService, notesService, webIntegrationService, fileWatcherService);
         DataContext = _viewModel;
         
         SetupEventHandlers();
@@ -49,6 +49,7 @@ public partial class LauncherWindow : Window
         _viewModel.RequestReindex += (_, _) => RequestReindex?.Invoke(this, EventArgs.Empty);
         _viewModel.RequestRename += OnRequestRename;
         _viewModel.ShowNotification += OnShowNotification;
+        _viewModel.RequestCaretAtEnd += (_, _) => Dispatcher.BeginInvoke(() => SearchBox.CaretIndex = SearchBox.Text.Length);
         
         _viewModel.PropertyChanged += (_, e) =>
         {
