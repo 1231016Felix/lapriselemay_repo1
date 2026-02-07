@@ -261,3 +261,36 @@ public class ResultTypeToBadgeColorConverter : IValueConverter
         throw new NotImplementedException();
     }
 }
+
+/// <summary>
+/// Convertit l'AlternationIndex (0-based) en texte de raccourci "Alt+1" à "Alt+9".
+/// Retourne une chaîne vide pour les index >= 9.
+/// </summary>
+public class AlternationToShortcutConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is int index and >= 0 and < 9)
+            return $"Alt+{index + 1}";
+        return "";
+    }
+    
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}
+
+/// <summary>
+/// Rend visible uniquement les éléments avec AlternationIndex 0-8 (Alt+1 à Alt+9).
+/// </summary>
+public class AlternationToShortcutVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        return value is int index and >= 0 and < 9
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+    
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        => throw new NotImplementedException();
+}

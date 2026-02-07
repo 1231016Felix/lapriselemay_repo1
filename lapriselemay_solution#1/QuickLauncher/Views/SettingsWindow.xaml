@@ -248,6 +248,26 @@
                             <TextBlock Text="Affichage" Style="{StaticResource SubSectionLabel}" Margin="0,12,0,4"/>
                             <CheckBox x:Name="ShowCategoryBadgesCheck" Content="Afficher les badges de catégorie" Style="{StaticResource SettingsCheckBox}" ToolTip="Affiche un badge coloré (APP, FILE, WEB...) à côté de chaque résultat" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
                             
+                            <!-- Animations -->
+                            <TextBlock Text="Animations (ouverture/fermeture)" Style="{StaticResource SubSectionLabel}" Margin="0,12,0,4"/>
+                            <CheckBox x:Name="EnableAnimationsCheck" Content="Activer les animations" Style="{StaticResource SettingsCheckBox}" ToolTip="Active les animations de transition à l'ouverture et à la fermeture de la fenêtre et des résultats" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
+                            <StackPanel x:Name="AnimationSpeedPanel" Margin="0,4,0,0">
+                                <TextBlock Text="Style" Foreground="White" FontSize="12" Margin="0,0,0,4"/>
+                                <ComboBox x:Name="AnimationStyleCombo" Width="250" HorizontalAlignment="Left" SelectionChanged="AnimationStyleCombo_SelectionChanged">
+                                    <ComboBoxItem Content="Fade + Slide — fondu et glissement" Tag="FadeSlide"/>
+                                    <ComboBoxItem Content="Fade — fondu simple" Tag="Fade"/>
+                                    <ComboBoxItem Content="Scale — zoom depuis le centre" Tag="Scale"/>
+                                    <ComboBoxItem Content="Slide — glissement seul" Tag="Slide"/>
+                                    <ComboBoxItem Content="Pop — zoom avec rebond" Tag="Pop"/>
+                                </ComboBox>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <TextBlock Text="Durée: " Foreground="White" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="AnimationSpeedValue" Text="140 ms" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <Slider x:Name="AnimationSpeedSlider" Minimum="50" Maximum="400" Value="140" Width="250" HorizontalAlignment="Left" IsSnapToTickEnabled="True" TickFrequency="10" ValueChanged="AnimationSpeedSlider_ValueChanged"/>
+                                <TextBlock Text="50 = rapide · 400 = lent" Foreground="#666" FontSize="10" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            
                             <!-- Raccourci clavier -->
                             <TextBlock Text="Raccourci global" Style="{StaticResource SectionLabel}"/>
                             <Border Style="{StaticResource SettingsCard}">
@@ -298,13 +318,15 @@
                             </StackPanel>
                             
                             <!-- Options -->
-                            <TextBlock Text="Options" Style="{StaticResource SectionLabel}"/>
+                            <TextBlock Text="Profondeur d'indexation" Style="{StaticResource SectionLabel}"/>
+                            <TextBlock Text="Nombre de niveaux de sous-dossiers explorés au démarrage pour construire l'index de recherche." Foreground="#888" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"/>
                             <StackPanel Orientation="Horizontal" Margin="0,5">
                                 <TextBlock Text="Profondeur: " Foreground="White" VerticalAlignment="Center"/>
                                 <TextBlock x:Name="SearchDepthValue" Text="5" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="25"/>
                                 <TextBlock Text="niveaux" Foreground="#888" VerticalAlignment="Center"/>
                             </StackPanel>
                             <Slider x:Name="SearchDepthSlider" Minimum="1" Maximum="10" Value="5" Width="250" HorizontalAlignment="Left" ValueChanged="SearchDepthSlider_ValueChanged"/>
+                            <TextBlock x:Name="SearchDepthHint" Text="" Foreground="#666" FontSize="10" TextWrapping="Wrap" Margin="0,2,0,0"/>
                             <CheckBox x:Name="IndexHiddenFoldersCheck" Content="Indexer dossiers cachés" Style="{StaticResource SettingsCheckBox}" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
                             
                             <!-- Réindexation -->
@@ -432,11 +454,15 @@
                                 </StackPanel>
                             </Border>
                             
-                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                            <TextBlock Text="Profondeur de recherche" Style="{StaticResource SubSectionLabel}" Margin="0,10,0,2"/>
+                            <TextBlock Text="Nombre de niveaux de sous-dossiers parcourus en temps réel par la commande :find. Plus la valeur est haute, plus la recherche est exhaustive mais lente." Foreground="#888" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
                                 <TextBlock Text="Profondeur: " Foreground="White" VerticalAlignment="Center"/>
                                 <TextBlock x:Name="SystemSearchDepthValue" Text="5" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="25"/>
+                                <TextBlock Text="niveaux" Foreground="#888" VerticalAlignment="Center"/>
                             </StackPanel>
                             <Slider x:Name="SystemSearchDepthSlider" Minimum="2" Maximum="10" Value="5" Width="250" HorizontalAlignment="Left" ValueChanged="SystemSearchDepthSlider_ValueChanged"/>
+                            <TextBlock x:Name="SystemSearchDepthHint" Text="" Foreground="#666" FontSize="10" TextWrapping="Wrap" Margin="0,2,0,0"/>
                             
                             <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                                 <Button Content="🗑️ Vider cache" Click="ClearSearchCache_Click" Style="{StaticResource ActionButton}" Padding="10,6"/>

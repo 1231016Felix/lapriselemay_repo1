@@ -1,6 +1,9 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Interop;
 using QuickLauncher.Models;
 using QuickLauncher.Services;
 using QuickLauncher.ViewModels;
@@ -16,6 +19,65 @@ public partial class LauncherWindow : Window
     private readonly LauncherViewModel _viewModel;
     private readonly ISettingsProvider _settingsProvider;
     private readonly NotesService _notesService;
+    
+    // === Animation state ===
+    // Compteur de génération pour invalider les callbacks de hide si un Show arrive entre-temps
+    private int _hideGeneration;
+    private bool _isAnimatingHide;
+    /// <summary>
+    /// Compteur de génération de recherche pour invalider les animations stagger d'un batch précédent.
+    /// </summary>
+    private int _searchGeneration;
+    
+    // Flag pour désactiver le stagger des items pendant l'animation d'ouverture
+    private bool _isShowAnimating;
+    
+    // Easing functions gelées pour réutilisation (évite la recréation)
+    private static readonly IEasingFunction EaseOut;
+    private static readonly IEasingFunction EaseIn;
+    private static readonly IEasingFunction BounceOut;
+    
+    /// <summary>
+    /// Framerate cible pour les animations (60 fps pour la fluidité).
+    /// </summary>
+    private const int AnimationFrameRate = 60;
+    
+    /// <summary>
+    /// BitmapCache partagé pour le caching GPU des éléments pendant les animations.
+    /// Permet de rasteriser l'élément en texture GPU → les transforms/opacity sont hardware-accelerated
+    /// même quand AllowsTransparency=True (qui force le rendu software par défaut).
+    /// </summary>
+    private static readonly BitmapCache SharedGpuCache;
+    
+    static LauncherWindow()
+    {
+        // Geler les fonctions d'easing pour performance (immuables, thread-safe)
+        // QuadraticEase plus léger que CubicEase — moins de calcul par frame
+        var easeOut = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+        easeOut.Freeze();
+        EaseOut = easeOut;
+        
+        var easeIn = new QuadraticEase { EasingMode = EasingMode.EaseIn };
+        easeIn.Freeze();
+        EaseIn = easeIn;
+        
+        var bounceOut = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.2 };
+        bounceOut.Freeze();
+        BounceOut = bounceOut;
+        
+        SharedGpuCache = new BitmapCache { EnableClearType = false, RenderAtScale = 1 };
+        SharedGpuCache.Freeze();
+    }
+    
+    /// <summary>
+    /// Durée d'animation courante lue depuis les paramètres.
+    /// </summary>
+    private Duration AnimDuration => new(TimeSpan.FromMilliseconds(_settings.AnimationDurationMs));
+    
+    /// <summary>
+    /// Durée d'animation items (légèrement plus courte que la fenêtre).
+    /// </summary>
+    private Duration ItemAnimDuration => new(TimeSpan.FromMilliseconds(Math.Max(50, _settings.AnimationDurationMs - 20)));
     
     /// <summary>
     /// Accès rapide aux paramètres actuels (toujours à jour via ISettingsProvider).
@@ -44,9 +106,19 @@ public partial class LauncherWindow : Window
     private void SetupEventHandlers()
     {
         _viewModel.RequestHide += (_, _) => HideWindow();
-        _viewModel.RequestOpenSettings += (_, _) => RequestOpenSettings?.Invoke(this, EventArgs.Empty);
+        _viewModel.RequestOpenSettings += (_, _) =>
+        {
+            // Le ViewModel appelle RequestHide juste avant → forcer immédiat pour éviter
+            // que le dialog modal bloque le thread pendant que l'animation tourne
+            HideWindowImmediate();
+            RequestOpenSettings?.Invoke(this, EventArgs.Empty);
+        };
         _viewModel.RequestQuit += (_, _) => RequestQuit?.Invoke(this, EventArgs.Empty);
-        _viewModel.RequestReindex += (_, _) => RequestReindex?.Invoke(this, EventArgs.Empty);
+        _viewModel.RequestReindex += (_, _) =>
+        {
+            HideWindowImmediate();
+            RequestReindex?.Invoke(this, EventArgs.Empty);
+        };
         _viewModel.RequestRename += OnRequestRename;
         _viewModel.ShowNotification += OnShowNotification;
         _viewModel.RequestCaretAtEnd += (_, _) => Dispatcher.BeginInvoke(() => SearchBox.CaretIndex = SearchBox.Text.Length);
@@ -60,6 +132,14 @@ public partial class LauncherWindow : Window
                     ? Visibility.Collapsed 
                     : Visibility.Visible;
             }
+        };
+        
+        // Incrémenter la génération de recherche quand la liste est nettoyée
+        // pour invalider les animations stagger du batch précédent
+        _viewModel.Results.CollectionChanged += (_, e) =>
+        {
+            if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Reset)
+                _searchGeneration++;
         };
     }
     
@@ -173,31 +253,401 @@ public partial class LauncherWindow : Window
     
     public void FocusSearchBox()
     {
+        // Reload synchrone — le ViewModel a besoin des settings à jour pour Reset()
         _settingsProvider.Reload();
         ApplySettings();
         _viewModel.ReloadSettings();
         _viewModel.Reset();
         CenterOnScreen();
         
+        // L'animation démarre après le setup complet
+        PlayShowAnimation();
         SearchBox.Focus();
         SearchBox.SelectAll();
     }
     
+    #region Animations
+    
+    /// <summary>
+    /// Annule proprement toutes les animations en cours sur le MainBorder et ShadowBorder,
+    /// libérant les propriétés pour qu'elles puissent être réassignées.
+    /// </summary>
+    private void ClearAllAnimations()
+    {
+        MainBorder.BeginAnimation(OpacityProperty, null);
+        MainBorderTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        MainBorderScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        MainBorderScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        ShadowBorder.BeginAnimation(OpacityProperty, null);
+    }
+    
+    /// <summary>
+    /// Remet le MainBorder et ShadowBorder dans leur état visuel « caché » sans animation.
+    /// </summary>
+    private void ResetToHiddenState()
+    {
+        MainBorder.Opacity = 0;
+        ShadowBorder.Opacity = 0;
+        MainBorderTranslate.Y = -6;
+        MainBorderScale.ScaleX = 1;
+        MainBorderScale.ScaleY = 1;
+    }
+    
+    /// <summary>
+    /// Animation d'apparition selon le style configuré.
+    /// Invalide tout hide en cours pour éviter que son Completed ne cache la fenêtre.
+    /// </summary>
+    private void PlayShowAnimation()
+    {
+        // Invalider tout callback de hide en cours
+        _hideGeneration++;
+        _isAnimatingHide = false;
+        _isShowAnimating = true;
+        
+        // Nettoyer les animations précédentes
+        ClearAllAnimations();
+        
+        if (!_settings.EnableAnimations)
+        {
+            MainBorder.Opacity = 1;
+            ShadowBorder.Opacity = 1;
+            MainBorderTranslate.Y = 0;
+            MainBorderScale.ScaleX = 1;
+            MainBorderScale.ScaleY = 1;
+            _isShowAnimating = false;
+            return;
+        }
+        
+        // Cache GPU temporaire pendant l'animation de la fenêtre (~140ms).
+        // Rasterise le contenu en texture → opacity/transform deviennent GPU-composited.
+        // Retiré dans le Completed pour ne pas forcer de re-rasterisation à chaque frappe clavier.
+        MainBorder.CacheMode = SharedGpuCache;
+        
+        var dur = AnimDuration;
+        
+        // Animation du shadow (fondu simple, toujours)
+        ShadowBorder.BeginAnimation(OpacityProperty, MakeAnim(0, 1, dur, TimeSpan.Zero, EaseOut));
+        
+        // Animation pilote (opacity) — on y attache le retrait du cache
+        DoubleAnimation opacityAnim;
+        
+        switch (_settings.AnimationStyle)
+        {
+            case AnimationStyle.FadeSlide:
+                MainBorder.Opacity = 0;
+                MainBorderTranslate.Y = -6;
+                opacityAnim = MakeAnim(0, 1, dur, TimeSpan.Zero, EaseOut);
+                MainBorderTranslate.BeginAnimation(TranslateTransform.YProperty, MakeAnim(-6, 0, dur, TimeSpan.Zero, EaseOut));
+                break;
+                
+            case AnimationStyle.Fade:
+                MainBorder.Opacity = 0;
+                MainBorderTranslate.Y = 0;
+                opacityAnim = MakeAnim(0, 1, dur, TimeSpan.Zero, EaseOut);
+                break;
+                
+            case AnimationStyle.Scale:
+                MainBorder.Opacity = 0;
+                MainBorderTranslate.Y = 0;
+                MainBorderScale.ScaleX = 0.95;
+                MainBorderScale.ScaleY = 0.95;
+                opacityAnim = MakeAnim(0, 1, dur, TimeSpan.Zero, EaseOut);
+                MainBorderScale.BeginAnimation(ScaleTransform.ScaleXProperty, MakeAnim(0.95, 1, dur, TimeSpan.Zero, EaseOut));
+                MainBorderScale.BeginAnimation(ScaleTransform.ScaleYProperty, MakeAnim(0.95, 1, dur, TimeSpan.Zero, EaseOut));
+                break;
+                
+            case AnimationStyle.Slide:
+                MainBorder.Opacity = 1;
+                MainBorderTranslate.Y = -8;
+                opacityAnim = MakeAnim(1, 1, dur, TimeSpan.Zero, null); // dummy pour callback
+                MainBorderTranslate.BeginAnimation(TranslateTransform.YProperty, MakeAnim(-8, 0, dur, TimeSpan.Zero, EaseOut));
+                break;
+                
+            case AnimationStyle.Pop:
+                MainBorder.Opacity = 0;
+                MainBorderTranslate.Y = 0;
+                MainBorderScale.ScaleX = 0.88;
+                MainBorderScale.ScaleY = 0.88;
+                opacityAnim = MakeAnim(0, 1, dur, TimeSpan.Zero, EaseOut);
+                MainBorderScale.BeginAnimation(ScaleTransform.ScaleXProperty, MakeAnim(0.88, 1, dur, TimeSpan.Zero, BounceOut));
+                MainBorderScale.BeginAnimation(ScaleTransform.ScaleYProperty, MakeAnim(0.88, 1, dur, TimeSpan.Zero, BounceOut));
+                break;
+                
+            default:
+                opacityAnim = MakeAnim(0, 1, dur, TimeSpan.Zero, EaseOut);
+                break;
+        }
+        
+        // Retirer le cache GPU après l'animation pour que le rendu texte/ClearType soit normal
+        opacityAnim.Completed += (_, _) =>
+        {
+            MainBorder.CacheMode = null;
+            _isShowAnimating = false;
+        };
+        MainBorder.BeginAnimation(OpacityProperty, opacityAnim);
+    }
+    
+    /// <summary>
+    /// Animation de disparition selon le style configuré.
+    /// Hide() n'est appelé que dans le Completed, et seulement si la génération correspond.
+    /// </summary>
+    private void PlayHideAnimation()
+    {
+        if (_isAnimatingHide) return;
+        
+        // Sauvegarder la position maintenant (avant le Hide)
+        SaveWindowPosition();
+        
+        if (!_settings.EnableAnimations)
+        {
+            _viewModel.Reset();
+            ClearAllAnimations();
+            ResetToHiddenState();
+            Hide();
+            return;
+        }
+        
+        _isAnimatingHide = true;
+        var gen = _hideGeneration;
+        var dur = AnimDuration;
+        
+        // Cache GPU temporaire pendant l'animation de fermeture
+        MainBorder.CacheMode = SharedGpuCache;
+        
+        // Animation du shadow (fondu sortant)
+        ShadowBorder.BeginAnimation(OpacityProperty, MakeAnim(ShadowBorder.Opacity, 0, dur, TimeSpan.Zero, EaseIn));
+        
+        // L'animation « pilote » qui portera le Completed callback
+        DoubleAnimation pilot;
+        
+        switch (_settings.AnimationStyle)
+        {
+            case AnimationStyle.FadeSlide:
+                pilot = MakeAnimWithCallback(MainBorder.Opacity, 0, dur, EaseIn, gen);
+                MainBorder.BeginAnimation(OpacityProperty, pilot);
+                MainBorderTranslate.BeginAnimation(TranslateTransform.YProperty,
+                    MakeAnim(MainBorderTranslate.Y, -4, dur, TimeSpan.Zero, EaseIn));
+                break;
+                
+            case AnimationStyle.Fade:
+                pilot = MakeAnimWithCallback(MainBorder.Opacity, 0, dur, EaseIn, gen);
+                MainBorder.BeginAnimation(OpacityProperty, pilot);
+                break;
+                
+            case AnimationStyle.Scale:
+                pilot = MakeAnimWithCallback(MainBorder.Opacity, 0, dur, EaseIn, gen);
+                MainBorder.BeginAnimation(OpacityProperty, pilot);
+                MainBorderScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                    MakeAnim(MainBorderScale.ScaleX, 0.95, dur, TimeSpan.Zero, EaseIn));
+                MainBorderScale.BeginAnimation(ScaleTransform.ScaleYProperty,
+                    MakeAnim(MainBorderScale.ScaleY, 0.95, dur, TimeSpan.Zero, EaseIn));
+                break;
+                
+            case AnimationStyle.Slide:
+                pilot = MakeAnimWithCallback(0, 0, dur, EaseIn, gen); // dummy pour callback
+                var slideAnim = MakeAnim(MainBorderTranslate.Y, -8, dur, TimeSpan.Zero, EaseIn);
+                MainBorderTranslate.BeginAnimation(TranslateTransform.YProperty, slideAnim);
+                // Utiliser le slide comme pilote via un fondu rapide de l'opacity
+                MainBorder.BeginAnimation(OpacityProperty, pilot);
+                break;
+                
+            case AnimationStyle.Pop:
+                pilot = MakeAnimWithCallback(MainBorder.Opacity, 0, dur, EaseIn, gen);
+                MainBorder.BeginAnimation(OpacityProperty, pilot);
+                MainBorderScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                    MakeAnim(MainBorderScale.ScaleX, 0.88, dur, TimeSpan.Zero, EaseIn));
+                MainBorderScale.BeginAnimation(ScaleTransform.ScaleYProperty,
+                    MakeAnim(MainBorderScale.ScaleY, 0.88, dur, TimeSpan.Zero, EaseIn));
+                break;
+                
+            default:
+                pilot = MakeAnimWithCallback(1, 0, dur, EaseIn, gen);
+                MainBorder.BeginAnimation(OpacityProperty, pilot);
+                break;
+        }
+    }
+    
+    /// <summary>
+    /// Crée une animation pilote avec le callback Completed pour le hide.
+    /// </summary>
+    private DoubleAnimation MakeAnimWithCallback(double from, double to, Duration duration,
+        IEasingFunction? easing, int generation)
+    {
+        var anim = new DoubleAnimation(from, to, duration)
+        {
+            EasingFunction = easing
+        };
+        Timeline.SetDesiredFrameRate(anim, AnimationFrameRate);
+        
+        anim.Completed += (_, _) =>
+        {
+            if (generation != _hideGeneration) return;
+            
+            _viewModel.Reset();
+            ClearAllAnimations();
+            ResetToHiddenState();
+            MainBorder.CacheMode = null;
+            Hide();
+            _isAnimatingHide = false;
+        };
+        
+        return anim;
+    }
+    
+    #endregion
+    
+    /// <summary>
+    /// Animation d'apparition staggerée pour chaque item de la liste de résultats.
+    /// Chaque item apparaît avec un délai progressif basé sur son index.
+    /// Respecte les paramètres d'animation (activation, style, durée et stagger).
+    /// Applique un BitmapCache GPU pendant l'animation pour fluidité maximale.
+    /// </summary>
+    private void ResultItem_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ListBoxItem item) return;
+        
+        // Pendant l'animation d'ouverture ou si animations désactivées, afficher immédiatement
+        if (!_settings.EnableAnimations || _isShowAnimating)
+        {
+            item.Opacity = 1;
+            return;
+        }
+        
+        // Déterminer l'index de l'item dans la liste
+        var index = ResultsList.ItemContainerGenerator.IndexFromContainer(item);
+        if (index < 0) index = 0;
+        
+        // Capturer la génération courante pour invalider si une nouvelle recherche arrive
+        var generation = _searchGeneration;
+        
+        var dur = ItemAnimDuration;
+        var staggerMs = Math.Max(0, _settings.StaggerDelayMs);
+        var beginTime = TimeSpan.FromMilliseconds(index * staggerMs);
+        
+        var tg = item.RenderTransform as TransformGroup;
+        var scale = tg?.Children.OfType<ScaleTransform>().FirstOrDefault();
+        var translate = tg?.Children.OfType<TranslateTransform>().FirstOrDefault();
+        
+        // Positionner l'état initial (invisible + transformé)
+        item.Opacity = 0;
+        
+        // Activer le cache GPU pendant l'animation pour que les transforms/opacity
+        // soient composés par le GPU plutôt que re-rendus par le CPU à chaque frame
+        item.CacheMode = SharedGpuCache;
+        
+        // Animation pilote (opacity) — on y attache le cleanup du cache
+        DoubleAnimation opacityAnim;
+        
+        switch (_settings.AnimationStyle)
+        {
+            case AnimationStyle.FadeSlide:
+                opacityAnim = MakeAnim(0, 1, dur, beginTime, EaseOut);
+                translate?.BeginAnimation(TranslateTransform.YProperty, MakeAnim(4, 0, dur, beginTime, EaseOut));
+                break;
+                
+            case AnimationStyle.Fade:
+                opacityAnim = MakeAnim(0, 1, dur, beginTime, EaseOut);
+                break;
+                
+            case AnimationStyle.Scale:
+                opacityAnim = MakeAnim(0, 1, dur, beginTime, EaseOut);
+                scale?.BeginAnimation(ScaleTransform.ScaleXProperty, MakeAnim(0.96, 1, dur, beginTime, EaseOut));
+                scale?.BeginAnimation(ScaleTransform.ScaleYProperty, MakeAnim(0.96, 1, dur, beginTime, EaseOut));
+                break;
+                
+            case AnimationStyle.Slide:
+                opacityAnim = MakeAnim(0, 1, dur, beginTime, null);
+                translate?.BeginAnimation(TranslateTransform.YProperty, MakeAnim(6, 0, dur, beginTime, EaseOut));
+                break;
+                
+            case AnimationStyle.Pop:
+                opacityAnim = MakeAnim(0, 1, dur, beginTime, EaseOut);
+                scale?.BeginAnimation(ScaleTransform.ScaleXProperty, MakeAnim(0.90, 1, dur, beginTime, BounceOut));
+                scale?.BeginAnimation(ScaleTransform.ScaleYProperty, MakeAnim(0.90, 1, dur, beginTime, BounceOut));
+                break;
+                
+            default:
+                opacityAnim = MakeAnim(0, 1, dur, beginTime, EaseOut);
+                break;
+        }
+        
+        // Retirer le cache GPU une fois l'animation terminée pour économiser la VRAM
+        // et permettre au ClearType de fonctionner normalement sur le texte
+        opacityAnim.Completed += (_, _) =>
+        {
+            if (generation == _searchGeneration)
+                item.CacheMode = null;
+        };
+        
+        item.BeginAnimation(OpacityProperty, opacityAnim);
+    }
+    
+    /// <summary>
+    /// Crée une DoubleAnimation avec BeginTime pour le stagger, DesiredFrameRate fixe et gelée si possible.
+    /// </summary>
+    private static DoubleAnimation MakeAnim(double from, double to, Duration duration,
+        TimeSpan beginTime, IEasingFunction? easing)
+    {
+        var anim = new DoubleAnimation(from, to, duration)
+        {
+            BeginTime = beginTime,
+            EasingFunction = easing
+        };
+        Timeline.SetDesiredFrameRate(anim, AnimationFrameRate);
+        return anim;
+    }
+    
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Raccourcis Alt+1 à Alt+9 pour lancer un résultat par index
+        // En WPF, quand Alt est enfoncé, e.Key == Key.System et la vraie touche est dans e.SystemKey
+        if (Keyboard.Modifiers == ModifierKeys.Alt && e.Key == Key.System)
+        {
+            var index = e.SystemKey switch
+            {
+                Key.D1 => 0,
+                Key.D2 => 1,
+                Key.D3 => 2,
+                Key.D4 => 3,
+                Key.D5 => 4,
+                Key.D6 => 5,
+                Key.D7 => 6,
+                Key.D8 => 7,
+                Key.D9 => 8,
+                Key.NumPad1 => 0,
+                Key.NumPad2 => 1,
+                Key.NumPad3 => 2,
+                Key.NumPad4 => 3,
+                Key.NumPad5 => 4,
+                Key.NumPad6 => 5,
+                Key.NumPad7 => 6,
+                Key.NumPad8 => 7,
+                Key.NumPad9 => 8,
+                _ => -1
+            };
+            
+            if (index >= 0 && index < _viewModel.Results.Count)
+            {
+                _viewModel.SelectedIndex = index;
+                _viewModel.ExecuteCommand.Execute(null);
+                e.Handled = true;
+                return;
+            }
+        }
+        
         // Raccourcis avec Ctrl
         if (Keyboard.Modifiers == ModifierKeys.Control)
         {
             switch (e.Key)
             {
                 case Key.OemComma:
-                    HideWindow();
+                    HideWindowImmediate();
                     RequestOpenSettings?.Invoke(this, EventArgs.Empty);
                     e.Handled = true;
                     return;
                     
                 case Key.R:
-                    HideWindow();
+                    HideWindowImmediate();
                     RequestReindex?.Invoke(this, EventArgs.Empty);
                     e.Handled = true;
                     return;
@@ -328,9 +778,39 @@ public partial class LauncherWindow : Window
         }
     }
     
-    private void Window_Deactivated(object sender, EventArgs e) => HideWindow();
+    private void Window_Deactivated(object sender, EventArgs e)
+    {
+        // Pendant un hide animé, Deactivated peut fire → on ignore
+        if (_isAnimatingHide) return;
+        HideWindow();
+    }
     
     private void HideWindow()
+    {
+        if (!IsVisible || _isAnimatingHide) return;
+        PlayHideAnimation();
+    }
+    
+    /// <summary>
+    /// Masque la fenêtre immédiatement sans animation.
+    /// Utilisé quand on ouvre un dialog modal (Settings) ou quand on doit être synchrone.
+    /// </summary>
+    private void HideWindowImmediate()
+    {
+        // Invalider tout hide animé en cours
+        _hideGeneration++;
+        _isAnimatingHide = false;
+        
+        SaveWindowPosition();
+        ClearAllAnimations();
+        ResetToHiddenState();
+        MainBorder.CacheMode = null;
+        
+        _viewModel.Reset();
+        Hide();
+    }
+    
+    private void SaveWindowPosition()
     {
         if (_settings.WindowPosition == "Remember")
         {
@@ -340,14 +820,11 @@ public partial class LauncherWindow : Window
                 s.LastWindowTop = Top;
             });
         }
-        
-        _viewModel.Reset();
-        Hide();
     }
     
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        HideWindow();
+        HideWindowImmediate();
         RequestOpenSettings?.Invoke(this, EventArgs.Empty);
     }
     
@@ -379,7 +856,15 @@ public partial class LauncherWindow : Window
         }
     }
     
-    private void Window_Loaded(object sender, RoutedEventArgs e) => CenterOnScreen();
+    private void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        // Forcer le rendu hardware pour cette fenêtre (contourne le software rendering d'AllowsTransparency)
+        var hwndSource = PresentationSource.FromVisual(this) as HwndSource;
+        if (hwndSource?.CompositionTarget != null)
+            hwndSource.CompositionTarget.RenderMode = RenderMode.Default;
+        
+        CenterOnScreen();
+    }
     
     private void CenterOnScreen()
     {

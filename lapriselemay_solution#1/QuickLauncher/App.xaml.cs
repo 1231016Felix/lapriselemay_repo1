@@ -60,8 +60,8 @@ public partial class App : Application
             
             var indexingService = Services.GetRequiredService<IndexingService>();
             
-            _logger.Info("Démarrage indexation async...");
-            _ = indexingService.StartIndexingAsync();
+            _logger.Info("Démarrage indexation intelligente...");
+            _ = indexingService.SmartStartIndexingAsync();
             
             _logger.Info("Restauration des widgets de notes et minuteries...");
             var noteWidgetService = Services.GetRequiredService<NoteWidgetService>();
@@ -105,6 +105,7 @@ public partial class App : Application
         services.AddSingleton<ISettingsProvider, SettingsProvider>();
         
         // Services principaux
+        services.AddSingleton<FolderFingerprintService>();
         services.AddSingleton<IndexingService>();
         services.AddSingleton<AliasService>();
         

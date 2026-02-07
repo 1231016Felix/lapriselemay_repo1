@@ -21,6 +21,18 @@ public enum ThemeMode
 }
 
 /// <summary>
+/// Styles d'animation pour l'ouverture/fermeture de la fenêtre.
+/// </summary>
+public enum AnimationStyle
+{
+    FadeSlide,   // Fondu + glissement vertical
+    Fade,        // Fondu simple
+    Scale,       // Zoom depuis le centre
+    Slide,       // Glissement seul
+    Pop          // Zoom avec rebond
+}
+
+/// <summary>
 /// Paramètres de l'application avec sérialisation JSON optimisée.
 /// </summary>
 public sealed class AppSettings
@@ -66,6 +78,7 @@ public sealed class AppSettings
     public string Theme { get; set; } = "Dark";
     public bool ShowSettingsButton { get; set; } = true;
     public bool ShowPreviewPanel { get; set; } = true;
+    public bool ShowShortcutHints { get; set; } = true;
     
     // === Mode thème automatique ===
     public string LightThemeStartTime { get; set; } = "07:00";
@@ -73,6 +86,12 @@ public sealed class AppSettings
     
     // === Indicateurs de catégorie (badges colorés) ===
     public bool ShowCategoryBadges { get; set; } = true;
+    
+    // === Animations ===
+    public bool EnableAnimations { get; set; } = true;
+    public int AnimationDurationMs { get; set; } = 140;
+    public AnimationStyle AnimationStyle { get; set; } = AnimationStyle.FadeSlide;
+    public int StaggerDelayMs { get; set; } = 30;
     
     // === Thème automatique (jour/nuit) ===
     public ThemeMode ThemeMode { get; set; } = ThemeMode.Dark;
@@ -625,6 +644,24 @@ public sealed class ScoringWeights
     /// </summary>
     public int RecencyDecayPerDay { get; set; } = 5;
     
+    // === Path Fuzzy Matching (recherche multi-mots sur le chemin complet) ===
+    
+    /// <summary>
+    /// Active/désactive le fuzzy matching sur les chemins complets.
+    /// Permet de trouver "proj quick" → C:\Projects\QuickLauncher
+    /// </summary>
+    public bool EnablePathFuzzyMatch { get; set; } = true;
+    
+    /// <summary>
+    /// Score pour une correspondance exacte d'un segment de chemin.
+    /// </summary>
+    public int PathExactSegmentMatch { get; set; } = 200;
+    
+    /// <summary>
+    /// Bonus additionnel quand tous les mots de la requête matchent des segments.
+    /// </summary>
+    public int PathAllWordsMatchBonus { get; set; } = 100;
+    
     /// <summary>
     /// Réinitialise tous les poids aux valeurs par défaut.
     /// </summary>
@@ -645,6 +682,9 @@ public sealed class ScoringWeights
         EnableRecencyBonus = true;
         MaxRecencyBonus = 150;
         RecencyDecayPerDay = 5;
+        EnablePathFuzzyMatch = true;
+        PathExactSegmentMatch = 200;
+        PathAllWordsMatchBonus = 100;
     }
     
     /// <summary>
@@ -666,7 +706,10 @@ public sealed class ScoringWeights
         WordBoundaryBonus = WordBoundaryBonus,
         EnableRecencyBonus = EnableRecencyBonus,
         MaxRecencyBonus = MaxRecencyBonus,
-        RecencyDecayPerDay = RecencyDecayPerDay
+        RecencyDecayPerDay = RecencyDecayPerDay,
+        EnablePathFuzzyMatch = EnablePathFuzzyMatch,
+        PathExactSegmentMatch = PathExactSegmentMatch,
+        PathAllWordsMatchBonus = PathAllWordsMatchBonus
     };
 }
 

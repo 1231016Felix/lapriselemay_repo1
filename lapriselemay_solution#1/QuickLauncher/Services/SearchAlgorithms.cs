@@ -449,6 +449,121 @@ public static class SearchAlgorithms
 
     #endregion
 
+    #region Path Fuzzy Matching
+    
+    /// <summary>
+    /// Calcule un score de fuzzy matching multi-mots sur un chemin complet.
+    /// Permet de trouver "proj quick" → C:\Projects\QuickLauncher
+    /// Chaque mot de la requête est matché contre les segments du chemin.
+    /// </summary>
+    /// <param name="query">Requête multi-mots (ex: "proj quick")</param>
+    /// <param name="fullPath">Chemin complet (ex: "C:\Projects\QuickLauncher\app.exe")</param>
+    /// <param name="weights">Poids de scoring configurables</param>
+    /// <returns>Score de correspondance (0 = aucun match)</returns>
+    public static int CalculatePathFuzzyScore(string query, string fullPath, ScoringWeights? weights = null)
+    {
+        if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(fullPath))
+            return 0;
+        
+        weights ??= DefaultWeights;
+        
+        var queryWords = query.ToLowerInvariant()
+            .Split([' '], StringSplitOptions.RemoveEmptyEntries);
+        
+        if (queryWords.Length < 1)
+            return 0;
+        
+        // Pour les requêtes à un seul mot, le scoring normal sur le nom suffit.
+        // Le path scoring est surtout utile pour les requêtes multi-mots.
+        if (queryWords.Length == 1)
+        {
+            // Quand même vérifier si le mot unique matche un segment du chemin
+            // (mais pas le nom de fichier, déjà couvert par le scoring principal)
+            var pathOnly = System.IO.Path.GetDirectoryName(fullPath) ?? fullPath;
+            var segments = pathOnly.ToLowerInvariant()
+                .Split(['\\', '/', '-', '_', '.', ' '], StringSplitOptions.RemoveEmptyEntries);
+            
+            var word = queryWords[0];
+            foreach (var seg in segments)
+            {
+                if (seg == word)
+                    return weights.PathExactSegmentMatch;
+                if (seg.StartsWith(word))
+                    return (int)(weights.PathExactSegmentMatch * 0.7);
+                if (seg.Contains(word))
+                    return (int)(weights.PathExactSegmentMatch * 0.4);
+            }
+            return 0;
+        }
+        
+        // Découper le chemin complet en segments (dossiers + nom de fichier)
+        var allSegments = fullPath.ToLowerInvariant()
+            .Split(['\\', '/', '-', '_', '.', ' '], StringSplitOptions.RemoveEmptyEntries);
+        
+        // Chaque mot de la requête doit matcher au moins un segment
+        var totalScore = 0;
+        var matchedWords = 0;
+        
+        foreach (var word in queryWords)
+        {
+            var bestWordScore = 0;
+            
+            foreach (var segment in allSegments)
+            {
+                int wordScore;
+                
+                // Correspondance exacte du segment
+                if (segment == word)
+                {
+                    wordScore = weights.PathExactSegmentMatch;
+                }
+                // Le segment commence par le mot
+                else if (segment.StartsWith(word))
+                {
+                    wordScore = (int)(weights.PathExactSegmentMatch * 0.8);
+                }
+                // Le segment contient le mot
+                else if (segment.Contains(word))
+                {
+                    wordScore = (int)(weights.PathExactSegmentMatch * 0.5);
+                }
+                // Fuzzy match sur le segment (tolérance aux typos)
+                else if (word.Length >= 3)
+                {
+                    var similarity = LevenshteinSimilarity(word, segment);
+                    if (similarity >= 0.7)
+                        wordScore = (int)(weights.PathExactSegmentMatch * similarity * 0.4);
+                    else
+                        continue;
+                }
+                else
+                {
+                    continue;
+                }
+                
+                bestWordScore = Math.Max(bestWordScore, wordScore);
+            }
+            
+            if (bestWordScore > 0)
+            {
+                matchedWords++;
+                totalScore += bestWordScore;
+            }
+        }
+        
+        // Tous les mots doivent matcher pour que le résultat soit pertinent
+        if (matchedWords < queryWords.Length)
+            return 0;
+        
+        // Bonus quand tous les mots matchent (combinaison complète)
+        totalScore += weights.PathAllWordsMatchBonus;
+        
+        // Normaliser: score moyen par mot
+        return totalScore / queryWords.Length;
+    }
+    
+    #endregion
+
     #region Utilitaires
 
     /// <summary>

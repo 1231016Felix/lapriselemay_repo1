@@ -19,6 +19,7 @@ public sealed partial class IndexingService : IDisposable
     private readonly SemaphoreSlim _indexLock = new(1, 1);
     private readonly ILogger _logger;
     private readonly ISettingsProvider _settingsProvider;
+    private readonly FolderFingerprintService _fingerprintService;
     
     private CancellationTokenSource? _indexingCts;
     private bool _disposed;
@@ -30,9 +31,10 @@ public sealed partial class IndexingService : IDisposable
     public bool IsIndexing { get; private set; }
     public int IndexedItemsCount => _cache.Count;
 
-    public IndexingService(ISettingsProvider settingsProvider, ILogger? logger = null)
+    public IndexingService(ISettingsProvider settingsProvider, FolderFingerprintService fingerprintService, ILogger? logger = null)
     {
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
+        _fingerprintService = fingerprintService ?? throw new ArgumentNullException(nameof(fingerprintService));
         _logger = logger ?? new FileLogger(Constants.AppName, Constants.LogFileName);
         
         var appData = Path.Combine(
@@ -180,6 +182,9 @@ public sealed partial class IndexingService : IDisposable
             
             await SaveToDatabaseAsync(deduplicated, token);
             LoadCacheFromDatabase();
+            
+            // Sauvegarder les fingerprints pour le prochain démarrage intelligent
+            SaveCurrentFingerprints(settings);
         }
         finally
         {
@@ -417,8 +422,38 @@ public sealed partial class IndexingService : IDisposable
     
     private int CalculateScore(string query, SearchResult item)
     {
-        // Utiliser le nouvel algorithme de fuzzy matching avec Levenshtein, recency et les poids configurables
-        return SearchAlgorithms.CalculateFuzzyScore(query, item.Name, item.UseCount, item.LastUsed, _settingsProvider.Current.ScoringWeights);
+        var weights = _settingsProvider.Current.ScoringWeights;
+        
+        // Score principal sur le nom
+        var nameScore = SearchAlgorithms.CalculateFuzzyScore(query, item.Name, item.UseCount, item.LastUsed, weights);
+        
+        // Score additionnel sur le chemin complet (pour les requêtes multi-mots)
+        if (weights.EnablePathFuzzyMatch && !string.IsNullOrEmpty(item.Path))
+        {
+            var pathScore = SearchAlgorithms.CalculatePathFuzzyScore(query, item.Path, weights);
+            
+            // Si le path score est positif mais le name score est nul,
+            // on utilise le path score + les bonus usage/recency
+            if (pathScore > 0 && nameScore == 0)
+            {
+                // Ajouter manuellement les bonus usage et recency
+                if (item.UseCount > 0)
+                    pathScore += Math.Min(item.UseCount * weights.UsageBonusPerUse, weights.MaxUsageBonus);
+                
+                if (weights.EnableRecencyBonus && item.LastUsed > DateTime.MinValue)
+                {
+                    var daysSince = (DateTime.UtcNow - item.LastUsed).TotalDays;
+                    pathScore += Math.Max(0, weights.MaxRecencyBonus - (int)(daysSince * weights.RecencyDecayPerDay));
+                }
+                
+                return pathScore;
+            }
+            
+            // Si les deux matchent, prendre le meilleur
+            return Math.Max(nameScore, pathScore);
+        }
+        
+        return nameScore;
     }
     
     [GeneratedRegex(@"^[\d\s\+\-\*\/\(\)\.\,\^]+$")]
@@ -583,6 +618,202 @@ public sealed partial class IndexingService : IDisposable
     
     #endregion
     
+    #region Smart Persistent Index
+    
+    /// <summary>
+    /// Démarrage intelligent : utilise le cache SQLite existant + fingerprints
+    /// pour ne réindexer que les dossiers modifiés.
+    /// Premier lancement = indexation complète. Lancements suivants = quasi-instantané.
+    /// </summary>
+    public async Task SmartStartIndexingAsync(CancellationToken cancellationToken = default)
+    {
+        // Si le cache est vide (premier lancement ou DB supprimée), indexation complète
+        if (_cache.Count == 0)
+        {
+            _logger.Info("[SmartIndex] Cache vide — indexation complète...");
+            await StartIndexingAsync(cancellationToken);
+            return;
+        }
+        
+        _logger.Info($"[SmartIndex] Cache chargé avec {_cache.Count} éléments. Vérification des changements...");
+        
+        var settings = _settingsProvider.Current;
+        var comparison = _fingerprintService.CompareWithStored(
+            settings.IndexedFolders,
+            settings.FileExtensions,
+            settings.SearchDepth,
+            settings.IndexHiddenFolders);
+        
+        if (!comparison.HasChanges)
+        {
+            _logger.Info("[SmartIndex] Aucun changement détecté — démarrage instantané!");
+            IndexingCompleted?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+        
+        _logger.Info($"[SmartIndex] Changements: {comparison.NewFolders.Count} nouveaux, " +
+                     $"{comparison.ModifiedFolders.Count} modifiés, {comparison.DeletedFolders.Count} supprimés");
+        
+        await _indexLock.WaitAsync(cancellationToken);
+        try
+        {
+            IsIndexing = true;
+            _indexingCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            IndexingStarted?.Invoke(this, EventArgs.Empty);
+            var token = _indexingCts.Token;
+            
+            // 1. Supprimer les items des dossiers supprimés
+            foreach (var deletedFolder in comparison.DeletedFolders)
+            {
+                RemoveItemsByFolder(deletedFolder);
+                _fingerprintService.RemoveFingerprint(deletedFolder);
+            }
+            
+            // 2. Réindexer uniquement les dossiers nouveaux ou modifiés
+            var foldersToIndex = comparison.NewFolders
+                .Concat(comparison.ModifiedFolders)
+                .Where(Directory.Exists)
+                .ToList();
+            
+            if (foldersToIndex.Count > 0)
+            {
+                var items = new ConcurrentBag<SearchResult>();
+                
+                // Pour les dossiers modifiés, supprimer les anciens items d'abord
+                foreach (var modifiedFolder in comparison.ModifiedFolders)
+                {
+                    RemoveItemsByFolder(modifiedFolder);
+                }
+                
+                // Réindexer en parallèle
+                var folderTasks = foldersToIndex
+                    .Select(folder => Task.Run(() => IndexFolder(folder, items, settings, token), token))
+                    .ToArray();
+                
+                await Task.WhenAll(folderTasks);
+                
+                // Sauvegarder les nouveaux items
+                var newItems = items.ToList();
+                if (newItems.Count > 0)
+                {
+                    await SaveToDatabaseAsync(newItems, token);
+                    LoadCacheFromDatabase();
+                }
+                
+                _logger.Info($"[SmartIndex] {newItems.Count} éléments réindexés");
+            }
+            
+            // 3. Réindexer les bookmarks et Store apps (rapide, toujours frais)
+            await RefreshVolatileSourcesAsync(settings, _indexingCts.Token);
+            
+            // 4. Sauvegarder les nouveaux fingerprints
+            SaveCurrentFingerprints(settings);
+            
+            _logger.Info($"[SmartIndex] Terminé. Cache: {_cache.Count} éléments");
+        }
+        finally
+        {
+            IsIndexing = false;
+            _indexingCts?.Dispose();
+            _indexingCts = null;
+            _indexLock.Release();
+            IndexingCompleted?.Invoke(this, EventArgs.Empty);
+        }
+    }
+    
+    /// <summary>
+    /// Supprime tous les items de l'index dont le chemin commence par le dossier spécifié.
+    /// </summary>
+    private void RemoveItemsByFolder(string folderPath)
+    {
+        var normalizedFolder = folderPath.TrimEnd('\\', '/');
+        var keysToRemove = _cache.Keys
+            .Where(k => k.StartsWith(normalizedFolder, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        
+        foreach (var key in keysToRemove)
+        {
+            _cache.TryRemove(key, out _);
+        }
+        
+        if (keysToRemove.Count > 0)
+        {
+            try
+            {
+                using var conn = new SqliteConnection(_connectionString);
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "DELETE FROM Items WHERE Path LIKE @prefix";
+                cmd.Parameters.AddWithValue("@prefix", normalizedFolder + "%");
+                var deleted = cmd.ExecuteNonQuery();
+                _logger.Info($"[SmartIndex] Supprimé {deleted} items de '{Path.GetFileName(normalizedFolder)}'");
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning($"Erreur RemoveItemsByFolder: {ex.Message}");
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Réindexe les sources volatiles (Store apps, bookmarks) qui changent fréquemment.
+    /// </summary>
+    private async Task RefreshVolatileSourcesAsync(AppSettings settings, CancellationToken token)
+    {
+        var items = new ConcurrentBag<SearchResult>();
+        
+        var storeTask = Task.Run(() =>
+        {
+            var storeApps = StoreAppService.GetAllApps();
+            foreach (var app in storeApps) items.Add(app);
+        }, token);
+        
+        var bookmarksTask = Task.Run(() =>
+        {
+            if (settings.IndexBrowserBookmarks)
+            {
+                var bookmarks = BookmarkService.GetAllBookmarks();
+                foreach (var bm in bookmarks) items.Add(bm);
+            }
+        }, token);
+        
+        await Task.WhenAll(storeTask, bookmarksTask);
+        
+        // Supprimer les anciens Store apps et bookmarks
+        var volatileTypes = new[] { ResultType.StoreApp, ResultType.Bookmark };
+        var keysToRemove = _cache
+            .Where(kv => volatileTypes.Contains(kv.Value.Type))
+            .Select(kv => kv.Key)
+            .ToList();
+        
+        foreach (var key in keysToRemove)
+            _cache.TryRemove(key, out _);
+        
+        // Sauvegarder les items frais
+        var newItems = items.ToList();
+        if (newItems.Count > 0)
+        {
+            await SaveToDatabaseAsync(newItems, token);
+            LoadCacheFromDatabase();
+        }
+    }
+    
+    /// <summary>
+    /// Sauvegarde les fingerprints pour tous les dossiers indexés actuels.
+    /// </summary>
+    private void SaveCurrentFingerprints(AppSettings settings)
+    {
+        var fingerprints = settings.IndexedFolders
+            .Where(Directory.Exists)
+            .Select(folder => _fingerprintService.ComputeFingerprint(
+                folder, settings.FileExtensions, settings.SearchDepth, settings.IndexHiddenFolders))
+            .ToList();
+        
+        _fingerprintService.SaveFingerprints(fingerprints);
+    }
+    
+    #endregion
+    
     public void Dispose()
     {
         if (_disposed) return;
@@ -591,6 +822,7 @@ public sealed partial class IndexingService : IDisposable
         CancelIndexing();
         _indexLock.Dispose();
         _cache.Clear();
+        // Note: _fingerprintService est disposé par le conteneur DI
         
         GC.SuppressFinalize(this);
     }

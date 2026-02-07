@@ -76,6 +76,9 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _showSettingsButton;
     
+    [ObservableProperty]
+    private bool _showShortcutHints;
+    
     public ObservableCollection<SearchResult> Results { get; } = [];
     public ObservableCollection<FileAction> AvailableActions { get; } = [];
     
@@ -109,6 +112,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         // Initialiser les propriétés d'apparence depuis les settings
         ShowCategoryBadges = _settings.ShowCategoryBadges;
         ShowSettingsButton = _settings.ShowSettingsButton;
+        ShowShortcutHints = _settings.ShowShortcutHints;
         
         _indexingService.IndexingStarted += (_, _) => IsIndexing = true;
         _indexingService.IndexingCompleted += (_, _) => 
@@ -1646,6 +1650,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         _settingsProvider.Reload();
         ShowCategoryBadges = _settings.ShowCategoryBadges;
         ShowSettingsButton = _settings.ShowSettingsButton;
+        ShowShortcutHints = _settings.ShowShortcutHints;
     }
     
     public void Reset()

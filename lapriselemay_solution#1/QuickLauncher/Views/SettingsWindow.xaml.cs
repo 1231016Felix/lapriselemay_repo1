@@ -104,6 +104,12 @@ public partial class SettingsWindow : Window
             DarkStartCombo.SelectedIndex = 2; // 19:00 par défaut
         // Badges de catégorie
         ShowCategoryBadgesCheck.IsChecked = _settings.ShowCategoryBadges;
+        // Animations
+        EnableAnimationsCheck.IsChecked = _settings.EnableAnimations;
+        AnimationSpeedSlider.Value = _settings.AnimationDurationMs;
+        AnimationSpeedValue.Text = $"{_settings.AnimationDurationMs} ms";
+        SelectComboByTag(AnimationStyleCombo, _settings.AnimationStyle.ToString());
+        UpdateAnimationSpeedPanelVisibility();
         OpacitySlider.Value = _settings.WindowOpacity;
         OpacityValue.Text = $"{(int)(_settings.WindowOpacity * 100)}%";
         SelectComboByTag(AccentColorCombo, _settings.AccentColor);
@@ -121,11 +127,13 @@ public partial class SettingsWindow : Window
         IndexedFoldersList.ItemsSource = _settings.IndexedFolders;
         SearchDepthSlider.Value = _settings.SearchDepth;
         SearchDepthValue.Text = _settings.SearchDepth.ToString();
+        SearchDepthHint.Text = GetSearchDepthHint(_settings.SearchDepth);
         IndexHiddenFoldersCheck.IsChecked = _settings.IndexHiddenFolders;
         
         // Recherche système
         SystemSearchDepthSlider.Value = _settings.SystemSearchDepth;
         SystemSearchDepthValue.Text = _settings.SystemSearchDepth.ToString();
+        SystemSearchDepthHint.Text = GetSystemSearchDepthHint(_settings.SystemSearchDepth);
         LoadSearchEngineInfo();
         
         // Charger la liste des navigateurs
@@ -269,10 +277,36 @@ public partial class SettingsWindow : Window
         }
     }
     
+    private static string GetSearchDepthHint(int depth) => depth switch
+    {
+        1 => "Très limité — seuls les fichiers à la racine des dossiers indexés.",
+        2 => "Minimal — raccourcis du Bureau et du menu Démarrer, peu de sous-dossiers.",
+        3 => "Léger — couvre la plupart des raccourcis, rapide à indexer.",
+        4 or 5 => "Équilibré — bon compromis entre couverture et performance.",
+        6 or 7 => "Approfondi — explore plus de sous-dossiers, indexation un peu plus longue.",
+        8 or 9 => "Très profond — couverture quasi totale, peut ralentir l'indexation.",
+        10 => "Maximum — explore tout, indexation la plus longue et la plus gourmande en mémoire.",
+        _ => ""
+    };
+    
+    private static string GetSystemSearchDepthHint(int depth) => depth switch
+    {
+        2 => "Très rapide — ne cherche qu'aux premiers niveaux, résultats limités.",
+        3 => "Rapide — bon pour trouver des fichiers proches de la racine.",
+        4 or 5 => "Équilibré — bonne couverture avec un temps de réponse raisonnable.",
+        6 or 7 => "Approfondi — trouve des fichiers plus enfouis, réponse un peu plus lente.",
+        8 or 9 => "Très profond — recherche exhaustive, peut prendre quelques secondes.",
+        10 => "Maximum — parcourt tout l'arbre de fichiers, risque de lenteur sur de gros disques.",
+        _ => ""
+    };
+    
     private void SearchDepthSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (SearchDepthValue != null)
             SearchDepthValue.Text = ((int)e.NewValue).ToString();
+        
+        if (SearchDepthHint != null)
+            SearchDepthHint.Text = GetSearchDepthHint((int)e.NewValue);
         
         if (!_isLoading)
         {
@@ -286,10 +320,47 @@ public partial class SettingsWindow : Window
         if (SystemSearchDepthValue != null)
             SystemSearchDepthValue.Text = ((int)e.NewValue).ToString();
         
+        if (SystemSearchDepthHint != null)
+            SystemSearchDepthHint.Text = GetSystemSearchDepthHint((int)e.NewValue);
+        
         if (!_isLoading)
         {
             _settings.SystemSearchDepth = (int)e.NewValue;
             AutoSave();
+        }
+    }
+    
+    private void AnimationSpeedSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (AnimationSpeedValue != null)
+            AnimationSpeedValue.Text = $"{(int)e.NewValue} ms";
+        
+        if (!_isLoading)
+        {
+            _settings.AnimationDurationMs = (int)e.NewValue;
+            AutoSave();
+        }
+    }
+    
+    private void AnimationStyleCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_isLoading && AnimationStyleCombo.SelectedItem is ComboBoxItem { Tag: string tag })
+        {
+            if (Enum.TryParse<AnimationStyle>(tag, out var style))
+            {
+                _settings.AnimationStyle = style;
+                AutoSave();
+            }
+        }
+    }
+    
+    private void UpdateAnimationSpeedPanelVisibility()
+    {
+        if (AnimationSpeedPanel != null)
+        {
+            var enabled = EnableAnimationsCheck.IsChecked == true;
+            AnimationSpeedPanel.IsEnabled = enabled;
+            AnimationSpeedPanel.Opacity = enabled ? 1.0 : 0.4;
         }
     }
     
@@ -394,11 +465,8 @@ public partial class SettingsWindow : Window
             _settings.Theme = theme;
             AutoThemePanel.Visibility = theme == "Auto" ? Visibility.Visible : Visibility.Collapsed;
             
-            // Si mode Auto, appliquer le thème selon l'heure actuelle
-            if (theme == "Auto")
-            {
-                ApplyAutoTheme();
-            }
+            // Appliquer le thème immédiatement (gère Dark, Light, Auto, System)
+            ThemeService.ApplyTheme(theme);
             
             AutoSave();
         }
@@ -425,13 +493,7 @@ public partial class SettingsWindow : Window
     
     private void ApplyAutoTheme()
     {
-        var now = DateTime.Now.TimeOfDay;
-        var lightStart = TimeSpan.Parse(_settings.LightThemeStartTime ?? "07:00");
-        var darkStart = TimeSpan.Parse(_settings.DarkThemeStartTime ?? "19:00");
-        
-        string effectiveTheme = (now >= lightStart && now < darkStart) ? "Light" : "Dark";
-        // Appliquer le thème effectif via l'événement ou méthode appropriée
-        // TODO: Connecter à ThemeService si disponible
+        ThemeService.ApplyTheme("Auto");
     }
     
     private void AccentColorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -612,8 +674,10 @@ public partial class SettingsWindow : Window
         _settings.EnableSearchHistory = EnableSearchHistoryCheck.IsChecked == true;
         _settings.IndexHiddenFolders = IndexHiddenFoldersCheck.IsChecked == true;
         _settings.ShowCategoryBadges = ShowCategoryBadgesCheck.IsChecked == true;
+        _settings.EnableAnimations = EnableAnimationsCheck.IsChecked == true;
         _settings.ScoringWeights.EnableRecencyBonus = EnableRecencyBonusCheck.IsChecked == true;
         
+        UpdateAnimationSpeedPanelVisibility();
         UpdateStartupRegistry();
         AutoSave();
     }

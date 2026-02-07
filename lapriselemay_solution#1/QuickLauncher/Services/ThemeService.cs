@@ -53,17 +53,17 @@ public static class ThemeService
     private static AppSettings GetSettings() => _settingsProvider?.Current ?? AppSettings.Load();
     
     /// <summary>
-    /// Applique le thème en fonction des paramètres (ThemeMode).
+    /// Applique le thème en fonction des paramètres.
+    /// Utilise settings.Theme (string) qui est la propriété écrite par la fenêtre de paramètres.
     /// </summary>
     public static void ApplyThemeFromSettings(AppSettings? settings = null)
     {
         settings ??= GetSettings();
         
-        var actualTheme = settings.ThemeMode switch
+        var actualTheme = settings.Theme switch
         {
-            ThemeMode.Light => "Light",
-            ThemeMode.Dark => "Dark",
-            ThemeMode.Auto => GetAutoTheme(settings),
+            "Light" => "Light",
+            "Auto" => GetAutoTheme(settings),
             _ => "Dark"
         };
         
@@ -72,13 +72,22 @@ public static class ThemeService
     
     /// <summary>
     /// Détermine le thème selon l'heure actuelle.
+    /// Lit LightThemeStartTime/DarkThemeStartTime qui sont les propriétés écrites par la fenêtre de paramètres.
     /// </summary>
     private static string GetAutoTheme(AppSettings settings)
     {
         var now = DateTime.Now.TimeOfDay;
         
-        if (TimeSpan.TryParse(settings.AutoThemeLightStart, out var lightStart) &&
-            TimeSpan.TryParse(settings.AutoThemeDarkStart, out var darkStart))
+        // Lire les propriétés correctes (celles écrites par SettingsWindow)
+        var lightStartStr = !string.IsNullOrEmpty(settings.LightThemeStartTime) 
+            ? settings.LightThemeStartTime 
+            : settings.AutoThemeLightStart;
+        var darkStartStr = !string.IsNullOrEmpty(settings.DarkThemeStartTime) 
+            ? settings.DarkThemeStartTime 
+            : settings.AutoThemeDarkStart;
+        
+        if (TimeSpan.TryParse(lightStartStr, out var lightStart) &&
+            TimeSpan.TryParse(darkStartStr, out var darkStart))
         {
             // Cas normal: lightStart < darkStart (ex: 07:00 - 19:00)
             if (lightStart < darkStart)
@@ -109,7 +118,7 @@ public static class ThemeService
         _autoThemeTimer.Tick += (_, _) =>
         {
             var settings = GetSettings();
-            if (settings.ThemeMode == ThemeMode.Auto)
+            if (settings.Theme.Equals("Auto", StringComparison.OrdinalIgnoreCase))
             {
                 var expectedTheme = GetAutoTheme(settings);
                 if (expectedTheme != _currentTheme)
@@ -122,9 +131,9 @@ public static class ThemeService
     }
     
     /// <summary>
-    /// Applique un thème spécifique (méthode legacy pour compatibilité).
+    /// Applique un thème spécifique.
     /// </summary>
-    /// <param name="theme">Nom du thème: "Dark", "Light", ou "System"</param>
+    /// <param name="theme">Nom du thème: "Dark", "Light", "System" ou "Auto"</param>
     public static void ApplyTheme(string theme)
     {
         var actualTheme = theme;
@@ -133,6 +142,12 @@ public static class ThemeService
         if (theme.Equals("System", StringComparison.OrdinalIgnoreCase))
         {
             actualTheme = IsWindowsInLightMode() ? "Light" : "Dark";
+        }
+        // Si thème "Auto", déterminer selon l'heure
+        else if (theme.Equals("Auto", StringComparison.OrdinalIgnoreCase))
+        {
+            var settings = GetSettings();
+            actualTheme = GetAutoTheme(settings);
         }
         
         ApplyThemeInternal(actualTheme);
@@ -295,7 +310,7 @@ public static class ThemeService
         {
             ThemeMode.Dark => "🌙 Sombre",
             ThemeMode.Light => "☀️ Clair",
-            ThemeMode.Auto => $"🌓 Auto ({settings.AutoThemeLightStart} - {settings.AutoThemeDarkStart})",
+            ThemeMode.Auto => $"🌓 Auto ({settings.LightThemeStartTime} - {settings.DarkThemeStartTime})",
             _ => "🌙 Sombre"
         };
     }

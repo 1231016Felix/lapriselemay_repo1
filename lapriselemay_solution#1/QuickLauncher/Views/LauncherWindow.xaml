@@ -17,7 +17,10 @@
         ResizeMode="NoResize"
         Deactivated="Window_Deactivated"
         PreviewKeyDown="Window_PreviewKeyDown"
-        Loaded="Window_Loaded">
+        Loaded="Window_Loaded"
+        UseLayoutRounding="True"
+        SnapsToDevicePixels="True"
+        TextOptions.TextFormattingMode="Display">
     
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
@@ -28,6 +31,8 @@
         <converters:PreviewTypeToVisibilityConverter x:Key="PreviewTypeToVis"/>
         <converters:ResultTypeToBadgeTextConverter x:Key="TypeToBadgeText"/>
         <converters:ResultTypeToBadgeColorConverter x:Key="TypeToBadgeColor"/>
+        <converters:AlternationToShortcutConverter x:Key="AltShortcut"/>
+        <converters:AlternationToShortcutVisibilityConverter x:Key="AltShortcutVis"/>
         
         <!-- Style bouton clear discret -->
         <Style x:Key="ClearButtonStyle" TargetType="Button">
@@ -166,18 +171,39 @@
                      Opened="ResultContextMenu_Opened"/>
     </Window.Resources>
     
-    <Border x:Name="MainBorder"
-            Background="{DynamicResource BackgroundBrush}" 
-            CornerRadius="12" 
-            BorderBrush="{DynamicResource BorderBrush}" 
-            BorderThickness="1"
-            Margin="20">
-        <Border.Effect>
-            <DropShadowEffect BlurRadius="20" 
-                              ShadowDepth="0" 
-                              Opacity="0.6" 
-                              Color="Black"/>
-        </Border.Effect>
+    <Grid Margin="20">
+        <!-- Couche d'ombre séparée: rasterisée à demi-résolution via BitmapCache
+             (l'ombre n'a pas besoin d'être nette → RenderAtScale=0.5 divise le coût par 4) -->
+        <Border x:Name="ShadowBorder"
+                CornerRadius="12"
+                Background="{DynamicResource BackgroundBrush}"
+                Opacity="0"
+                IsHitTestVisible="False">
+            <Border.CacheMode>
+                <BitmapCache EnableClearType="False" RenderAtScale="0.5"/>
+            </Border.CacheMode>
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="12" 
+                                  ShadowDepth="0" 
+                                  Opacity="0.5" 
+                                  Color="Black"/>
+            </Border.Effect>
+        </Border>
+        
+        <!-- Contenu principal: PAS d'Effect → animations GPU-friendly -->
+        <Border x:Name="MainBorder"
+                Background="{DynamicResource BackgroundBrush}" 
+                CornerRadius="12" 
+                BorderBrush="{DynamicResource BorderBrush}" 
+                BorderThickness="1"
+                Opacity="0"
+                RenderTransformOrigin="0.5,0">
+            <Border.RenderTransform>
+                <TransformGroup>
+                    <ScaleTransform x:Name="MainBorderScale" ScaleX="1" ScaleY="1"/>
+                    <TranslateTransform x:Name="MainBorderTranslate" Y="-6"/>
+                </TransformGroup>
+            </Border.RenderTransform>
         
         <Grid>
             <Grid.RowDefinitions>
@@ -250,13 +276,20 @@
                 <ListBox x:Name="ResultsList"
                          ItemsSource="{Binding Results}"
                          SelectedIndex="{Binding SelectedIndex, Mode=TwoWay}"
+                         AlternationCount="15"
                          Background="Transparent"
                          BorderThickness="0"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          VirtualizingPanel.IsVirtualizing="True"
+                         VirtualizingPanel.VirtualizationMode="Recycling"
+                         VirtualizingPanel.ScrollUnit="Pixel"
+                         VirtualizingPanel.CacheLength="2,2"
+                         VirtualizingPanel.CacheLengthUnit="Page"
+                         ScrollViewer.CanContentScroll="True"
                          MouseDoubleClick="ResultsList_MouseDoubleClick"
                          PreviewMouseLeftButtonUp="ResultsList_PreviewMouseLeftButtonUp"
-                         Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}}">
+                         Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}}"
+                         ScrollViewer.IsDeferredScrollingEnabled="False">
                     
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
@@ -265,6 +298,17 @@
                             <Setter Property="Background" Value="Transparent"/>
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter Property="ContextMenu" Value="{StaticResource ResultContextMenu}"/>
+                            <Setter Property="Opacity" Value="0"/>
+                            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+                            <Setter Property="RenderTransform">
+                                <Setter.Value>
+                                    <TransformGroup>
+                                        <ScaleTransform ScaleX="1" ScaleY="1"/>
+                                        <TranslateTransform Y="0"/>
+                                    </TransformGroup>
+                                </Setter.Value>
+                            </Setter>
+                            <EventSetter Event="Loaded" Handler="ResultItem_Loaded"/>
                             <Setter Property="Template">
                                 <Setter.Value>
                                     <ControlTemplate TargetType="ListBoxItem">
@@ -296,6 +340,7 @@
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 
                                 <!-- Icône native (si disponible) -->
@@ -305,7 +350,8 @@
                                        Height="32"
                                        VerticalAlignment="Center"
                                        Margin="0,0,12,0"
-                                       RenderOptions.BitmapScalingMode="HighQuality">
+                                       RenderOptions.BitmapScalingMode="Fant"
+                                       RenderOptions.CachingHint="Cache">
                                     <Image.Style>
                                         <Style TargetType="Image">
                                             <Setter Property="Visibility" Value="{Binding NativeIcon, Converter={StaticResource IconToVis}, ConverterParameter=Native}"/>
@@ -408,6 +454,37 @@
                                                Foreground="{DynamicResource TextTertiaryBrush}"
                                                VerticalAlignment="Center"/>
                                 </StackPanel>
+                                
+                                <!-- Raccourci Alt+N -->
+                                <Border Grid.Column="4"
+                                        Background="{DynamicResource HoverBrush}"
+                                        CornerRadius="3"
+                                        Padding="5,2"
+                                        Margin="6,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Visibility="{Binding (ItemsControl.AlternationIndex),
+                                            RelativeSource={RelativeSource AncestorType=ListBoxItem},
+                                            Converter={StaticResource AltShortcutVis}}">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsInfoBlock}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding DataContext.ShowShortcutHints, RelativeSource={RelativeSource AncestorType=Window}}" Value="False">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock Text="{Binding (ItemsControl.AlternationIndex),
+                                                   RelativeSource={RelativeSource AncestorType=ListBoxItem},
+                                                   Converter={StaticResource AltShortcut}}"
+                                               FontSize="9"
+                                               FontFamily="Consolas"
+                                               Foreground="{DynamicResource TextTertiaryBrush}"
+                                               Opacity="0.7"/>
+                                </Border>
                             </Grid>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
@@ -424,7 +501,7 @@
                            Visibility="{Binding HasResults, Converter={StaticResource InverseBoolToVis}}"/>
             </Grid>
             
-            <!-- Barre de statut -->
+            <!-- Barre de statut (pas de cache, rarement animée) -->
             <Border Grid.Row="2"
                     Background="{DynamicResource SurfaceAltBrush}"
                     CornerRadius="0,0,12,12"
@@ -464,5 +541,6 @@
                 </Grid>
             </Border>
         </Grid>
-    </Border>
+        </Border>
+    </Grid>
 </Window>
