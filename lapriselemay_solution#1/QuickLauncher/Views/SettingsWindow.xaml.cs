@@ -157,6 +157,12 @@ public partial class SettingsWindow : Window
         WeatherCityBox.Text = _settings.WeatherCity;
         SelectComboByTag(WeatherUnitCombo, _settings.WeatherUnit);
         
+        // Assistant IA
+        AiApiUrlBox.Text = _settings.AiApiUrl;
+        AiApiKeyBox.Password = _settings.AiApiKey;
+        AiModelBox.Text = _settings.AiModel;
+        AiSystemPromptBox.Text = _settings.AiSystemPrompt;
+        
         // À propos
         DataPathText.Text = AppSettings.GetSettingsPath();
     }

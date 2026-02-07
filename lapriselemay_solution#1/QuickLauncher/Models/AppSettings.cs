@@ -149,6 +149,13 @@ public sealed class AppSettings
     public string WeatherUnit { get; set; } = "celsius";  // "celsius" ou "fahrenheit"
     public string TranslateTargetLang { get; set; } = "en";
     public string TranslateSourceLang { get; set; } = "auto";
+    
+    // === Intégration IA ===
+    public string AiProvider { get; set; } = "ollama";  // "ollama" ou "openai"
+    public string AiApiUrl { get; set; } = "http://localhost:11434/v1/chat/completions";  // Ollama par défaut
+    public string AiApiKey { get; set; } = string.Empty;  // Vide pour Ollama, requis pour OpenAI
+    public string AiModel { get; set; } = "llama3.2";  // Modèle par défaut
+    public string AiSystemPrompt { get; set; } = "Tu es un assistant concis intégré dans un lanceur d'applications. Réponds de manière courte et directe (2-3 phrases max). Pas de markdown. Langue: français.";
 
     private static List<string> GetDefaultIndexedFolders() =>
     [
@@ -187,6 +194,8 @@ public sealed class AppSettings
                 Description = "Afficher la météo actuelle (ex: :weather ou :weather Paris)", ArgumentHint = "[ville]" },
         new() { Type = SystemControlType.Translate, Name = "Traduction", Prefix = "translate", Icon = "🌐", Category = "Intégrations web",
                 Description = "Traduire du texte (ex: :translate hello ou :translate fr bonjour)", RequiresArgument = true, ArgumentHint = "[lang] <texte>" },
+        new() { Type = SystemControlType.AiChat, Name = "Assistant IA", Prefix = "ai", Icon = "🤖", Category = "Intégrations web",
+                Description = "Poser une question à l'IA (ex: :ai qu'est-ce qu'une API REST?)", RequiresArgument = true, ArgumentHint = "<question>" },
 
         // ═══════════════════════════════════════════════════════════════
         // 🔊 MULTIMÉDIA
@@ -524,7 +533,8 @@ public enum SystemControlType
     
     // Intégrations web (APIs directes)
     Weather = 27,
-    Translate = 28
+    Translate = 28,
+    AiChat = 29
 }
 
 /// <summary>
@@ -626,6 +636,15 @@ public sealed class ScoringWeights
     /// </summary>
     public int WordBoundaryBonus { get; set; } = 20;
     
+    // === Fuzzy Per-Word (tolérance aux typos mot par mot) ===
+    
+    /// <summary>
+    /// Multiplicateur pour le scoring fuzzy per-word.
+    /// Le score final est: similaritéMoyenne * FuzzyPerWordMultiplier.
+    /// Ex: "firfox" vs "Firefox" → similarité 0.86 × 500 = 430
+    /// </summary>
+    public int FuzzyPerWordMultiplier { get; set; } = 500;
+    
     // === Recency Decay (bonus pour les items récemment utilisés) ===
     
     /// <summary>
@@ -679,6 +698,7 @@ public sealed class ScoringWeights
         FuzzyMatchThreshold = 0.6;
         ConsecutiveMatchBonus = 10;
         WordBoundaryBonus = 20;
+        FuzzyPerWordMultiplier = 500;
         EnableRecencyBonus = true;
         MaxRecencyBonus = 150;
         RecencyDecayPerDay = 5;
@@ -704,6 +724,7 @@ public sealed class ScoringWeights
         FuzzyMatchThreshold = FuzzyMatchThreshold,
         ConsecutiveMatchBonus = ConsecutiveMatchBonus,
         WordBoundaryBonus = WordBoundaryBonus,
+        FuzzyPerWordMultiplier = FuzzyPerWordMultiplier,
         EnableRecencyBonus = EnableRecencyBonus,
         MaxRecencyBonus = MaxRecencyBonus,
         RecencyDecayPerDay = RecencyDecayPerDay,

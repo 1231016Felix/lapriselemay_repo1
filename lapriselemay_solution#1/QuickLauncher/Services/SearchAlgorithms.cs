@@ -6,123 +6,128 @@ namespace QuickLauncher.Services;
 
 /// <summary>
 /// Algorithmes de recherche avancée pour QuickLauncher.
-/// Implémente la distance de Levenshtein, le fuzzy matching amélioré,
-/// et le scoring basé sur la fréquence d'utilisation.
+/// Implémente Damerau-Levenshtein (typos + transpositions), fuzzy matching per-word style fzf,
+/// et scoring basé sur la fréquence d'utilisation.
 /// 
-/// Optimisations v2:
-/// - Cache LRU au lieu de ConcurrentDictionary+Clear() brutal
-/// - Levenshtein avec ArrayPool (zéro allocation sur le heap pour les petites chaînes)
+/// Optimisations:
+/// - Cache LRU pour les calculs de distance
+/// - ArrayPool (zéro allocation heap pour les petites chaînes)
 /// - ReadOnlySpan&lt;char&gt; pour éviter les allocations de sous-chaînes
+/// - Fuzzy per-word: chaque mot de la requête est matché contre chaque mot cible
 /// </summary>
 public static class SearchAlgorithms
 {
     /// <summary>
-    /// Cache LRU thread-safe pour les calculs de distance de Levenshtein.
-    /// Évince progressivement les entrées les moins utilisées au lieu de tout supprimer d'un coup.
+    /// Cache LRU thread-safe pour les calculs de distance.
     /// </summary>
-    private static readonly LruCache<(string, string), int> _levenshteinCache = new(10_000);
+    private static readonly LruCache<(string, string), int> _distanceCache = new(10_000);
 
-    #region Levenshtein Distance
+    #region Damerau-Levenshtein Distance
 
     /// <summary>
-    /// Calcule la distance de Levenshtein entre deux chaînes.
-    /// Utilise un cache LRU pour les résultats fréquents.
+    /// Calcule la distance de Damerau-Levenshtein entre deux chaînes.
+    /// Contrairement au Levenshtein classique, gère les transpositions de caractères adjacents
+    /// (ex: "firfox" → "firefox" = distance 1 au lieu de 2).
     /// </summary>
-    /// <param name="source">Chaîne source</param>
-    /// <param name="target">Chaîne cible</param>
-    /// <returns>Distance d'édition minimale</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int LevenshteinDistance(string source, string target)
+    public static int DamerauLevenshteinDistance(string source, string target)
     {
         if (string.IsNullOrEmpty(source)) return target?.Length ?? 0;
         if (string.IsNullOrEmpty(target)) return source.Length;
         
-        // Normaliser pour le cache
         var s = source.ToLowerInvariant();
         var t = target.ToLowerInvariant();
         
-        // Vérifier le cache LRU
         var key = (s, t);
-        if (_levenshteinCache.TryGet(key, out var cached))
+        if (_distanceCache.TryGet(key, out var cached))
             return cached;
 
-        var result = ComputeLevenshteinDistance(s.AsSpan(), t.AsSpan());
-        _levenshteinCache.Set(key, result);
+        var result = ComputeDamerauLevenshtein(s.AsSpan(), t.AsSpan());
+        _distanceCache.Set(key, result);
         return result;
     }
 
     /// <summary>
-    /// Implémentation optimisée de Levenshtein avec :
-    /// - Span&lt;char&gt; pour éviter les copies
-    /// - ArrayPool pour les tableaux temporaires (zéro allocation GC pour chaînes courtes)
+    /// Implémentation optimisée de Damerau-Levenshtein (Optimal String Alignment) avec :
+    /// - ArrayPool pour zéro allocation GC
     /// - Optimisations préfixe/suffixe commun
+    /// - Gestion des transpositions de caractères adjacents
     /// </summary>
-    internal static int ComputeLevenshteinDistance(ReadOnlySpan<char> source, ReadOnlySpan<char> target)
+    internal static int ComputeDamerauLevenshtein(ReadOnlySpan<char> source, ReadOnlySpan<char> target)
     {
-        var sourceLength = source.Length;
-        var targetLength = target.Length;
-
-        if (sourceLength == 0) return targetLength;
-        if (targetLength == 0) return sourceLength;
-        if (source.SequenceEqual(target)) return 0;
-
-        // Optimisation: préfixe commun
-        var prefixLength = 0;
-        var minLen = Math.Min(sourceLength, targetLength);
-        while (prefixLength < minLen && source[prefixLength] == target[prefixLength])
-            prefixLength++;
-
-        // Optimisation: suffixe commun
-        var suffixLength = 0;
-        while (suffixLength < sourceLength - prefixLength && 
-               suffixLength < targetLength - prefixLength &&
-               source[sourceLength - 1 - suffixLength] == target[targetLength - 1 - suffixLength])
-            suffixLength++;
-
-        // Ajuster en découpant la zone utile
-        var srcSlice = source.Slice(prefixLength, sourceLength - prefixLength - suffixLength);
-        var tgtSlice = target.Slice(prefixLength, targetLength - prefixLength - suffixLength);
-        
-        var sLen = srcSlice.Length;
-        var tLen = tgtSlice.Length;
+        var sLen = source.Length;
+        var tLen = target.Length;
 
         if (sLen == 0) return tLen;
         if (tLen == 0) return sLen;
+        if (source.SequenceEqual(target)) return 0;
 
-        // Utiliser ArrayPool pour éviter les allocations GC sur le heap
-        // 2 lignes de (tLen + 1) entiers chacune
-        var poolSize = (tLen + 1) * 2;
+        // Optimisation: préfixe commun
+        var prefixLen = 0;
+        var minLen = Math.Min(sLen, tLen);
+        while (prefixLen < minLen && source[prefixLen] == target[prefixLen])
+            prefixLen++;
+
+        // Optimisation: suffixe commun
+        var suffixLen = 0;
+        while (suffixLen < sLen - prefixLen && 
+               suffixLen < tLen - prefixLen &&
+               source[sLen - 1 - suffixLen] == target[tLen - 1 - suffixLen])
+            suffixLen++;
+
+        var src = source.Slice(prefixLen, sLen - prefixLen - suffixLen);
+        var tgt = target.Slice(prefixLen, tLen - prefixLen - suffixLen);
+        
+        var n = src.Length;
+        var m = tgt.Length;
+
+        if (n == 0) return m;
+        if (m == 0) return n;
+
+        // Damerau-Levenshtein nécessite 3 lignes (previous, current, et pre-previous pour transpositions)
+        var poolSize = (m + 1) * 3;
         var pool = ArrayPool<int>.Shared.Rent(poolSize);
         
         try
         {
-            var previousRow = pool.AsSpan(0, tLen + 1);
-            var currentRow = pool.AsSpan(tLen + 1, tLen + 1);
+            var prevPrevRow = pool.AsSpan(0, m + 1);
+            var prevRow = pool.AsSpan(m + 1, m + 1);
+            var currRow = pool.AsSpan((m + 1) * 2, m + 1);
 
-            for (var j = 0; j <= tLen; j++)
-                previousRow[j] = j;
+            for (var j = 0; j <= m; j++)
+                prevRow[j] = j;
 
-            for (var i = 1; i <= sLen; i++)
+            for (var i = 1; i <= n; i++)
             {
-                currentRow[0] = i;
-                var sourceChar = srcSlice[i - 1];
+                currRow[0] = i;
+                var srcChar = src[i - 1];
 
-                for (var j = 1; j <= tLen; j++)
+                for (var j = 1; j <= m; j++)
                 {
-                    var cost = sourceChar == tgtSlice[j - 1] ? 0 : 1;
+                    var cost = srcChar == tgt[j - 1] ? 0 : 1;
 
-                    currentRow[j] = Math.Min(
-                        Math.Min(currentRow[j - 1] + 1, previousRow[j] + 1),
-                        previousRow[j - 1] + cost);
+                    // Insertion, Suppression, Substitution
+                    currRow[j] = Math.Min(
+                        Math.Min(currRow[j - 1] + 1, prevRow[j] + 1),
+                        prevRow[j - 1] + cost);
+
+                    // Transposition (si les 2 derniers chars sont échangés)
+                    if (i > 1 && j > 1 &&
+                        src[i - 1] == tgt[j - 2] &&
+                        src[i - 2] == tgt[j - 1])
+                    {
+                        currRow[j] = Math.Min(currRow[j], prevPrevRow[j - 2] + cost);
+                    }
                 }
 
-                // Swap les lignes (copie de référence via Span)
-                var temp = previousRow;
-                previousRow = currentRow;
-                currentRow = temp;
+                // Rotation des lignes
+                var temp = prevPrevRow;
+                prevPrevRow = prevRow;
+                prevRow = currRow;
+                currRow = temp;
             }
 
-            return previousRow[tLen];
+            return prevRow[m];
         }
         finally
         {
@@ -131,14 +136,21 @@ public static class SearchAlgorithms
     }
 
     /// <summary>
-    /// Calcule la similarité entre deux chaînes (0.0 à 1.0)
+    /// Wrapper de compatibilité — appelle Damerau-Levenshtein.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int LevenshteinDistance(string source, string target)
+        => DamerauLevenshteinDistance(source, target);
+
+    /// <summary>
+    /// Calcule la similarité entre deux chaînes (0.0 à 1.0) via Damerau-Levenshtein.
     /// </summary>
     public static double LevenshteinSimilarity(string source, string target)
     {
         if (string.IsNullOrEmpty(source) && string.IsNullOrEmpty(target)) return 1.0;
         if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(target)) return 0.0;
 
-        var distance = LevenshteinDistance(source, target);
+        var distance = DamerauLevenshteinDistance(source, target);
         var maxLength = Math.Max(source.Length, target.Length);
         
         return 1.0 - (double)distance / maxLength;
@@ -148,14 +160,15 @@ public static class SearchAlgorithms
 
     #region Fuzzy Matching Amélioré
     
-    /// <summary>
-    /// Instance des poids par défaut utilisée lorsqu'aucun poids n'est fourni.
-    /// </summary>
     private static readonly ScoringWeights DefaultWeights = new();
+
+    /// <summary>
+    /// Séparateurs utilisés pour découper les noms en mots.
+    /// </summary>
+    private static readonly char[] WordSeparators = [' ', '-', '_', '.', '+', '(', ')'];
     
     /// <summary>
     /// Dictionnaire d'abréviations communes pour améliorer la recherche.
-    /// Permet de trouver "Visual Studio" en tapant "vs", etc.
     /// </summary>
     private static readonly Dictionary<string, string[]> CommonAbbreviations = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -170,8 +183,6 @@ public static class SearchAlgorithms
         ["sublime"] = ["sublime text"],
         ["st"] = ["sublime text"],
         ["idea"] = ["intellij"],
-        ["pycharm"] = ["pycharm"],
-        ["rider"] = ["rider"],
         ["ws"] = ["webstorm"],
         
         // Navigateurs
@@ -234,23 +245,20 @@ public static class SearchAlgorithms
 
     /// <summary>
     /// Effectue un fuzzy match amélioré avec scoring détaillé.
-    /// Utilise les poids par défaut.
     /// </summary>
     public static int CalculateFuzzyScore(string query, string target, int useCount = 0)
-    {
-        return CalculateFuzzyScore(query, target, useCount, null, DefaultWeights);
-    }
+        => CalculateFuzzyScore(query, target, useCount, null, DefaultWeights);
     
     /// <summary>
     /// Effectue un fuzzy match amélioré avec scoring détaillé et poids configurables.
     /// </summary>
     public static int CalculateFuzzyScore(string query, string target, int useCount, ScoringWeights weights)
-    {
-        return CalculateFuzzyScore(query, target, useCount, null, weights);
-    }
+        => CalculateFuzzyScore(query, target, useCount, null, weights);
     
     /// <summary>
-    /// Effectue un fuzzy match amélioré avec scoring détaillé, poids configurables et recency decay.
+    /// Pipeline de scoring principal.
+    /// Ordre: Exact → StartsWith → Contains → Initiales → Sous-séquence → Fuzzy per-word → Fuzzy global
+    /// Le fuzzy per-word est le cœur de la tolérance aux typos.
     /// </summary>
     public static int CalculateFuzzyScore(string query, string target, int useCount, DateTime? lastUsed, ScoringWeights weights)
     {
@@ -264,7 +272,7 @@ public static class SearchAlgorithms
 
         int score = 0;
         
-        // 0. Vérifier les abréviations communes (priorité haute)
+        // 0. Abréviations communes (priorité haute)
         if (CommonAbbreviations.TryGetValue(queryLower, out var possibleTargets))
         {
             foreach (var possibleTarget in possibleTargets)
@@ -277,21 +285,10 @@ public static class SearchAlgorithms
             }
         }
         
-        // Si correspondance d'abréviation trouvée, ajouter les bonus et retourner
         if (score > 0)
-        {
-            if (useCount > 0)
-                score += Math.Min(useCount * weights.UsageBonusPerUse, weights.MaxUsageBonus);
-            
-            if (weights.EnableRecencyBonus && lastUsed.HasValue && lastUsed.Value > DateTime.MinValue)
-            {
-                var daysSinceLastUse = (DateTime.UtcNow - lastUsed.Value).TotalDays;
-                score += Math.Max(0, weights.MaxRecencyBonus - (int)(daysSinceLastUse * weights.RecencyDecayPerDay));
-            }
-            return score;
-        }
+            return ApplyBonuses(score, useCount, lastUsed, weights);
 
-        // 1. Correspondance exacte (score maximum)
+        // 1. Correspondance exacte
         if (targetLower == queryLower)
         {
             score = weights.ExactMatch;
@@ -307,78 +304,226 @@ public static class SearchAlgorithms
             var index = targetLower.IndexOf(queryLower);
             score = weights.Contains - (index * 5);
         }
-        // 4. Match par initiales (ex: "vs" -> "Visual Studio")
+        // 4. Match par initiales (ex: "vs" → "Visual Studio")
         else if (MatchesInitials(queryLower, targetLower))
         {
             score = weights.InitialsMatch;
         }
-        // 5. Match par sous-séquence (tous les caractères présents dans l'ordre)
-        else if (IsSubsequenceMatch(queryLower, targetLower, weights, out var matchScore))
+        // 5. Match par sous-séquence (tous les caractères dans l'ordre)
+        else if (IsSubsequenceMatch(queryLower, targetLower, weights, out var subScore))
         {
-            score = weights.SubsequenceMatch + matchScore;
+            score = weights.SubsequenceMatch + subScore;
         }
-        // 6. Similarité de Levenshtein (pour les fautes de frappe)
-        else
+        
+        // 6. Fuzzy per-word: chaque mot de la requête est matché fuzzy contre les mots cibles.
+        //    S'exécute en complément (peut améliorer un score existant) ou en fallback.
+        var fuzzyPerWordScore = CalculateFuzzyPerWordScore(queryLower, targetLower, weights);
+        if (fuzzyPerWordScore > score)
+            score = fuzzyPerWordScore;
+        
+        // 7. Fuzzy global sur le nom complet (fallback ultime pour les requêtes à un seul mot)
+        if (score == 0)
         {
-            var similarity = LevenshteinSimilarity(queryLower, targetLower);
-            if (similarity >= weights.FuzzyMatchThreshold)
+            score = CalculateFuzzyGlobalScore(queryLower, targetLower, weights);
+        }
+
+        if (score <= 0)
+            return 0;
+
+        // 8. Bonus pour les mots qui matchent exactement
+        var queryWords = queryLower.Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries);
+        var targetWords = targetLower.Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries);
+        
+        foreach (var qWord in queryWords)
+        {
+            if (targetWords.Any(tw => tw == qWord))
+                score += weights.ExactWordBonus;
+        }
+
+        return ApplyBonuses(score, useCount, lastUsed, weights);
+    }
+
+    /// <summary>
+    /// Fuzzy matching per-word : découpe la requête et la cible en mots,
+    /// puis trouve le meilleur appariement fuzzy entre chaque mot de la requête et les mots cibles.
+    /// 
+    /// Ex: "firfox" → ["firfox"] vs "Mozilla Firefox" → ["mozilla", "firefox"]
+    ///     "firfox" ≈ "firefox" (DL distance = 1, similarité 0.86) → score élevé
+    /// 
+    /// Ex multi-mots: "visul studo" → ["visul", "studo"] vs "Visual Studio" → ["visual", "studio"]
+    ///     "visul" ≈ "visual" (distance 1), "studo" ≈ "studio" (distance 1) → très bon score
+    /// </summary>
+    private static int CalculateFuzzyPerWordScore(string queryLower, string targetLower, ScoringWeights weights)
+    {
+        var queryWords = queryLower.Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries);
+        var targetWords = targetLower.Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries);
+        
+        if (queryWords.Length == 0 || targetWords.Length == 0)
+            return 0;
+        
+        // Pour chaque mot de la requête, trouver le meilleur match parmi les mots cibles
+        double totalSimilarity = 0;
+        var matchedCount = 0;
+        var usedTargetIndices = new HashSet<int>();
+        
+        foreach (var qWord in queryWords)
+        {
+            // Requête trop courte pour un fuzzy fiable — exiger un match exact/prefix
+            if (qWord.Length < 2)
+                continue;
+            
+            var bestSimilarity = 0.0;
+            var bestTargetIndex = -1;
+            
+            for (var i = 0; i < targetWords.Length; i++)
             {
-                score = (int)(similarity * weights.FuzzyMatchMultiplier);
-            }
-            else if (queryLower.Length >= 3)
-            {
-                // Essayer avec des parties du mot
-                var words = targetLower.Split([' ', '-', '_', '.'], StringSplitOptions.RemoveEmptyEntries);
-                foreach (var word in words)
+                if (usedTargetIndices.Contains(i))
+                    continue;
+                
+                var tWord = targetWords[i];
+                
+                // Match exact du mot
+                if (qWord == tWord)
                 {
-                    var wordSimilarity = LevenshteinSimilarity(queryLower, word);
-                    if (wordSimilarity >= weights.FuzzyMatchThreshold + 0.1)
+                    bestSimilarity = 1.0;
+                    bestTargetIndex = i;
+                    break;
+                }
+                
+                // Le mot cible commence par le mot requête
+                if (tWord.StartsWith(qWord))
+                {
+                    var sim = 0.95;
+                    if (sim > bestSimilarity)
                     {
-                        score = Math.Max(score, (int)(wordSimilarity * weights.FuzzyMatchMultiplier * 0.8));
+                        bestSimilarity = sim;
+                        bestTargetIndex = i;
+                    }
+                    continue;
+                }
+                
+                // Le mot requête commence par le mot cible (requête plus longue que la cible)
+                if (qWord.StartsWith(tWord))
+                {
+                    var sim = 0.85;
+                    if (sim > bestSimilarity)
+                    {
+                        bestSimilarity = sim;
+                        bestTargetIndex = i;
+                    }
+                    continue;
+                }
+                
+                // Fuzzy via Damerau-Levenshtein
+                // Seuil adaptatif: mots courts → tolérer 1 erreur, mots longs → proportionnel
+                var maxDistance = qWord.Length <= 4 ? 1 : (int)Math.Ceiling(qWord.Length * 0.35);
+                var distance = DamerauLevenshteinDistance(qWord, tWord);
+                
+                if (distance <= maxDistance)
+                {
+                    var sim = 1.0 - (double)distance / Math.Max(qWord.Length, tWord.Length);
+                    if (sim > bestSimilarity)
+                    {
+                        bestSimilarity = sim;
+                        bestTargetIndex = i;
                     }
                 }
             }
-        }
-
-        // 7. Bonus basé sur la fréquence d'utilisation
-        if (score > 0 && useCount > 0)
-        {
-            score += Math.Min(useCount * weights.UsageBonusPerUse, weights.MaxUsageBonus);
-        }
-        
-        // 8. Bonus de recency (items récemment utilisés remontent)
-        if (score > 0 && weights.EnableRecencyBonus && lastUsed.HasValue && lastUsed.Value > DateTime.MinValue)
-        {
-            var daysSinceLastUse = (DateTime.UtcNow - lastUsed.Value).TotalDays;
-            var recencyBonus = Math.Max(0, weights.MaxRecencyBonus - (int)(daysSinceLastUse * weights.RecencyDecayPerDay));
-            score += recencyBonus;
-        }
-
-        // 9. Bonus pour les mots qui matchent exactement
-        if (score > 0)
-        {
-            var queryWords = queryLower.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            var targetWords = targetLower.Split([' ', '-', '_', '.'], StringSplitOptions.RemoveEmptyEntries);
             
-            foreach (var qWord in queryWords)
+            if (bestTargetIndex >= 0)
             {
-                if (targetWords.Any(tw => tw == qWord))
-                {
-                    score += weights.ExactWordBonus;
-                }
+                matchedCount++;
+                totalSimilarity += bestSimilarity;
+                usedTargetIndices.Add(bestTargetIndex);
             }
         }
+        
+        // Tous les mots significatifs de la requête doivent matcher
+        var significantWords = queryWords.Count(w => w.Length >= 2);
+        if (significantWords == 0 || matchedCount < significantWords)
+            return 0;
+        
+        // Score basé sur la similarité moyenne
+        var avgSimilarity = totalSimilarity / matchedCount;
+        
+        // Barème:
+        // avgSimilarity 1.0 (parfait)  → score ≈ Contains (600) car on a déjà matché exact/startsWith plus haut
+        // avgSimilarity 0.85           → score ≈ 400
+        // avgSimilarity 0.7            → score ≈ 250 (fuzzy)
+        var baseScore = (int)(avgSimilarity * weights.FuzzyPerWordMultiplier);
+        
+        // Bonus si tous les mots de la requête ont matché (pas de résidus)
+        if (matchedCount == queryWords.Length)
+            baseScore += 30;
+        
+        // Bonus quand le nombre de mots requête ≈ nombre de mots cible (match complet)
+        if (queryWords.Length >= targetWords.Length)
+            baseScore += 20;
+        
+        return baseScore;
+    }
+    
+    /// <summary>
+    /// Fuzzy matching global sur le nom complet.
+    /// Fallback pour les cas où le per-word ne fonctionne pas
+    /// (ex: requête sans espace sur un nom sans espace).
+    /// </summary>
+    private static int CalculateFuzzyGlobalScore(string queryLower, string targetLower, ScoringWeights weights)
+    {
+        // Similarité globale sur tout le nom
+        var similarity = LevenshteinSimilarity(queryLower, targetLower);
+        if (similarity >= weights.FuzzyMatchThreshold)
+        {
+            return (int)(similarity * weights.FuzzyMatchMultiplier);
+        }
+        
+        // Essayer contre chaque mot individuel de la cible
+        if (queryLower.Length >= 3)
+        {
+            var targetWords = targetLower.Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries);
+            var bestScore = 0;
+            
+            foreach (var word in targetWords)
+            {
+                var wordSim = LevenshteinSimilarity(queryLower, word);
+                if (wordSim >= weights.FuzzyMatchThreshold)
+                {
+                    var wordScore = (int)(wordSim * weights.FuzzyMatchMultiplier * 0.85);
+                    bestScore = Math.Max(bestScore, wordScore);
+                }
+            }
+            
+            return bestScore;
+        }
+        
+        return 0;
+    }
 
+    /// <summary>
+    /// Applique les bonus d'usage et de recency au score.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int ApplyBonuses(int score, int useCount, DateTime? lastUsed, ScoringWeights weights)
+    {
+        if (useCount > 0)
+            score += Math.Min(useCount * weights.UsageBonusPerUse, weights.MaxUsageBonus);
+        
+        if (weights.EnableRecencyBonus && lastUsed.HasValue && lastUsed.Value > DateTime.MinValue)
+        {
+            var daysSince = (DateTime.UtcNow - lastUsed.Value).TotalDays;
+            score += Math.Max(0, weights.MaxRecencyBonus - (int)(daysSince * weights.RecencyDecayPerDay));
+        }
+        
         return score;
     }
 
     /// <summary>
     /// Vérifie si la requête correspond aux initiales du texte cible.
-    /// Ex: "vs" -> "Visual Studio", "np" -> "Notepad++"
+    /// Ex: "vs" → "Visual Studio", "gc" → "Google Chrome"
     /// </summary>
     internal static bool MatchesInitials(string query, string target)
     {
-        var words = target.Split([' ', '-', '_', '.'], StringSplitOptions.RemoveEmptyEntries);
+        var words = target.Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries);
         if (words.Length < query.Length) return false;
 
         // Initiales strictes
@@ -401,8 +546,8 @@ public static class SearchAlgorithms
     }
 
     /// <summary>
-    /// Vérifie si la requête est une sous-séquence du texte cible avec poids configurables.
-    /// Ex: "vsc" -> "Visual Studio Code"
+    /// Vérifie si la requête est une sous-séquence du texte cible avec scoring.
+    /// Ex: "vsc" → "Visual Studio Code"
     /// </summary>
     internal static bool IsSubsequenceMatch(string query, string target, ScoringWeights weights, out int matchScore)
     {
@@ -428,9 +573,7 @@ public static class SearchAlgorithms
                 }
                 
                 if (i == 0 || !char.IsLetterOrDigit(target[i - 1]))
-                {
                     matchScore += weights.WordBoundaryBonus;
-                }
                 
                 lastMatchIndex = i;
             }
@@ -454,12 +597,7 @@ public static class SearchAlgorithms
     /// <summary>
     /// Calcule un score de fuzzy matching multi-mots sur un chemin complet.
     /// Permet de trouver "proj quick" → C:\Projects\QuickLauncher
-    /// Chaque mot de la requête est matché contre les segments du chemin.
     /// </summary>
-    /// <param name="query">Requête multi-mots (ex: "proj quick")</param>
-    /// <param name="fullPath">Chemin complet (ex: "C:\Projects\QuickLauncher\app.exe")</param>
-    /// <param name="weights">Poids de scoring configurables</param>
-    /// <returns>Score de correspondance (0 = aucun match)</returns>
     public static int CalculatePathFuzzyScore(string query, string fullPath, ScoringWeights? weights = null)
     {
         if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(fullPath))
@@ -473,32 +611,37 @@ public static class SearchAlgorithms
         if (queryWords.Length < 1)
             return 0;
         
-        // Pour les requêtes à un seul mot, le scoring normal sur le nom suffit.
-        // Le path scoring est surtout utile pour les requêtes multi-mots.
+        // Découper le chemin en segments
+        var pathSegments = fullPath.ToLowerInvariant()
+            .Split(['\\', '/', '-', '_', '.', ' '], StringSplitOptions.RemoveEmptyEntries);
+        
         if (queryWords.Length == 1)
         {
-            // Quand même vérifier si le mot unique matche un segment du chemin
-            // (mais pas le nom de fichier, déjà couvert par le scoring principal)
             var pathOnly = System.IO.Path.GetDirectoryName(fullPath) ?? fullPath;
             var segments = pathOnly.ToLowerInvariant()
                 .Split(['\\', '/', '-', '_', '.', ' '], StringSplitOptions.RemoveEmptyEntries);
             
             var word = queryWords[0];
+            var bestScore = 0;
+            
             foreach (var seg in segments)
             {
                 if (seg == word)
-                    return weights.PathExactSegmentMatch;
-                if (seg.StartsWith(word))
-                    return (int)(weights.PathExactSegmentMatch * 0.7);
-                if (seg.Contains(word))
-                    return (int)(weights.PathExactSegmentMatch * 0.4);
+                    bestScore = Math.Max(bestScore, weights.PathExactSegmentMatch);
+                else if (seg.StartsWith(word))
+                    bestScore = Math.Max(bestScore, (int)(weights.PathExactSegmentMatch * 0.7));
+                else if (seg.Contains(word))
+                    bestScore = Math.Max(bestScore, (int)(weights.PathExactSegmentMatch * 0.4));
+                else if (word.Length >= 3)
+                {
+                    var sim = LevenshteinSimilarity(word, seg);
+                    if (sim >= 0.7)
+                        bestScore = Math.Max(bestScore, (int)(weights.PathExactSegmentMatch * sim * 0.4));
+                }
             }
-            return 0;
+            
+            return bestScore;
         }
-        
-        // Découper le chemin complet en segments (dossiers + nom de fichier)
-        var allSegments = fullPath.ToLowerInvariant()
-            .Split(['\\', '/', '-', '_', '.', ' '], StringSplitOptions.RemoveEmptyEntries);
         
         // Chaque mot de la requête doit matcher au moins un segment
         var totalScore = 0;
@@ -508,26 +651,16 @@ public static class SearchAlgorithms
         {
             var bestWordScore = 0;
             
-            foreach (var segment in allSegments)
+            foreach (var segment in pathSegments)
             {
                 int wordScore;
                 
-                // Correspondance exacte du segment
                 if (segment == word)
-                {
                     wordScore = weights.PathExactSegmentMatch;
-                }
-                // Le segment commence par le mot
                 else if (segment.StartsWith(word))
-                {
                     wordScore = (int)(weights.PathExactSegmentMatch * 0.8);
-                }
-                // Le segment contient le mot
                 else if (segment.Contains(word))
-                {
                     wordScore = (int)(weights.PathExactSegmentMatch * 0.5);
-                }
-                // Fuzzy match sur le segment (tolérance aux typos)
                 else if (word.Length >= 3)
                 {
                     var similarity = LevenshteinSimilarity(word, segment);
@@ -537,9 +670,7 @@ public static class SearchAlgorithms
                         continue;
                 }
                 else
-                {
                     continue;
-                }
                 
                 bestWordScore = Math.Max(bestWordScore, wordScore);
             }
@@ -551,14 +682,10 @@ public static class SearchAlgorithms
             }
         }
         
-        // Tous les mots doivent matcher pour que le résultat soit pertinent
         if (matchedWords < queryWords.Length)
             return 0;
         
-        // Bonus quand tous les mots matchent (combinaison complète)
         totalScore += weights.PathAllWordsMatchBonus;
-        
-        // Normaliser: score moyen par mot
         return totalScore / queryWords.Length;
     }
     
@@ -567,17 +694,14 @@ public static class SearchAlgorithms
     #region Utilitaires
 
     /// <summary>
-    /// Vide le cache de Levenshtein
+    /// Vide le cache de distance.
     /// </summary>
-    public static void ClearCache()
-    {
-        _levenshteinCache.Clear();
-    }
+    public static void ClearCache() => _distanceCache.Clear();
 
     /// <summary>
-    /// Nombre d'entrées dans le cache
+    /// Nombre d'entrées dans le cache.
     /// </summary>
-    public static int CacheCount => _levenshteinCache.Count;
+    public static int CacheCount => _distanceCache.Count;
 
     #endregion
 }

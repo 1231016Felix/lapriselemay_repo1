@@ -22,6 +22,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private readonly TimerWidgetService _timerWidgetService;
     private readonly NotesService _notesService;
     private readonly WebIntegrationService _webIntegrationService;
+    private readonly AiChatService _aiChatService;
     private readonly System.Timers.Timer _debounceTimer;
     private CancellationTokenSource? _searchCts;
     private bool _disposed;
@@ -99,7 +100,8 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
 
     public LauncherViewModel(IndexingService indexingService, ISettingsProvider settingsProvider,
         AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
-        NotesService notesService, WebIntegrationService webIntegrationService, FileWatcherService? fileWatcherService = null)
+        NotesService notesService, WebIntegrationService webIntegrationService, AiChatService aiChatService,
+        FileWatcherService? fileWatcherService = null)
     {
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
@@ -108,6 +110,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         _timerWidgetService = timerWidgetService ?? throw new ArgumentNullException(nameof(timerWidgetService));
         _notesService = notesService ?? throw new ArgumentNullException(nameof(notesService));
         _webIntegrationService = webIntegrationService ?? throw new ArgumentNullException(nameof(webIntegrationService));
+        _aiChatService = aiChatService ?? throw new ArgumentNullException(nameof(aiChatService));
         
         // Initialiser les propriétés d'apparence depuis les settings
         ShowCategoryBadges = _settings.ShowCategoryBadges;
@@ -303,6 +306,21 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             if (translateArg.Length >= 1)
             {
                 _ = PerformTranslationAsync(translateArg, _searchCts.Token);
+                return;
+            }
+        }
+        
+        // Commande :ai pour l'assistant IA
+        var aiCmd = _settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.AiChat);
+        var aiPrefix = aiCmd?.Prefix ?? "ai";
+        var aiEnabled = aiCmd?.IsEnabled ?? true;
+        
+        if (aiEnabled && queryLower.StartsWith($":{aiPrefix} ") && query.Length > aiPrefix.Length + 2)
+        {
+            var aiQuestion = query[(aiPrefix.Length + 2)..].Trim();
+            if (aiQuestion.Length >= 2)
+            {
+                _ = PerformAiSearchAsync(aiQuestion, _searchCts.Token);
                 return;
             }
         }
@@ -667,6 +685,132 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         
         // Pas de langue spécifiée, tout est du texte
         return (defaultSource, defaultTarget, input);
+    }
+
+    /// <summary>
+    /// Envoie une question à l'assistant IA et affiche la réponse directement dans le launcher.
+    /// </summary>
+    private async Task PerformAiSearchAsync(string question, CancellationToken token)
+    {
+        IsSearching = true;
+        
+        try
+        {
+            // Indicateur de chargement
+            Results.Clear();
+            Results.Add(new SearchResult
+            {
+                Name = "🤖 Réflexion en cours...",
+                Description = question,
+                Type = ResultType.SystemControl,
+                DisplayIcon = "⏳"
+            });
+            FinalizeResults();
+            
+            var result = await _aiChatService.AskAsync(
+                question,
+                _settings.AiApiUrl,
+                _settings.AiApiKey,
+                _settings.AiModel,
+                _settings.AiSystemPrompt,
+                token);
+            
+            if (token.IsCancellationRequested) return;
+            
+            Results.Clear();
+            
+            if (result == null)
+            {
+                Results.Add(new SearchResult
+                {
+                    Name = "❌ Aucune réponse",
+                    Description = "L'assistant IA n'a pas répondu",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = "❌"
+                });
+            }
+            else if (result.HasError)
+            {
+                Results.Add(new SearchResult
+                {
+                    Name = $"❌ {result.Error}",
+                    Description = "Vérifiez la configuration dans Paramètres → Intégrations web",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = "❌"
+                });
+            }
+            else
+            {
+                // Découper la réponse en lignes pour un affichage propre
+                var answerLines = result.Answer
+                    .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
+                    .Select(l => l.Trim())
+                    .Where(l => l.Length > 0)
+                    .ToList();
+                
+                if (answerLines.Count == 0)
+                {
+                    answerLines.Add(result.Answer.Trim());
+                }
+                
+                // Première ligne = réponse principale (cliquable pour copier)
+                Results.Add(new SearchResult
+                {
+                    Name = answerLines[0],
+                    Description = $"🤖 {result.Model} • Entrée pour copier",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = "🤖",
+                    Path = $":ai:copy:{result.Answer}",
+                    IsInfoBlock = true
+                });
+                
+                // Lignes suivantes
+                foreach (var line in answerLines.Skip(1))
+                {
+                    Results.Add(new SearchResult
+                    {
+                        Name = line,
+                        Description = string.Empty,
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = "   ",
+                        Path = $":ai:copy:{result.Answer}",
+                        IsInfoBlock = true
+                    });
+                }
+                
+                // Footer avec tokens utilisés
+                if (result.TokensUsed.HasValue)
+                {
+                    Results.Add(new SearchResult
+                    {
+                        Name = $"📊 {result.TokensUsed} tokens utilisés",
+                        Description = $"Question: {question}",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = "📊",
+                        IsInfoBlock = true
+                    });
+                }
+            }
+            
+            FinalizeResults();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Results.Clear();
+            Results.Add(new SearchResult
+            {
+                Name = "❌ Erreur IA",
+                Description = ex.Message,
+                Type = ResultType.SystemControl,
+                DisplayIcon = "⚠️"
+            });
+            FinalizeResults();
+        }
+        finally
+        {
+            IsSearching = false;
+        }
     }
 
     /// <summary>
@@ -1279,6 +1423,19 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             return;
         }
         
+        // Gérer le copier-coller depuis :ai
+        if (command.StartsWith(":ai:copy:"))
+        {
+            var textToCopy = command[":ai:copy:".Length..];
+            if (!string.IsNullOrEmpty(textToCopy))
+            {
+                System.Windows.Clipboard.SetText(textToCopy);
+                ShowNotification?.Invoke(this, "📋 Réponse IA copiée");
+                RequestHide?.Invoke(this, EventArgs.Empty);
+            }
+            return;
+        }
+        
         // Gérer les commandes timer et note
         var parts = command.TrimStart(':').Split(' ', 2);
         var cmdPrefix = parts[0];
@@ -1305,6 +1462,18 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                     else
                     {
                         // Autocomplete la commande dans la barre de recherche
+                        SearchText = $":{matchedCmd.Prefix} ";
+                        RequestCaretAtEnd?.Invoke(this, EventArgs.Empty);
+                    }
+                    return;
+                    
+                case SystemControlType.AiChat:
+                    if (!string.IsNullOrEmpty(arg))
+                    {
+                        _ = PerformAiSearchAsync(arg, _searchCts?.Token ?? CancellationToken.None);
+                    }
+                    else
+                    {
                         SearchText = $":{matchedCmd.Prefix} ";
                         RequestCaretAtEnd?.Invoke(this, EventArgs.Empty);
                     }
