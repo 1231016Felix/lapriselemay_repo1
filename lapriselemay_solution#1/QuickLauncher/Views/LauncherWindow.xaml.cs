@@ -440,7 +440,7 @@ public partial class LauncherWindow : Window
         // Créer le style pour les items
         var menuItemStyle = (Style)FindResource("DarkMenuItemStyle");
         
-        FileActionType? lastCategory = null;
+        int? lastCategory = null;
         
         foreach (var action in actions)
         {
@@ -476,38 +476,31 @@ public partial class LauncherWindow : Window
             
             contextMenu.Items.Add(menuItem);
         }
-        
-        // Ajouter "Ouvrir avec..." pour les fichiers
-        if (result.Type is ResultType.File or ResultType.Script)
-        {
-            contextMenu.Items.Add(new Separator { Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x3E, 0x3E, 0x3E)) });
-            var openWithItem = new MenuItem
-            {
-                Header = "📎 Ouvrir avec...",
-                Style = menuItemStyle
-            };
-            openWithItem.Click += (s, args) =>
-            {
-                FileActionsService.OpenWith(result.Path);
-                HideWindow();
-            };
-            contextMenu.Items.Add(openWithItem);
-        }
     }
     
     /// <summary>
     /// Détermine la catégorie d'une action pour le regroupement dans le menu.
+    /// Retourne un int pour regrouper les actions visuellement avec des séparateurs.
     /// </summary>
-    private static FileActionType GetActionCategory(FileActionType actionType)
+    private static int GetActionCategory(FileActionType actionType)
     {
         return actionType switch
         {
-            FileActionType.Open or FileActionType.RunAsAdmin or FileActionType.OpenPrivate => FileActionType.Open,
-            FileActionType.OpenInExplorer or FileActionType.OpenInTerminal => FileActionType.OpenInExplorer,
-            FileActionType.CopyUrl => FileActionType.CopyUrl,
-            FileActionType.Rename or FileActionType.Delete or FileActionType.Properties => FileActionType.Rename,
-            FileActionType.Pin or FileActionType.Unpin => FileActionType.Pin,
-            _ => actionType
+            // Groupe 1: Lancement
+            FileActionType.Open or FileActionType.OpenWith or FileActionType.RunAsAdmin 
+                or FileActionType.OpenPrivate or FileActionType.EditInEditor => 1,
+            // Groupe 2: Navigation
+            FileActionType.OpenLocation or FileActionType.OpenInExplorer 
+                or FileActionType.OpenInTerminal or FileActionType.OpenInVSCode => 2,
+            // Groupe 3: Presse-papiers
+            FileActionType.CopyPath or FileActionType.CopyName or FileActionType.CopyUrl => 3,
+            // Groupe 4: Opérations
+            FileActionType.Compress or FileActionType.SendByEmail => 4,
+            // Groupe 5: Modification
+            FileActionType.Rename or FileActionType.Delete or FileActionType.Properties => 5,
+            // Groupe 6: Épingles
+            FileActionType.Pin or FileActionType.Unpin => 6,
+            _ => 0
         };
     }
     
@@ -558,24 +551,40 @@ public partial class LauncherWindow : Window
         
         if (success)
         {
-            // Notification de succès
+            // Notification de succès selon l'action
             var message = action.ActionType switch
             {
-                FileActionType.CopyUrl => "URL copiée",
+                FileActionType.CopyUrl => "🔗 URL copiée",
+                FileActionType.CopyPath => "📋 Chemin copié",
+                FileActionType.CopyName => "📋 Nom copié",
+                FileActionType.Compress => "🗜️ Archive ZIP créée",
+                FileActionType.SendByEmail => "📧 Email en cours de création...",
                 _ => null
             };
             
             if (message != null)
                 OnShowNotification(this, message);
             
-            // Fermer après certaines actions
+            // Fermer après certaines actions de lancement
             if (action.ActionType is FileActionType.Open 
                 or FileActionType.RunAsAdmin 
                 or FileActionType.OpenPrivate
-                or FileActionType.OpenInTerminal)
+                or FileActionType.OpenInTerminal
+                or FileActionType.OpenInVSCode
+                or FileActionType.OpenWith
+                or FileActionType.EditInEditor
+                or FileActionType.OpenLocation
+                or FileActionType.OpenInExplorer
+                or FileActionType.SendByEmail)
             {
                 HideWindow();
             }
+        }
+        else
+        {
+            // Notification d'échec pour les actions qui ne sont pas gérées par l'UI
+            if (action.ActionType == FileActionType.OpenInVSCode)
+                OnShowNotification(this, "❌ VS Code introuvable");
         }
     }
 

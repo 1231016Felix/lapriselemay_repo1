@@ -716,6 +716,20 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                     DisplayIcon = cmd.Icon,
                     Path = prefix
                 });
+                
+                // Ajouter les sous-commandes pour screenshot (snip doit apparaître même avec préfixe partiel)
+                if (cmd.Type == SystemControlType.Screenshot && !query.Contains(" "))
+                {
+                    var snipName = $":{cmd.Prefix} snip";
+                    Results.Add(new SearchResult
+                    {
+                        Name = snipName,
+                        Description = "Sélectionner une zone à capturer (Outil Capture d'écran)",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = "✂️",
+                        Path = snipName
+                    });
+                }
             }
         }
 
@@ -845,23 +859,12 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                         Path = fullQuery
                     });
                 }
-                else if (arg is "primary" or "main")
-                {
-                    Results.Insert(0, new SearchResult
-                    {
-                        Name = "Capture écran principal",
-                        Description = "Capturer uniquement l'écran principal",
-                        Type = ResultType.SystemControl,
-                        DisplayIcon = cmd.Icon,
-                        Path = fullQuery
-                    });
-                }
                 else
                 {
                     Results.Insert(0, new SearchResult
                     {
-                        Name = "Prendre une capture d'écran",
-                        Description = "Sauvegarde dans Images/Screenshots",
+                        Name = "📸 Capture d'écran",
+                        Description = "Ouvrir l'outil de capture Windows",
                         Type = ResultType.SystemControl,
                         DisplayIcon = cmd.Icon,
                         Path = fullQuery
@@ -1101,29 +1104,50 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             return;
         }
         
-        var success = action.Execute(result.Path);
+        // Pour CopyName, passer le nom d'affichage plutôt que le path
+        // (important pour les StoreApps où Path = package family name)
+        var targetPath = action.ActionType == FileActionType.CopyName
+            ? result.Name
+            : result.Path;
+        var success = action.Execute(targetPath);
         
         if (success)
         {
-            // Notification de succès
+            // Notification de succès selon l'action
             var message = action.ActionType switch
             {
-                FileActionType.CopyUrl => "URL copiée",
-                FileActionType.Delete => "Envoyé à la corbeille",
+                FileActionType.CopyUrl => "🔗 URL copiée",
+                FileActionType.CopyPath => "📋 Chemin copié",
+                FileActionType.CopyName => "📋 Nom copié",
+                FileActionType.Compress => "🗜️ Archive ZIP créée",
+                FileActionType.SendByEmail => "📧 Email en cours...",
+                FileActionType.Delete => "🗑️ Envoyé à la corbeille",
                 _ => null
             };
             
             if (message != null)
                 ShowNotification?.Invoke(this, message);
             
-            // Fermer après certaines actions
+            // Fermer après les actions qui ouvrent quelque chose
             if (action.ActionType is FileActionType.Open 
                 or FileActionType.RunAsAdmin 
-                or FileActionType.OpenPrivate)
+                or FileActionType.OpenPrivate
+                or FileActionType.OpenWith
+                or FileActionType.OpenLocation
+                or FileActionType.OpenInTerminal
+                or FileActionType.OpenInExplorer
+                or FileActionType.OpenInVSCode
+                or FileActionType.EditInEditor
+                or FileActionType.SendByEmail)
             {
                 _indexingService.RecordUsage(result);
                 RequestHide?.Invoke(this, EventArgs.Empty);
             }
+        }
+        else
+        {
+            if (action.ActionType == FileActionType.OpenInVSCode)
+                ShowNotification?.Invoke(this, "❌ VS Code introuvable");
         }
         
         ShowActionsPanel = false;
@@ -1314,15 +1338,36 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                     
                 case SystemControlType.Screenshot:
                     RequestHide?.Invoke(this, EventArgs.Empty);
-                    // Petit délai pour laisser le launcher se cacher avant la capture
-                    _ = Task.Run(async () =>
+                    if (arg is "snip" or "region" or "select")
                     {
-                        await Task.Delay(200);
-                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        // Capture de région avec annotation personnalisée
+                        _ = Task.Run(async () =>
                         {
-                            RequestScreenCapture?.Invoke(this, arg);
+                            await Task.Delay(200);
+                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                RequestScreenCapture?.Invoke(this, arg);
+                            });
                         });
-                    });
+                    }
+                    else
+                    {
+                        // Capture plein écran via Windows (simule Win+Shift+S en mode plein écran)
+                        _ = Task.Run(async () =>
+                        {
+                            await Task.Delay(200);
+                            var path = SystemControlService.TakeScreenshot();
+                            if (path != null)
+                            {
+                                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                                {
+                                    ShowNotification?.Invoke(this, "📸 Capture sauvegardée");
+                                    // Ouvrir le fichier dans l'explorateur
+                                    System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\"");
+                                });
+                            }
+                        });
+                    }
                     return;
             }
         }

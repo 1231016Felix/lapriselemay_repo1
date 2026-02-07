@@ -328,6 +328,25 @@ public partial class SettingsWindow : Window
             SearchEngineRecommendation.Visibility = Visibility.Collapsed;
         }
         
+        // Avertissement spécifique à Windows Search
+        WindowsSearchWarning.Visibility = info.Status == SearchEngineStatus.WindowsSearch
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        
+        // Avertissement spécifique à la recherche directe
+        if (info.Status == SearchEngineStatus.DirectSearch)
+        {
+            DirectSearchWarning.Visibility = Visibility.Visible;
+            var folders = UniversalSearchService.GetDefaultSearchPaths()
+                .Where(System.IO.Directory.Exists)
+                .Select(p => "• " + p);
+            DirectSearchFoldersList.Text = string.Join("\n", folders);
+        }
+        else
+        {
+            DirectSearchWarning.Visibility = Visibility.Collapsed;
+        }
+        
         // Stats du cache
         UpdateSearchCacheStats();
     }
@@ -346,6 +365,24 @@ public partial class SettingsWindow : Window
         UniversalSearchService.ClearCache();
         UpdateSearchCacheStats();
         MessageBox.Show("Cache de recherche vidé!", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void OpenWindowsIndexingSettings_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "control.exe",
+                Arguments = "srchadmin.dll",
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Settings] Impossible d'ouvrir les paramètres d'indexation: {ex.Message}");
+            MessageBox.Show("Impossible d'ouvrir les paramètres d'indexation Windows.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     // === Gestionnaires d'événements - Apparence ===

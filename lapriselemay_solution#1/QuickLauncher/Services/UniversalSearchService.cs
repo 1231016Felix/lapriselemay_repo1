@@ -31,6 +31,11 @@ public static class UniversalSearchService
     /// </summary>
     public static int MaxSearchDepth { get; set; } = 5;
 
+    /// <summary>
+    /// Retourne la liste des dossiers par défaut scannés en mode recherche directe.
+    /// </summary>
+    public static string[] GetDefaultSearchPaths() => DefaultSearchPaths;
+
     static UniversalSearchService()
     {
         // Dossiers par défaut à rechercher
@@ -57,7 +62,7 @@ public static class UniversalSearchService
         if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
             return [];
 
-        // Essayer Everything d'abord
+        // 1. Essayer Everything d'abord (le plus rapide)
         if (EverythingApi.IsAvailable())
         {
             try
@@ -70,7 +75,22 @@ public static class UniversalSearchService
             }
         }
 
-        // Fallback: recherche directe avec cache
+        // 2. Essayer Windows Search (recherche dans tout l'index système)
+        if (WindowsSearchService.IsAvailable())
+        {
+            try
+            {
+                var results = await WindowsSearchService.SearchAsync(query, searchScope, cancellationToken);
+                if (results.Count > 0)
+                    return results;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[UniversalSearch] Windows Search failed: {ex.Message}");
+            }
+        }
+
+        // 3. Fallback: recherche directe avec cache (limitée aux dossiers par défaut)
         return await SearchDirectWithCacheAsync(query, searchScope, cancellationToken);
     }
 
