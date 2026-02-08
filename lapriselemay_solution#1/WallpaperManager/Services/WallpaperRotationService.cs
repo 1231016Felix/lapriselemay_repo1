@@ -16,6 +16,12 @@ public sealed class WallpaperRotationService : IDisposable
     private bool _isPaused;
     private bool _disposed;
     
+    /// <summary>
+    /// Fournisseur de playlist personnalisée (SmartRotation, rotation de collection, etc.).
+    /// Quand défini, RefreshPlaylist() utilise ce fournisseur au lieu de recharger toute la bibliothèque.
+    /// </summary>
+    private Func<List<Wallpaper>>? _playlistProvider;
+    
     // Service de transition (injecté depuis App.cs)
     private TransitionService? _transitionService;
     
@@ -112,6 +118,7 @@ public sealed class WallpaperRotationService : IDisposable
         {
             _playlist.Clear();
             _currentIndex = -1;
+            _playlistProvider = null;
         }
         
         RotationStateChanged?.Invoke(this, false);
@@ -294,7 +301,52 @@ public sealed class WallpaperRotationService : IDisposable
     
     public void RefreshPlaylist()
     {
+        lock (_playlistLock)
+        {
+            if (_playlistProvider != null)
+            {
+                // Utiliser le fournisseur personnalisé (SmartRotation, collection, etc.)
+                var newPlaylist = _playlistProvider();
+                _playlist = newPlaylist;
+                
+                if (_currentIndex >= _playlist.Count)
+                    _currentIndex = -1;
+                
+                System.Diagnostics.Debug.WriteLine($"RefreshPlaylist (provider): {_playlist.Count} wallpapers");
+                return;
+            }
+        }
+        
+        // Pas de fournisseur personnalisé : recharger toute la bibliothèque
         LoadPlaylist();
+    }
+    
+    /// <summary>
+    /// Définit un fournisseur de playlist personnalisée.
+    /// Tant que le fournisseur est actif, RefreshPlaylist() l'utilisera au lieu de recharger la bibliothèque.
+    /// </summary>
+    public void SetPlaylistProvider(Func<List<Wallpaper>> provider)
+    {
+        lock (_playlistLock)
+        {
+            _playlistProvider = provider;
+        }
+        
+        System.Diagnostics.Debug.WriteLine("PlaylistProvider défini");
+    }
+    
+    /// <summary>
+    /// Supprime le fournisseur de playlist personnalisée et recharge la bibliothèque.
+    /// </summary>
+    public void ClearPlaylistProvider()
+    {
+        lock (_playlistLock)
+        {
+            _playlistProvider = null;
+        }
+        
+        LoadPlaylist();
+        System.Diagnostics.Debug.WriteLine($"PlaylistProvider supprimé, bibliothèque rechargée: {_playlist.Count} wallpapers");
     }
     
     /// <summary>
@@ -378,6 +430,18 @@ public sealed class WallpaperRotationService : IDisposable
         
         if (shouldProceed)
         {
+            // Rafraîchir la playlist via le provider si actif (ex: SmartRotation)
+            // pour s'assurer que la bonne collection (jour/nuit) est utilisée
+            bool hasProvider;
+            lock (_playlistLock)
+            {
+                hasProvider = _playlistProvider != null;
+            }
+            if (hasProvider)
+            {
+                RefreshPlaylist();
+            }
+            
             Next();
         }
     }

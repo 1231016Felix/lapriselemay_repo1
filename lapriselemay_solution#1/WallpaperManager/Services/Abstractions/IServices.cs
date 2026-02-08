@@ -39,6 +39,8 @@ public interface IWallpaperRotationService : IDisposable
     void SetInterval(int minutes);
     void RefreshPlaylist();
     void SetPlaylist(IEnumerable<Wallpaper> wallpapers);
+    void SetPlaylistProvider(Func<List<Wallpaper>> provider);
+    void ClearPlaylistProvider();
     void ApplyWallpaper(Wallpaper wallpaper);
     void SetTransitionService(TransitionService? service);
 }

@@ -8,7 +8,8 @@ namespace QuickLauncher.Services;
 /// <summary>
 /// Service d'intégration IA pour la commande :ai.
 /// Supporte l'API OpenAI-compatible (ChatGPT, Ollama, Groq, LM Studio, etc.).
-/// Ollama expose nativement cette API sur http://localhost:11434/v1/chat/completions.
+/// ChatGPT: https://api.openai.com/v1/chat/completions (clé API requise).
+/// Ollama:  http://localhost:11434/v1/chat/completions (local, sans clé).
 /// </summary>
 public sealed class AiChatService : IDisposable
 {
@@ -86,11 +87,16 @@ public sealed class AiChatService : IDisposable
                 Debug.WriteLine($"[AI] Erreur HTTP {response.StatusCode}: {responseJson}");
                 return new AiChatResult
                 {
-                    Error = response.StatusCode == System.Net.HttpStatusCode.Unauthorized
-                        ? "Clé API invalide ou manquante"
-                        : response.StatusCode == System.Net.HttpStatusCode.NotFound
-                        ? $"Modèle '{model}' introuvable. Vérifiez le nom du modèle."
-                        : $"Erreur serveur ({(int)response.StatusCode})"
+                    Error = response.StatusCode switch
+                    {
+                        System.Net.HttpStatusCode.Unauthorized
+                            => "Clé API invalide ou manquante",
+                        System.Net.HttpStatusCode.NotFound
+                            => $"Modèle '{model}' introuvable. Vérifiez le nom du modèle.",
+                        (System.Net.HttpStatusCode)429
+                            => "Limite atteinte ou crédits insuffisants. Vérifiez votre solde sur platform.openai.com/settings/organization/billing",
+                        _ => $"Erreur serveur ({(int)response.StatusCode})"
+                    }
                 };
             }
 
@@ -133,7 +139,7 @@ public sealed class AiChatService : IDisposable
             Debug.WriteLine($"[AI] Connexion refusée: {ex.Message}");
             return new AiChatResult
             {
-                Error = "Impossible de se connecter au serveur IA. Vérifiez qu'Ollama est lancé ou que l'URL est correcte."
+                Error = "Impossible de se connecter au serveur IA. Vérifiez que le service est lancé et que l'URL est correcte."
             };
         }
         catch (HttpRequestException ex)

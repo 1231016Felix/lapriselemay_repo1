@@ -158,10 +158,12 @@ public partial class SettingsWindow : Window
         SelectComboByTag(WeatherUnitCombo, _settings.WeatherUnit);
         
         // Assistant IA
+        SelectComboByTag(AiProviderCombo, _settings.AiProvider);
         AiApiUrlBox.Text = _settings.AiApiUrl;
         AiApiKeyBox.Password = _settings.AiApiKey;
         AiModelBox.Text = _settings.AiModel;
         AiSystemPromptBox.Text = _settings.AiSystemPrompt;
+        UpdateAiFieldsState();
         
         // À propos
         DataPathText.Text = AppSettings.GetSettingsPath();
@@ -794,6 +796,57 @@ public partial class SettingsWindow : Window
     }
 
     // === Gestionnaires d'événements - Assistant IA ===
+    
+    private void AiProviderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isLoading || AiProviderCombo.SelectedItem is not ComboBoxItem selected) return;
+        
+        var provider = selected.Tag?.ToString() ?? "chatgpt";
+        _settings.AiProvider = provider;
+        
+        switch (provider)
+        {
+            case "chatgpt":
+                AiApiUrlBox.Text = "https://api.openai.com/v1/chat/completions";
+                AiModelBox.Text = "gpt-4o-mini";
+                break;
+            case "ollama":
+                AiApiUrlBox.Text = "http://localhost:11434/v1/chat/completions";
+                AiModelBox.Text = "llama3.2";
+                break;
+            // "custom" = on ne touche pas aux champs
+        }
+        
+        _settings.AiApiUrl = AiApiUrlBox.Text;
+        _settings.AiModel = AiModelBox.Text;
+        UpdateAiFieldsState();
+        AutoSave();
+    }
+    
+    /// <summary>
+    /// Met à jour l'état des champs IA selon le fournisseur sélectionné.
+    /// </summary>
+    private void UpdateAiFieldsState()
+    {
+        if (AiProviderCombo?.SelectedItem is not ComboBoxItem selected) return;
+        var provider = selected.Tag?.ToString() ?? "chatgpt";
+        
+        // URL et modèle en lecture seule pour les presets, éditable pour custom
+        var isCustom = provider == "custom";
+        AiApiUrlBox.IsReadOnly = !isCustom;
+        AiApiUrlBox.Opacity = isCustom ? 1.0 : 0.7;
+        
+        // Hint pour la clé API
+        if (AiApiKeyHint != null)
+        {
+            AiApiKeyHint.Text = provider switch
+            {
+                "ollama" => "(optionnel)",
+                "chatgpt" => "(requis)",
+                _ => "(selon le fournisseur)"
+            };
+        }
+    }
     
     private void AiApiUrlBox_LostFocus(object sender, RoutedEventArgs e)
     {

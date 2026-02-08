@@ -43,9 +43,74 @@ public partial class MainViewModel
     /// </summary>
     public DynamicTransitionType[] DynamicTransitionTypes { get; } = Enum.GetValues<DynamicTransitionType>();
     
+    private DynamicWallpaper? _previousDynamicWallpaper;
+    
     partial void OnSelectedDynamicWallpaperChanged(DynamicWallpaper? value)
     {
+        // Désabonner de l'ancien wallpaper
+        UnsubscribeFromVariantChanges(_previousDynamicWallpaper);
+        
+        // S'abonner au nouveau
+        SubscribeToVariantChanges(value);
+        _previousDynamicWallpaper = value;
+        
         OnPropertyChanged(nameof(IsSelectedDynamicActive));
+    }
+    
+    private void SubscribeToVariantChanges(DynamicWallpaper? dynamic)
+    {
+        if (dynamic == null) return;
+        
+        dynamic.Variants.CollectionChanged += OnVariantsCollectionChanged;
+        foreach (var variant in dynamic.Variants)
+        {
+            variant.PropertyChanged += OnVariantPropertyChanged;
+        }
+    }
+    
+    private void UnsubscribeFromVariantChanges(DynamicWallpaper? dynamic)
+    {
+        if (dynamic == null) return;
+        
+        dynamic.Variants.CollectionChanged -= OnVariantsCollectionChanged;
+        foreach (var variant in dynamic.Variants)
+        {
+            variant.PropertyChanged -= OnVariantPropertyChanged;
+        }
+    }
+    
+    private void OnVariantsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+    {
+        // Désabonner les anciennes variantes
+        if (e.OldItems != null)
+        {
+            foreach (TimeVariant variant in e.OldItems)
+                variant.PropertyChanged -= OnVariantPropertyChanged;
+        }
+        
+        // S'abonner aux nouvelles variantes
+        if (e.NewItems != null)
+        {
+            foreach (TimeVariant variant in e.NewItems)
+                variant.PropertyChanged += OnVariantPropertyChanged;
+        }
+    }
+    
+    private void OnVariantPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        // Réagir aux changements d'horaire ou de fichier image
+        if (e.PropertyName is nameof(TimeVariant.StartTime) or nameof(TimeVariant.StartHour) 
+            or nameof(TimeVariant.StartMinute) or nameof(TimeVariant.FilePath))
+        {
+            SettingsService.MarkDirty();
+            SettingsService.Save();
+            
+            // Rafraîchir le service si ce wallpaper dynamique est actif
+            if (IsSelectedDynamicActive)
+            {
+                App.DynamicService.Refresh();
+            }
+        }
     }
     
     // === COMMANDES VARIANTES ===

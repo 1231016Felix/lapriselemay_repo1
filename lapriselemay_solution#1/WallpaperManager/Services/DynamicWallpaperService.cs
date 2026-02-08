@@ -96,7 +96,8 @@ public sealed class DynamicWallpaperService : IDisposable
     }
     
     /// <summary>
-    /// Rafraîchit l'affichage (après réveil système par exemple)
+    /// Rafraîchit l'affichage (après réveil système, changement d'image, changement d'horaire, etc.)
+    /// Force la réévaluation et l'application de la variante courante.
     /// </summary>
     public void Refresh()
     {
@@ -110,6 +111,11 @@ public sealed class DynamicWallpaperService : IDisposable
             {
                 UpdateSunBasedTimes(_activeDynamic);
             }
+            
+            // Réinitialiser l'ID de variante courante pour forcer la réapplication
+            // du wallpaper, même si la période n'a pas changé (ex: image modifiée,
+            // horaire ajusté, réveil système)
+            _currentVariantId = null;
             
             ApplyCurrentVariant();
             ScheduleNextChange();

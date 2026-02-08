@@ -151,10 +151,10 @@ public sealed class AppSettings
     public string TranslateSourceLang { get; set; } = "auto";
     
     // === Intégration IA ===
-    public string AiProvider { get; set; } = "ollama";  // "ollama" ou "openai"
-    public string AiApiUrl { get; set; } = "http://localhost:11434/v1/chat/completions";  // Ollama par défaut
-    public string AiApiKey { get; set; } = string.Empty;  // Vide pour Ollama, requis pour OpenAI
-    public string AiModel { get; set; } = "llama3.2";  // Modèle par défaut
+    public string AiProvider { get; set; } = "chatgpt";  // "ollama", "chatgpt" ou "custom"
+    public string AiApiUrl { get; set; } = "https://api.openai.com/v1/chat/completions";
+    public string AiApiKey { get; set; } = string.Empty;  // Requis pour ChatGPT, vide pour Ollama
+    public string AiModel { get; set; } = "gpt-4o-mini";  // Modèle par défaut
     public string AiSystemPrompt { get; set; } = "Tu es un assistant concis intégré dans un lanceur d'applications. Réponds de manière courte et directe (2-3 phrases max). Pas de markdown. Langue: français.";
 
     private static List<string> GetDefaultIndexedFolders() =>

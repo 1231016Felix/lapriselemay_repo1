@@ -587,6 +587,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             service.Settings.ChangeOnPeriodTransition = false;
             service.StartWithoutApply();
             
+            // Installer le fournisseur de playlist pour la rotation intelligente
+            App.RotationService.SetPlaylistProvider(() =>
+            {
+                var currentPeriod = service.GetCurrentPeriod();
+                var category = SmartRotationService.GetCategoryForPeriod(currentPeriod);
+                return GetWallpapersByCategory(category);
+            });
+            
             UpdateRotationPlaylistForPeriod(service.CurrentPeriod);
             
             _isRotationEnabled = true;
@@ -1413,6 +1421,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _cts = null;
         }
         
+        UnsubscribeFromVariantChanges(_previousDynamicWallpaper);
         CleanupSmartRotation();
         CleanupWidgets();
         _unsplashService.Dispose();

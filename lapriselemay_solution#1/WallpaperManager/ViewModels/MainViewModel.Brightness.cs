@@ -196,8 +196,20 @@ public partial class MainViewModel
             // Démarrer le surveillant de période (sans appliquer immédiatement)
             service.StartWithoutApply();
             
-            // Mettre à jour la playlist de rotation avec les wallpapers de la période actuelle
-            UpdateRotationPlaylistForPeriod(service.CurrentPeriod);
+            // Définir un fournisseur de playlist qui retourne les wallpapers de la période courante.
+            // Ainsi, tout appel à RefreshPlaylist() (ajout, suppression, resync, etc.)
+            // rechargera automatiquement la playlist filtrée au lieu de toute la bibliothèque.
+            App.RotationService.SetPlaylistProvider(() =>
+            {
+                var currentPeriod = service.GetCurrentPeriod();
+                var category = SmartRotationService.GetCategoryForPeriod(currentPeriod);
+                var wallpapers = GetWallpapersByCategory(category);
+                System.Diagnostics.Debug.WriteLine($"PlaylistProvider: {currentPeriod} → {category}, {wallpapers.Count} wallpapers");
+                return wallpapers;
+            });
+            
+            // Charger la playlist initiale via le provider
+            App.RotationService.RefreshPlaylist();
             
             // S'assurer que le service de rotation tourne (bypass du toggle IsRotationEnabled)
             if (App.IsInitialized)
@@ -230,10 +242,10 @@ public partial class MainViewModel
             // Restaurer le comportement par défaut
             service.Settings.ChangeOnPeriodTransition = SettingsService.Current.SmartRotationChangeOnTransition;
             
-            // Restaurer la playlist complète de la bibliothèque
+            // Supprimer le fournisseur personnalisé et restaurer la playlist complète
             if (App.IsInitialized)
             {
-                App.RotationService.RefreshPlaylist();
+                App.RotationService.ClearPlaylistProvider();
             }
             
             SettingsService.Current.SmartRotationEnabled = false;
@@ -255,23 +267,18 @@ public partial class MainViewModel
     /// <summary>
     /// Met à jour la playlist du service de rotation pour ne contenir que les wallpapers
     /// correspondant à la période donnée (Sombres pour Nuit, Clairs pour Jour).
+    /// Utilise RefreshPlaylist() si un provider est actif, sinon SetPlaylist() directement.
     /// </summary>
     private void UpdateRotationPlaylistForPeriod(DayPeriod period)
     {
         if (!App.IsInitialized) return;
         
-        var category = SmartRotationService.GetCategoryForPeriod(period);
-        var wallpapers = GetWallpapersByCategory(category);
+        // Le provider est déjà configuré pour retourner les wallpapers de la période courante,
+        // donc RefreshPlaylist() suffit — il interrogera le provider avec la nouvelle période.
+        App.RotationService.RefreshPlaylist();
         
-        if (wallpapers.Count > 0)
-        {
-            App.RotationService.SetPlaylist(wallpapers);
-            System.Diagnostics.Debug.WriteLine($"SmartRotation: Playlist mise à jour pour {period} ({wallpapers.Count} wallpapers {category})");
-        }
-        else
-        {
-            System.Diagnostics.Debug.WriteLine($"SmartRotation: Aucun wallpaper pour la catégorie {category}, playlist non modifiée");
-        }
+        var category = SmartRotationService.GetCategoryForPeriod(period);
+        System.Diagnostics.Debug.WriteLine($"SmartRotation: Playlist rafraîchie pour {period} ({category})");
     }
     
     /// <summary>
