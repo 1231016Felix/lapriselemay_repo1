@@ -793,6 +793,85 @@ public partial class SettingsWindow : Window
         }
     }
 
+    // === Gestionnaires d'événements - Assistant IA ===
+    
+    private void AiApiUrlBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (!_isLoading)
+        {
+            _settings.AiApiUrl = AiApiUrlBox.Text.Trim();
+            AutoSave();
+        }
+    }
+    
+    private void AiApiKeyBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (!_isLoading)
+        {
+            _settings.AiApiKey = AiApiKeyBox.Password;
+            AutoSave();
+        }
+    }
+    
+    private void AiModelBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (!_isLoading)
+        {
+            _settings.AiModel = AiModelBox.Text.Trim();
+            AutoSave();
+        }
+    }
+    
+    private void AiSystemPromptBox_LostFocus(object sender, RoutedEventArgs e)
+    {
+        if (!_isLoading)
+        {
+            _settings.AiSystemPrompt = AiSystemPromptBox.Text;
+            AutoSave();
+        }
+    }
+    
+    private async void AiTestBtn_Click(object sender, RoutedEventArgs e)
+    {
+        AiTestBtn.IsEnabled = false;
+        AiTestResultPanel.Visibility = Visibility.Visible;
+        AiTestResultPanel.Background = new SolidColorBrush(Color.FromRgb(0x2D, 0x2D, 0x1A));
+        AiTestResultText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xB9, 0x00));
+        AiTestResultText.Text = "🔄 Test de connexion en cours...";
+        
+        try
+        {
+            using var aiService = new AiChatService();
+            var (success, message) = await aiService.TestConnectionAsync(
+                AiApiUrlBox.Text.Trim(),
+                AiApiKeyBox.Password,
+                AiModelBox.Text.Trim());
+            
+            if (success)
+            {
+                AiTestResultPanel.Background = new SolidColorBrush(Color.FromRgb(0x1A, 0x2D, 0x1A));
+                AiTestResultText.Foreground = new SolidColorBrush(Color.FromRgb(0x4C, 0xAF, 0x50));
+                AiTestResultText.Text = message;
+            }
+            else
+            {
+                AiTestResultPanel.Background = new SolidColorBrush(Color.FromRgb(0x3D, 0x1A, 0x1A));
+                AiTestResultText.Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0x11, 0x23));
+                AiTestResultText.Text = $"❌ {message}";
+            }
+        }
+        catch (Exception ex)
+        {
+            AiTestResultPanel.Background = new SolidColorBrush(Color.FromRgb(0x3D, 0x1A, 0x1A));
+            AiTestResultText.Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0x11, 0x23));
+            AiTestResultText.Text = $"❌ Erreur : {ex.Message}";
+        }
+        finally
+        {
+            AiTestBtn.IsEnabled = true;
+        }
+    }
+    
     // === Gestionnaires d'événements - Navigateurs ===
     
     private void LoadBrowsersList()

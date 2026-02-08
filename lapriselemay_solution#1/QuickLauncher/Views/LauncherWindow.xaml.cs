@@ -90,13 +90,14 @@ public partial class LauncherWindow : Window
     
     public LauncherWindow(IndexingService indexingService, ISettingsProvider settingsProvider,
         AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
-        NotesService notesService, WebIntegrationService webIntegrationService, FileWatcherService? fileWatcherService = null)
+        NotesService notesService, WebIntegrationService webIntegrationService, AiChatService aiChatService,
+        FileWatcherService? fileWatcherService = null)
     {
         InitializeComponent();
         
         _settingsProvider = settingsProvider;
         _notesService = notesService;
-        _viewModel = new LauncherViewModel(indexingService, settingsProvider, aliasService, noteWidgetService, timerWidgetService, notesService, webIntegrationService, fileWatcherService);
+        _viewModel = new LauncherViewModel(indexingService, settingsProvider, aliasService, noteWidgetService, timerWidgetService, notesService, webIntegrationService, aiChatService, fileWatcherService);
         DataContext = _viewModel;
         
         SetupEventHandlers();
@@ -506,12 +507,14 @@ public partial class LauncherWindow : Window
     {
         if (sender is not ListBoxItem item) return;
         
-        // Pendant l'animation d'ouverture ou si animations désactivées, afficher immédiatement
+        // S'assurer que l'item est toujours visible (pas de manipulation d'opacité)
+        // Nécessaire pour les containers recyclés qui pourraient garder une opacité résiduelle
+        item.BeginAnimation(OpacityProperty, null);
+        item.Opacity = 1;
+        
+        // Pendant l'animation d'ouverture ou si animations désactivées, pas de stagger
         if (!_settings.EnableAnimations || _isShowAnimating)
-        {
-            item.Opacity = 1;
             return;
-        }
         
         // Déterminer l'index de l'item dans la liste
         var index = ResultsList.ItemContainerGenerator.IndexFromContainer(item);
@@ -528,58 +531,52 @@ public partial class LauncherWindow : Window
         var scale = tg?.Children.OfType<ScaleTransform>().FirstOrDefault();
         var translate = tg?.Children.OfType<TranslateTransform>().FirstOrDefault();
         
-        // Positionner l'état initial (invisible + transformé)
-        item.Opacity = 0;
-        
-        // Activer le cache GPU pendant l'animation pour que les transforms/opacity
+        // Activer le cache GPU pendant l'animation pour que les transforms
         // soient composés par le GPU plutôt que re-rendus par le CPU à chaque frame
         item.CacheMode = SharedGpuCache;
         
-        // Animation pilote (opacity) — on y attache le cleanup du cache
-        DoubleAnimation opacityAnim;
+        // Animation pilote pour le cleanup — on utilise la transform principale
+        // Plus de manipulation d'opacité : les items restent visibles, seuls les transforms bougent
+        DoubleAnimation? pilotAnim = null;
         
         switch (_settings.AnimationStyle)
         {
             case AnimationStyle.FadeSlide:
-                opacityAnim = MakeAnim(0, 1, dur, beginTime, EaseOut);
-                translate?.BeginAnimation(TranslateTransform.YProperty, MakeAnim(4, 0, dur, beginTime, EaseOut));
-                break;
-                
-            case AnimationStyle.Fade:
-                opacityAnim = MakeAnim(0, 1, dur, beginTime, EaseOut);
+            case AnimationStyle.Slide:
+                var slideFrom = _settings.AnimationStyle == AnimationStyle.FadeSlide ? 4.0 : 6.0;
+                pilotAnim = MakeAnim(slideFrom, 0, dur, beginTime, EaseOut);
+                translate?.BeginAnimation(TranslateTransform.YProperty, pilotAnim);
                 break;
                 
             case AnimationStyle.Scale:
-                opacityAnim = MakeAnim(0, 1, dur, beginTime, EaseOut);
-                scale?.BeginAnimation(ScaleTransform.ScaleXProperty, MakeAnim(0.96, 1, dur, beginTime, EaseOut));
+                pilotAnim = MakeAnim(0.96, 1, dur, beginTime, EaseOut);
+                scale?.BeginAnimation(ScaleTransform.ScaleXProperty, pilotAnim);
                 scale?.BeginAnimation(ScaleTransform.ScaleYProperty, MakeAnim(0.96, 1, dur, beginTime, EaseOut));
                 break;
                 
-            case AnimationStyle.Slide:
-                opacityAnim = MakeAnim(0, 1, dur, beginTime, null);
-                translate?.BeginAnimation(TranslateTransform.YProperty, MakeAnim(6, 0, dur, beginTime, EaseOut));
-                break;
-                
             case AnimationStyle.Pop:
-                opacityAnim = MakeAnim(0, 1, dur, beginTime, EaseOut);
-                scale?.BeginAnimation(ScaleTransform.ScaleXProperty, MakeAnim(0.90, 1, dur, beginTime, BounceOut));
+                pilotAnim = MakeAnim(0.90, 1, dur, beginTime, BounceOut);
+                scale?.BeginAnimation(ScaleTransform.ScaleXProperty, pilotAnim);
                 scale?.BeginAnimation(ScaleTransform.ScaleYProperty, MakeAnim(0.90, 1, dur, beginTime, BounceOut));
                 break;
                 
+            case AnimationStyle.Fade:
             default:
-                opacityAnim = MakeAnim(0, 1, dur, beginTime, EaseOut);
+                // Fade seul sans opacité = pas d'animation visible, juste le cleanup
+                pilotAnim = MakeAnim(0, 0, dur, beginTime, null);
                 break;
         }
         
         // Retirer le cache GPU une fois l'animation terminée pour économiser la VRAM
         // et permettre au ClearType de fonctionner normalement sur le texte
-        opacityAnim.Completed += (_, _) =>
+        if (pilotAnim != null)
         {
-            if (generation == _searchGeneration)
-                item.CacheMode = null;
-        };
-        
-        item.BeginAnimation(OpacityProperty, opacityAnim);
+            pilotAnim.Completed += (_, _) =>
+            {
+                if (generation == _searchGeneration)
+                    item.CacheMode = null;
+            };
+        }
     }
     
     /// <summary>

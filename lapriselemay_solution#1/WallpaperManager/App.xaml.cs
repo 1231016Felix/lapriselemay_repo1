@@ -440,17 +440,19 @@ public partial class App : Application
             case PowerModes.Resume:
                 System.Diagnostics.Debug.WriteLine("Réveil du système - Reprise des services");
                 
-                // Reprendre la rotation standard si activée
-                if (SettingsService.Current.RotationEnabled)
+                // Rafraîchir le wallpaper dynamique si actif
+                _dynamicService?.Refresh();
+                
+                // Reprendre la rotation standard si activée ET pas de wallpaper dynamique actif
+                if (SettingsService.Current.RotationEnabled && _dynamicService?.IsActive != true)
                 {
                     _rotationService?.Resume();
                 }
                 
-                // Rafraîchir le wallpaper dynamique si actif
-                _dynamicService?.Refresh();
-                
                 // Forcer la vérification de période pour la rotation intelligente
-                if (SettingsService.Current.SmartRotationEnabled && _smartRotationService != null)
+                // seulement si aucun wallpaper dynamique n'est actif
+                if (SettingsService.Current.SmartRotationEnabled && _smartRotationService != null
+                    && _dynamicService?.IsActive != true)
                 {
                     System.Diagnostics.Debug.WriteLine("SmartRotation: Vérification forcée après réveil");
                     _smartRotationService.ForceCheckPeriod();

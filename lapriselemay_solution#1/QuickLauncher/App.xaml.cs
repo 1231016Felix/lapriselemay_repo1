@@ -120,6 +120,9 @@ public partial class App : Application
         // Intégrations web (météo, traduction)
         services.AddSingleton<WebIntegrationService>();
         
+        // Assistant IA
+        services.AddSingleton<AiChatService>();
+        
         _logger.Info("Services DI configurés");
     }
 
@@ -224,10 +227,11 @@ public partial class App : Application
             var notesService = Services.GetRequiredService<NotesService>();
             var webIntegrationService = Services.GetRequiredService<WebIntegrationService>();
             var fileWatcherService = Services.GetService<FileWatcherService>();
+            var aiChatService = Services.GetRequiredService<AiChatService>();
             
             if (_launcherWindow is not { IsLoaded: true })
             {
-                _launcherWindow = new LauncherWindow(indexingService, settingsProvider, aliasService, noteWidgetService, timerWidgetService, notesService, webIntegrationService, fileWatcherService);
+                _launcherWindow = new LauncherWindow(indexingService, settingsProvider, aliasService, noteWidgetService, timerWidgetService, notesService, webIntegrationService, aiChatService, fileWatcherService);
                 _launcherWindow.Closed += (_, _) => _launcherWindow = null;
                 _launcherWindow.RequestOpenSettings += (_, _) => Dispatcher.Invoke(ShowSettings);
                 _launcherWindow.RequestQuit += (_, _) => Dispatcher.Invoke(ExitApplication);

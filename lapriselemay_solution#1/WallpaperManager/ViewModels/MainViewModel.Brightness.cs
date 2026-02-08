@@ -136,6 +136,13 @@ public partial class MainViewModel
         {
             UpdateCurrentPeriodDisplay();
             
+            // Ne pas interférer si un wallpaper dynamique est actif
+            if (App.IsInitialized && App.DynamicService.IsActive)
+            {
+                System.Diagnostics.Debug.WriteLine($"SmartRotation: Période changée → {period}, mais wallpaper dynamique actif — ignoré");
+                return;
+            }
+            
             // Mettre à jour la playlist de rotation pour la nouvelle période
             UpdateRotationPlaylistForPeriod(period);
             
@@ -172,6 +179,14 @@ public partial class MainViewModel
             if (IsCollectionRotationActive)
             {
                 IsCollectionRotationActive = false;
+            }
+            
+            // Désactiver le wallpaper dynamique si actif
+            if (App.IsInitialized && App.DynamicService.IsActive)
+            {
+                App.DynamicService.Stop();
+                OnPropertyChanged(nameof(IsSelectedDynamicActive));
+                OnPropertyChanged(nameof(ActiveDynamicWallpaperId));
             }
             
             // Désactiver l'application directe par le SmartRotationService

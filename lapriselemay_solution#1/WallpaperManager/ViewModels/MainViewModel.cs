@@ -555,11 +555,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
         
-        // Désactiver la rotation normale
-        if (IsRotationEnabled)
+        // Désactiver la rotation intelligente si active (doit être fait AVANT IsRotationEnabled)
+        if (SmartRotationEnabled)
         {
-            IsRotationEnabled = false;
+            // Arrêter le service SmartRotation sans passer par le setter complet
+            // pour éviter de restaurer la playlist complète
+            App.SmartRotationServiceOrNull?.Stop();
         }
+        
+        // Forcer l'arrêt du service de rotation, même si SmartRotation le gérait
+        App.RotationService.Stop();
+        _isRotationEnabled = false;
+        OnPropertyChanged(nameof(IsRotationEnabled));
+        OnPropertyChanged(nameof(RotationStatusText));
         
         App.DynamicService.Activate(SelectedDynamicWallpaper);
         StatusMessage = $"Wallpaper dynamique '{SelectedDynamicWallpaper.Name}' activé";
@@ -571,6 +579,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (!App.IsInitialized) return;
         
         App.DynamicService.Stop();
+        
+        // Restaurer la rotation intelligente si elle était activée dans les settings
+        if (SettingsService.Current.SmartRotationEnabled && App.SmartRotationServiceOrNull != null)
+        {
+            var service = App.SmartRotationServiceOrNull;
+            service.Settings.ChangeOnPeriodTransition = false;
+            service.StartWithoutApply();
+            
+            UpdateRotationPlaylistForPeriod(service.CurrentPeriod);
+            
+            _isRotationEnabled = true;
+            OnPropertyChanged(nameof(IsRotationEnabled));
+            OnPropertyChanged(nameof(RotationStatusText));
+            
+            App.RotationService.Start();
+            App.RotationService.Next();
+        }
+        
         StatusMessage = "Wallpaper dynamique désactivé";
     }
     

@@ -298,7 +298,6 @@
                             <Setter Property="Background" Value="Transparent"/>
                             <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}"/>
                             <Setter Property="ContextMenu" Value="{StaticResource ResultContextMenu}"/>
-                            <Setter Property="Opacity" Value="0"/>
                             <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
                             <Setter Property="RenderTransform">
                                 <Setter.Value>
