@@ -39,6 +39,10 @@ public static class LaunchService
                     StartProcess(item.Path);
                     break;
                     
+                case ResultType.SystemControl:
+                    LaunchSystemControl(item.Path);
+                    break;
+                    
                 case ResultType.Calculator:
                     System.Windows.Clipboard.SetText(item.Path);
                     break;
@@ -126,6 +130,27 @@ public static class LaunchService
         }
     }
     
+    /// <summary>
+    /// Lance un item de paramètres Windows.
+    /// Gère les URIs ms-settings:, les commandes control| et les .msc.
+    /// </summary>
+    private static void LaunchSystemControl(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path.StartsWith(":weather:") || path.StartsWith(":timer:"))
+            return;
+        
+        // Format "control|args" pour les applets du panneau de configuration
+        if (path.StartsWith("control|"))
+        {
+            var args = path["control|".Length..];
+            StartProcess("control.exe", string.IsNullOrEmpty(args) ? null : args);
+            return;
+        }
+        
+        // ms-settings: URIs, .msc, mstsc, etc. → lancement direct
+        StartProcess(path);
+    }
+
     private static void StartProcess(string fileName, string? arguments = null, string? workingDirectory = null)
     {
         var psi = new ProcessStartInfo

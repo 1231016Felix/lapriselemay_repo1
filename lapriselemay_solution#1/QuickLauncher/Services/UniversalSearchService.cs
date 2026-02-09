@@ -109,10 +109,24 @@ public static class UniversalSearchService
     }
 
     /// <summary>
+    /// Force une revérification de tous les moteurs de recherche.
+    /// Utile après un changement de configuration système.
+    /// Réinitialise les caches statiques de Everything ET Windows Search.
+    /// </summary>
+    public static void RefreshEngineDetection()
+    {
+        EverythingApi.RefreshAvailability();
+        WindowsSearchService.RefreshAvailability();
+    }
+
+    /// <summary>
     /// Retourne des informations détaillées sur le moteur de recherche disponible.
     /// </summary>
-    public static SearchEngineInfo GetEngineInfo()
+    public static SearchEngineInfo GetEngineInfo(bool forceRefresh = false)
     {
+        if (forceRefresh)
+            RefreshEngineDetection();
+        
         var status = GetAvailableEngine();
         
         return status switch

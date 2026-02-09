@@ -228,20 +228,42 @@ public static class WindowsSearchService
             .Replace("\"", "");
     }
 
+    private static bool? _isAvailable;
+
     /// <summary>
-    /// Vérifie si Windows Search est disponible.
+    /// Vérifie si Windows Search est disponible (résultat mis en cache).
+    /// Utiliser <see cref="RefreshAvailability"/> pour forcer une nouvelle vérification.
     /// </summary>
     public static bool IsAvailable()
     {
+        if (_isAvailable.HasValue)
+            return _isAvailable.Value;
+
         try
         {
             using var connection = new OleDbConnection(ConnectionString);
             connection.Open();
-            return true;
+            
+            // Vérifier que le service répond réellement (pas juste la connexion)
+            using var cmd = new OleDbCommand(
+                "SELECT TOP 1 System.ItemName FROM SystemIndex", connection);
+            cmd.CommandTimeout = 3;
+            using var reader = cmd.ExecuteReader();
+            _isAvailable = true;
         }
         catch
         {
-            return false;
+            _isAvailable = false;
         }
+
+        return _isAvailable.Value;
+    }
+
+    /// <summary>
+    /// Force une nouvelle vérification de disponibilité.
+    /// </summary>
+    public static void RefreshAvailability()
+    {
+        _isAvailable = null;
     }
 }

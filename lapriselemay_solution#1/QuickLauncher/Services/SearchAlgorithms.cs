@@ -268,7 +268,9 @@ public static class SearchAlgorithms
         weights ??= DefaultWeights;
 
         var queryLower = query.ToLowerInvariant();
-        var targetLower = target.ToLowerInvariant();
+        // Strip les emojis du nom pour ne pas polluer le fuzzy matching
+        // Ex: "⚙️ Paramètres Windows" → "paramètres windows"
+        var targetLower = StripEmojis(target).ToLowerInvariant();
 
         int score = 0;
         
@@ -689,6 +691,125 @@ public static class SearchAlgorithms
         return totalScore / queryWords.Length;
     }
     
+    #endregion
+
+    #region Description Matching
+
+    /// <summary>
+    /// Séparateurs Unicode reconnus comme emojis ou symboles décoratifs.
+    /// Utilisé pour nettoyer les noms avant le fuzzy matching.
+    /// </summary>
+    private static readonly HashSet<System.Globalization.UnicodeCategory> EmojiCategories =
+    [
+        System.Globalization.UnicodeCategory.OtherSymbol,        // ⚙️🔊🔍 etc.
+        System.Globalization.UnicodeCategory.ModifierSymbol,
+        System.Globalization.UnicodeCategory.NonSpacingMark,     // Variation selectors (️)
+        System.Globalization.UnicodeCategory.Format,             // Zero-width joiners
+    ];
+
+    /// <summary>
+    /// Retire les emojis et symboles décoratifs d'un texte pour améliorer le fuzzy matching.
+    /// Gère correctement les surrogate pairs (emojis hors BMP comme 🔊, 🖥️, etc.).
+    /// Ex: "⚙️ Paramètres Windows" → "Paramètres Windows"
+    /// </summary>
+    public static string StripEmojis(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+
+        var sb = new System.Text.StringBuilder(text.Length);
+        for (var i = 0; i < text.Length; i++)
+        {
+            // Variation Selector-16 (️) : toujours skipper
+            if (text[i] == '\uFE0F')
+                continue;
+            
+            // Surrogate pair : décoder le codepoint complet
+            if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+            {
+                var rune = char.ConvertToUtf32(text[i], text[i + 1]);
+                var category = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(rune);
+                if (EmojiCategories.Contains(category))
+                {
+                    i++; // Skipper la paire complète
+                    continue;
+                }
+                sb.Append(text[i]);
+                sb.Append(text[i + 1]);
+                i++;
+                continue;
+            }
+            
+            // Caractère BMP simple
+            var charCategory = char.GetUnicodeCategory(text[i]);
+            if (!EmojiCategories.Contains(charCategory) && !char.IsSurrogate(text[i]))
+                sb.Append(text[i]);
+        }
+        return sb.ToString().Trim();
+    }
+
+    /// <summary>
+    /// Calcule un score de correspondance sur la description d'un résultat.
+    /// Permet de trouver des paramètres Windows via leurs mots-clés de description.
+    /// Ex: "DNS" → match sur la description "Adaptateurs réseau, IP, DNS"
+    /// </summary>
+    public static int CalculateDescriptionScore(string query, string description)
+    {
+        if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(description))
+            return 0;
+
+        var queryLower = query.ToLowerInvariant();
+        var descLower = description.ToLowerInvariant();
+
+        // Match exact de la requête complète dans la description
+        if (descLower.Contains(queryLower))
+        {
+            // Bonus si le match est au début d'un mot
+            var index = descLower.IndexOf(queryLower);
+            var atWordBoundary = index == 0 || !char.IsLetterOrDigit(descLower[index - 1]);
+            return atWordBoundary ? 350 : 300;
+        }
+
+        // Multi-mots: chaque mot de la requête doit matcher quelque part dans la description
+        var queryWords = queryLower.Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries);
+
+        if (queryWords.Length > 1)
+        {
+            var allMatch = queryWords.All(w => w.Length < 2 || descLower.Contains(w));
+            if (allMatch)
+                return 250;
+        }
+
+        // Match d'au moins un mot significatif (>= 3 chars)
+        var matchedWords = queryWords.Count(w => w.Length >= 3 && descLower.Contains(w));
+        if (matchedWords > 0)
+        {
+            // Score proportionnel au nombre de mots matchés
+            return 100 + (matchedWords * 50);
+        }
+
+        // Fuzzy matching par mot (tolérance aux typos dans la description)
+        if (queryWords.Length == 1 && queryLower.Length >= 4)
+        {
+            var descWords = descLower.Split(
+                [' ', ',', '•', '(', ')', '-', '_', '/'],
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            foreach (var dWord in descWords)
+            {
+                if (dWord.Length < 3) continue;
+                var maxDist = queryLower.Length <= 5 ? 1 : 2;
+                var dist = DamerauLevenshteinDistance(queryLower, dWord);
+                if (dist <= maxDist)
+                {
+                    var sim = 1.0 - (double)dist / Math.Max(queryLower.Length, dWord.Length);
+                    return (int)(sim * 200);
+                }
+            }
+        }
+
+        return 0;
+    }
+
     #endregion
 
     #region Utilitaires

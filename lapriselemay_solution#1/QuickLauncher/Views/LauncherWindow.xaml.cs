@@ -865,11 +865,11 @@ public partial class LauncherWindow : Window
     
     private void CenterOnScreen()
     {
-        var screenWidth = SystemParameters.PrimaryScreenWidth;
-        var screenHeight = SystemParameters.PrimaryScreenHeight;
-        var taskbarHeight = screenHeight - SystemParameters.WorkArea.Height;
+        var workArea = SystemParameters.WorkArea; // Zone sans la barre des tâches
         var windowWidth = Width;
         var windowHeight = ActualHeight > 0 ? ActualHeight : 150;
+        // Marge de sécurité en bas pour ne jamais coller à la barre des tâches
+        const double bottomMargin = 10;
         
         switch (_settings.WindowPosition)
         {
@@ -877,25 +877,34 @@ public partial class LauncherWindow : Window
                 var left = _settings.LastWindowLeft.Value;
                 var top = _settings.LastWindowTop.Value;
                 
-                if (left >= 0 && left + windowWidth <= screenWidth &&
-                    top >= 0 && top + windowHeight <= screenHeight - taskbarHeight)
+                if (left >= workArea.Left && left + windowWidth <= workArea.Right &&
+                    top >= workArea.Top && top + windowHeight <= workArea.Bottom)
                 {
                     Left = left;
                     Top = top;
-                    return;
                 }
-                goto default;
+                else
+                {
+                    goto default;
+                }
+                break;
                 
             case "Top":
-                Left = (screenWidth - windowWidth) / 2;
-                Top = 60;
+                Left = workArea.Left + (workArea.Width - windowWidth) / 2;
+                Top = workArea.Top + 60;
                 break;
                 
             default:
-                Left = (screenWidth - windowWidth) / 2;
-                Top = (screenHeight - taskbarHeight) / 4;
+                Left = workArea.Left + (workArea.Width - windowWidth) / 2;
+                Top = workArea.Top + workArea.Height / 4;
                 break;
         }
+        
+        // Limiter MaxHeight dynamiquement pour ne jamais dépasser la zone de travail.
+        // La fenêtre utilise SizeToContent=Height, donc WPF la redimensionne automatiquement
+        // en respectant MaxHeight. Le Grid.Margin="20" ajoute 40px (ombre).
+        var availableHeight = workArea.Bottom - Top - bottomMargin;
+        MaxHeight = Math.Max(200, availableHeight);
     }
 
     #region Context Menu Handlers

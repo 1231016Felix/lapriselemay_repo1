@@ -23,6 +23,7 @@ namespace QuickLauncher.Views;
 public partial class SettingsWindow : Window
 {
     private readonly AppSettings _settings;
+    private readonly ISettingsProvider? _settingsProvider;
     private readonly IndexingService? _indexingService;
     private readonly WebIntegrationService _webService = new();
     
@@ -42,10 +43,11 @@ public partial class SettingsWindow : Window
     // Timer pour le feedback de sauvegarde
     private readonly DispatcherTimer _saveIndicatorTimer;
 
-    public SettingsWindow(IndexingService? indexingService = null)
+    public SettingsWindow(IndexingService? indexingService = null, ISettingsProvider? settingsProvider = null)
     {
         InitializeComponent();
-        _settings = AppSettings.Load();
+        _settingsProvider = settingsProvider;
+        _settings = settingsProvider?.Current ?? AppSettings.Load();
         _indexingService = indexingService;
         
         // Initialiser le timer pour le feedback de sauvegarde
@@ -134,7 +136,7 @@ public partial class SettingsWindow : Window
         SystemSearchDepthSlider.Value = _settings.SystemSearchDepth;
         SystemSearchDepthValue.Text = _settings.SystemSearchDepth.ToString();
         SystemSearchDepthHint.Text = GetSystemSearchDepthHint(_settings.SystemSearchDepth);
-        LoadSearchEngineInfo();
+        LoadSearchEngineInfo(forceRefresh: true);
         
         // Charger la liste des navigateurs
         LoadBrowsersList();
@@ -372,9 +374,9 @@ public partial class SettingsWindow : Window
         }
     }
     
-    private void LoadSearchEngineInfo()
+    private void LoadSearchEngineInfo(bool forceRefresh = false)
     {
-        var info = UniversalSearchService.GetEngineInfo();
+        var info = UniversalSearchService.GetEngineInfo(forceRefresh);
         
         SearchEngineIcon.Text = info.Icon;
         SearchEngineName.Text = info.Name;
@@ -643,7 +645,15 @@ public partial class SettingsWindow : Window
     {
         if (_isLoading) return;
         
-        _settings.Save();
+        if (_settingsProvider != null)
+        {
+            // Utiliser le provider centralisé pour sauvegarder ET notifier les abonnés
+            _settingsProvider.Save();
+        }
+        else
+        {
+            _settings.Save();
+        }
         Debug.WriteLine("[Settings] Auto-sauvegardé");
         
         // Afficher le feedback visuel
@@ -1047,6 +1057,12 @@ public partial class SettingsWindow : Window
             if (selectedIndex == 2 && !_isLoading)
             {
                 LoadSystemCommands();
+            }
+            
+            // Rafraîchir l'info du moteur de recherche quand l'onglet Indexation est sélectionné
+            if (selectedIndex == 1 && !_isLoading)
+            {
+                LoadSearchEngineInfo(forceRefresh: true);
             }
         }
         catch (Exception ex)

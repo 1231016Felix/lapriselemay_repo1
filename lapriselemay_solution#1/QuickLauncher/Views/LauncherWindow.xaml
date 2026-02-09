@@ -13,7 +13,7 @@
         WindowStartupLocation="Manual"
         Width="680"
         SizeToContent="Height"
-        MaxHeight="600"
+        MaxHeight="800"
         ResizeMode="NoResize"
         Deactivated="Window_Deactivated"
         PreviewKeyDown="Window_PreviewKeyDown"

@@ -255,10 +255,11 @@ public partial class App : Application
             var indexingService = Services.GetRequiredService<IndexingService>();
             var settingsProvider = Services.GetRequiredService<ISettingsProvider>();
             
-            var settingsWindow = new SettingsWindow(indexingService);
+            var settingsWindow = new SettingsWindow(indexingService, settingsProvider);
             settingsWindow.ShowDialog();
             
-            // Recharger les paramètres depuis le disque (SettingsWindow sauvegarde directement)
+            // Les paramètres sont déjà sauvegardés via le provider, mais on force un reload
+            // pour être sûr de capter les modifications externes
             settingsProvider.Reload();
             var settings = settingsProvider.Current;
             
