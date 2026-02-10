@@ -88,16 +88,13 @@ public partial class LauncherWindow : Window
     public event EventHandler? RequestQuit;
     public event EventHandler? RequestReindex;
     
-    public LauncherWindow(IndexingService indexingService, ISettingsProvider settingsProvider,
-        AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
-        NotesService notesService, WebIntegrationService webIntegrationService, AiChatService aiChatService,
-        FileWatcherService? fileWatcherService = null)
+    public LauncherWindow(LauncherViewModel viewModel, ISettingsProvider settingsProvider, NotesService notesService)
     {
         InitializeComponent();
         
         _settingsProvider = settingsProvider;
         _notesService = notesService;
-        _viewModel = new LauncherViewModel(indexingService, settingsProvider, aliasService, noteWidgetService, timerWidgetService, notesService, webIntegrationService, aiChatService, fileWatcherService);
+        _viewModel = viewModel;
         DataContext = _viewModel;
         
         SetupEventHandlers();

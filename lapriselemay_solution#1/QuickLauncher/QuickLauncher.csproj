@@ -18,6 +18,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="QuickLauncher.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- MVVM Toolkit (version centralisée) -->
     <PackageReference Include="CommunityToolkit.Mvvm" />
     

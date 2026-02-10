@@ -1,20 +1,27 @@
 using System.Diagnostics;
 using System.Net.Http;
-using System.Text;
 using System.Text.Json;
+using QuickLauncher.Services.AiProviders;
 
 namespace QuickLauncher.Services;
 
 /// <summary>
 /// Service d'intégration IA pour la commande :ai.
-/// Supporte l'API OpenAI-compatible (ChatGPT, Ollama, Groq, LM Studio, etc.).
-/// ChatGPT: https://api.openai.com/v1/chat/completions (clé API requise).
-/// Ollama:  http://localhost:11434/v1/chat/completions (local, sans clé).
+/// Utilise un pattern strategy pour supporter plusieurs fournisseurs (OpenAI, Gemini, Ollama, etc.).
 /// </summary>
 public sealed class AiChatService : IDisposable
 {
     private readonly HttpClient _httpClient;
     private bool _disposed;
+
+    // Providers disponibles (indexés par ID)
+    private static readonly Dictionary<string, IAiProvider> Providers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["chatgpt"] = new OpenAiProvider(),
+        ["ollama"]  = new OpenAiProvider(),   // Ollama est OpenAI-compatible
+        ["custom"]  = new OpenAiProvider(),   // Custom utilise aussi le format OpenAI par défaut
+        ["gemini"]  = new GeminiProvider(),
+    };
 
     // Cache simple pour éviter les appels répétés identiques
     private (string Key, AiChatResult Result, DateTime CachedAt)? _cache;
@@ -30,6 +37,16 @@ public sealed class AiChatService : IDisposable
     }
 
     /// <summary>
+    /// Résout le provider à utiliser selon l'identifiant du fournisseur.
+    /// </summary>
+    public static IAiProvider ResolveProvider(string providerId)
+    {
+        return Providers.TryGetValue(providerId, out var provider)
+            ? provider
+            : Providers["chatgpt"]; // Fallback OpenAI-compatible
+    }
+
+    /// <summary>
     /// Envoie une question à l'API et retourne la réponse.
     /// </summary>
     public async Task<AiChatResult?> AskAsync(
@@ -38,13 +55,14 @@ public sealed class AiChatService : IDisposable
         string apiKey,
         string model,
         string systemPrompt,
+        string providerId,
         CancellationToken token = default)
     {
         if (string.IsNullOrWhiteSpace(question))
             return null;
 
         // Vérifier le cache
-        var cacheKey = $"{question.ToLowerInvariant()}_{model}";
+        var cacheKey = $"{question.ToLowerInvariant()}_{model}_{providerId}";
         if (_cache.HasValue &&
             _cache.Value.Key == cacheKey &&
             DateTime.Now - _cache.Value.CachedAt < CacheDuration)
@@ -54,76 +72,33 @@ public sealed class AiChatService : IDisposable
 
         try
         {
-            // Construire la requête au format OpenAI-compatible
-            var requestBody = new
-            {
-                model = model,
-                messages = new object[]
-                {
-                    new { role = "system", content = systemPrompt },
-                    new { role = "user", content = question }
-                },
-                max_tokens = 500,
-                temperature = 0.7,
-                stream = false
-            };
-
-            var json = JsonSerializer.Serialize(requestBody);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-            // Ajouter la clé API si fournie (pas nécessaire pour Ollama local)
-            using var request = new HttpRequestMessage(HttpMethod.Post, apiUrl);
-            request.Content = content;
-            if (!string.IsNullOrWhiteSpace(apiKey))
-            {
-                request.Headers.Add("Authorization", $"Bearer {apiKey}");
-            }
+            var provider = ResolveProvider(providerId);
+            using var request = provider.BuildRequest(apiUrl, apiKey, model, systemPrompt, question);
 
             var response = await _httpClient.SendAsync(request, token);
             var responseJson = await response.Content.ReadAsStringAsync(token);
 
             if (!response.IsSuccessStatusCode)
             {
-                Debug.WriteLine($"[AI] Erreur HTTP {response.StatusCode}: {responseJson}");
+                Debug.WriteLine($"[AI:{providerId}] Erreur HTTP {response.StatusCode}: {responseJson}");
                 return new AiChatResult
                 {
-                    Error = response.StatusCode switch
-                    {
-                        System.Net.HttpStatusCode.Unauthorized
-                            => "Clé API invalide ou manquante",
-                        System.Net.HttpStatusCode.NotFound
-                            => $"Modèle '{model}' introuvable. Vérifiez le nom du modèle.",
-                        (System.Net.HttpStatusCode)429
-                            => "Limite atteinte ou crédits insuffisants. Vérifiez votre solde sur platform.openai.com/settings/organization/billing",
-                        _ => $"Erreur serveur ({(int)response.StatusCode})"
-                    }
+                    Error = ParseHttpError(response.StatusCode, responseJson, model, providerId)
                 };
             }
 
-            var data = JsonDocument.Parse(responseJson);
-            var choices = data.RootElement.GetProperty("choices");
-            if (choices.GetArrayLength() == 0)
+            var parsed = provider.ParseResponse(responseJson);
+            if (parsed.HasError)
             {
-                return new AiChatResult { Error = "Aucune réponse générée" };
-            }
-
-            var message = choices[0].GetProperty("message");
-            var answer = message.GetProperty("content").GetString() ?? string.Empty;
-
-            // Extraire les tokens utilisés (si disponible)
-            int? tokensUsed = null;
-            if (data.RootElement.TryGetProperty("usage", out var usage) &&
-                usage.TryGetProperty("total_tokens", out var totalTokens))
-            {
-                tokensUsed = totalTokens.GetInt32();
+                return new AiChatResult { Error = parsed.Error };
             }
 
             var result = new AiChatResult
             {
                 Question = question,
-                Answer = answer.Trim(),
+                Answer = parsed.Answer,
                 Model = model,
-                TokensUsed = tokensUsed
+                TokensUsed = parsed.TokensUsed
             };
 
             // Mettre en cache
@@ -136,7 +111,7 @@ public sealed class AiChatService : IDisposable
         }
         catch (HttpRequestException ex) when (ex.InnerException is System.Net.Sockets.SocketException)
         {
-            Debug.WriteLine($"[AI] Connexion refusée: {ex.Message}");
+            Debug.WriteLine($"[AI:{providerId}] Connexion refusée: {ex.Message}");
             return new AiChatResult
             {
                 Error = "Impossible de se connecter au serveur IA. Vérifiez que le service est lancé et que l'URL est correcte."
@@ -144,31 +119,40 @@ public sealed class AiChatService : IDisposable
         }
         catch (HttpRequestException ex)
         {
-            Debug.WriteLine($"[AI] Erreur HTTP: {ex.Message}");
+            Debug.WriteLine($"[AI:{providerId}] Erreur HTTP: {ex.Message}");
             return new AiChatResult { Error = "Erreur de connexion. Vérifiez votre réseau." };
         }
         catch (JsonException ex)
         {
-            Debug.WriteLine($"[AI] Erreur JSON: {ex.Message}");
+            Debug.WriteLine($"[AI:{providerId}] Erreur JSON: {ex.Message}");
             return new AiChatResult { Error = "Réponse invalide du serveur IA." };
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[AI] Erreur: {ex.Message}");
+            Debug.WriteLine($"[AI:{providerId}] Erreur: {ex.Message}");
             return new AiChatResult { Error = $"Erreur: {ex.Message}" };
         }
     }
 
     /// <summary>
+    /// Surcharge rétro-compatible (sans providerId → fallback OpenAI).
+    /// </summary>
+    public Task<AiChatResult?> AskAsync(
+        string question, string apiUrl, string apiKey,
+        string model, string systemPrompt,
+        CancellationToken token = default)
+        => AskAsync(question, apiUrl, apiKey, model, systemPrompt, "chatgpt", token);
+
+    /// <summary>
     /// Teste la connectivité avec le serveur IA.
     /// </summary>
     public async Task<(bool Success, string Message)> TestConnectionAsync(
-        string apiUrl, string apiKey, string model)
+        string apiUrl, string apiKey, string model, string providerId)
     {
         try
         {
             var result = await AskAsync("Dis simplement 'OK'.", apiUrl, apiKey, model,
-                "Réponds uniquement 'OK'.", CancellationToken.None);
+                "Réponds uniquement 'OK'.", providerId, CancellationToken.None);
 
             if (result == null)
                 return (false, "Aucune réponse");
@@ -180,6 +164,54 @@ public sealed class AiChatService : IDisposable
         {
             return (false, $"Erreur: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Surcharge rétro-compatible (sans providerId).
+    /// </summary>
+    public Task<(bool Success, string Message)> TestConnectionAsync(
+        string apiUrl, string apiKey, string model)
+        => TestConnectionAsync(apiUrl, apiKey, model, "chatgpt");
+
+    /// <summary>
+    /// Parse les erreurs HTTP de manière adaptée au fournisseur.
+    /// </summary>
+    private static string ParseHttpError(
+        System.Net.HttpStatusCode statusCode, string responseJson,
+        string model, string providerId)
+    {
+        // Tenter d'extraire un message d'erreur du JSON
+        try
+        {
+            var doc = JsonDocument.Parse(responseJson);
+            if (doc.RootElement.TryGetProperty("error", out var errorObj))
+            {
+                if (errorObj.TryGetProperty("message", out var msg))
+                {
+                    var errorMsg = msg.GetString();
+                    if (!string.IsNullOrEmpty(errorMsg))
+                        return errorMsg.Length > 200 ? errorMsg[..200] + "…" : errorMsg;
+                }
+            }
+        }
+        catch { /* Fallback vers les messages génériques */ }
+
+        return statusCode switch
+        {
+            System.Net.HttpStatusCode.Unauthorized
+                => "Clé API invalide ou manquante",
+            System.Net.HttpStatusCode.Forbidden
+                => "Accès refusé. Vérifiez votre clé API et les permissions.",
+            System.Net.HttpStatusCode.NotFound
+                => providerId == "gemini"
+                    ? $"Modèle '{model}' introuvable. Essayez gemini-2.0-flash ou gemini-2.5-pro."
+                    : $"Modèle '{model}' introuvable. Vérifiez le nom du modèle.",
+            (System.Net.HttpStatusCode)429
+                => providerId == "gemini"
+                    ? "Quota Gemini atteint. Vérifiez votre quota sur console.cloud.google.com."
+                    : "Limite atteinte ou crédits insuffisants. Vérifiez votre solde sur platform.openai.com/settings/organization/billing",
+            _ => $"Erreur serveur ({(int)statusCode})"
+        };
     }
 
     public void Dispose()

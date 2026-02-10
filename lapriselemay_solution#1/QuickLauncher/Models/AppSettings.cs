@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using QuickLauncher.Models.Settings;
 
 namespace QuickLauncher.Models;
 
@@ -33,7 +34,12 @@ public enum AnimationStyle
 }
 
 /// <summary>
-/// Paramètres de l'application avec sérialisation JSON optimisée.
+/// Agrégateur de paramètres. Regroupe les sections spécialisées et gère
+/// la sérialisation / migration du format JSON.
+/// 
+/// Les propriétés proxy [JsonIgnore] permettent la compatibilité ascendante :
+/// le code existant peut continuer d'écrire _settings.MaxResults au lieu de
+/// _settings.Search.MaxResults. Les nouvelles classes doivent utiliser les sections.
 /// </summary>
 public sealed class AppSettings
 {
@@ -50,232 +56,160 @@ public sealed class AppSettings
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
     
-    // === Dossiers et fichiers ===
-    public List<string> IndexedFolders { get; set; } = GetDefaultIndexedFolders();
-    public List<string> FileExtensions { get; set; } = [..Constants.DefaultFileExtensions];
+    // ══════════════════════════════════════════════════════════
+    //  SECTIONS (source de vérité pour les nouveaux accès)
+    // ══════════════════════════════════════════════════════════
     
-    // === Scripts et recherche ===
-    public List<CustomScript> Scripts { get; set; } = [];
-    public List<WebSearchEngine> SearchEngines { get; set; } = GetDefaultSearchEngines();
+    /// <summary>Section recherche, indexation, scoring, historique.</summary>
+    public SearchSettings Search { get; set; } = new();
     
-    // === Commandes de contrôle système ===
+    /// <summary>Section apparence, thème, animations, fenêtre.</summary>
+    public AppearanceSettings Appearance { get; set; } = new();
+    
+    /// <summary>Section intégrations : météo, traduction, IA, widgets.</summary>
+    public IntegrationSettings Integrations { get; set; } = new();
+    
+    // ══════════════════════════════════════════════════════════
+    //  PROPRIÉTÉS RACINE (non sectionnées — restent ici)
+    // ══════════════════════════════════════════════════════════
+    
+    /// <summary>Commandes de contrôle système (:volume, :lock, etc.).</summary>
     public List<SystemControlCommand> SystemCommands { get; set; } = GetDefaultSystemCommands();
-
-    // === Paramètres généraux ===
-    public int MaxResults { get; set; } = Constants.DefaultMaxResults;
-    public bool ShowInTaskbar { get; set; }
-    public bool StartWithWindows { get; set; } = true;
-    public bool CloseAfterLaunch { get; set; } = true;
-    public bool ShowIndexingStatus { get; set; } = true;
-    public bool MinimizeOnStartup { get; set; } = true;
-    public bool EnableSearchHistory { get; set; } = true;
-    public int MaxSearchHistory { get; set; } = Constants.DefaultMaxSearchHistory;
-    public bool SingleClickLaunch { get; set; }
     
-    // === Apparence ===
-    public double WindowOpacity { get; set; } = 1.0;
-    public string AccentColor { get; set; } = Constants.Colors.DefaultAccent;
-    public string Theme { get; set; } = "Dark";
-    public bool ShowSettingsButton { get; set; } = true;
-    public bool ShowPreviewPanel { get; set; } = true;
-    public bool ShowShortcutHints { get; set; } = true;
-    
-    // === Mode thème automatique ===
-    public string LightThemeStartTime { get; set; } = "07:00";
-    public string DarkThemeStartTime { get; set; } = "19:00";
-    
-    // === Indicateurs de catégorie (badges colorés) ===
-    public bool ShowCategoryBadges { get; set; } = true;
-    
-    // === Animations ===
-    public bool EnableAnimations { get; set; } = true;
-    public int AnimationDurationMs { get; set; } = 140;
-    public AnimationStyle AnimationStyle { get; set; } = AnimationStyle.FadeSlide;
-    public int StaggerDelayMs { get; set; } = 30;
-    
-    // === Thème automatique (jour/nuit) ===
-    public ThemeMode ThemeMode { get; set; } = ThemeMode.Dark;
-    public string AutoThemeLightStart { get; set; } = "07:00";  // Début mode clair
-    public string AutoThemeDarkStart { get; set; } = "19:00";   // Début mode sombre
-    
-    // === Surveillance fichiers ===
-    public bool EnableFileWatcher { get; set; } = true;
-    
-    // === Position fenêtre ===
-    public string WindowPosition { get; set; } = "Center";
-    public double? LastWindowLeft { get; set; }
-    public double? LastWindowTop { get; set; }
-    
-    // === Raccourci clavier ===
+    /// <summary>Raccourci clavier global.</summary>
     public HotkeySettings Hotkey { get; set; } = new();
     
-    // === Indexation ===
-    public int SearchDepth { get; set; } = Constants.DefaultSearchDepth;
-    public bool IndexHiddenFolders { get; set; }
-    public bool IndexBrowserBookmarks { get; set; } = true;
+    /// <summary>Comportement général.</summary>
+    public bool StartWithWindows { get; set; } = true;
+    public bool CloseAfterLaunch { get; set; } = true;
+    public bool MinimizeOnStartup { get; set; } = true;
+    public bool SingleClickLaunch { get; set; }
     
-    // === Recherche système (:find) ===
-    public int SystemSearchDepth { get; set; } = 5;
+    // ══════════════════════════════════════════════════════════
+    //  PROXIES DE COMPATIBILITÉ — Search
+    //  Permet à l'ancien code d'écrire _settings.MaxResults etc.
+    //  TODO: migrer progressivement vers _settings.Search.MaxResults
+    // ══════════════════════════════════════════════════════════
     
-    // === Réindexation automatique ===
-    public bool AutoReindexEnabled { get; set; }
-    public AutoReindexMode AutoReindexMode { get; set; } = AutoReindexMode.Interval;
-    public int AutoReindexIntervalMinutes { get; set; } = 60;
-    public string AutoReindexScheduledTime { get; set; } = "03:00";
-    
-    // === Historique de recherche (items cliqués) ===
-    public List<HistoryItem> SearchHistory { get; set; } = [];
-    
-    // === Widgets de notes sur le bureau ===
-    public List<NoteWidgetInfo> NoteWidgets { get; set; } = [];
-    
-    // === Widgets de minuteries sur le bureau ===
-    public List<TimerWidgetInfo> TimerWidgets { get; set; } = [];
-    
-    // === Items épinglés ===
-    public List<PinnedItem> PinnedItems { get; set; } = [];
-    
-    // === Alias activés ===
-    public bool EnableAliases { get; set; } = true;
-    
-    // === Poids de scoring configurables ===
-    public ScoringWeights ScoringWeights { get; set; } = new();
-    
-    // === Notes rapides ===
-    public List<NoteItem> Notes { get; set; } = [];
-    
-    // === Intégrations web ===
-    public string WeatherCity { get; set; } = "Montreal";
-    public string WeatherUnit { get; set; } = "celsius";  // "celsius" ou "fahrenheit"
-    public string TranslateTargetLang { get; set; } = "en";
-    public string TranslateSourceLang { get; set; } = "auto";
-    
-    // === Intégration IA ===
-    public string AiProvider { get; set; } = "chatgpt";  // "ollama", "chatgpt" ou "custom"
-    public string AiApiUrl { get; set; } = "https://api.openai.com/v1/chat/completions";
-    public string AiApiKey { get; set; } = string.Empty;  // Requis pour ChatGPT, vide pour Ollama
-    public string AiModel { get; set; } = "gpt-4o-mini";  // Modèle par défaut
-    public string AiSystemPrompt { get; set; } = "Tu es un assistant concis intégré dans un lanceur d'applications. Réponds de manière courte et directe (2-3 phrases max). Pas de markdown. Langue: français.";
+    [JsonIgnore] public int MaxResults { get => Search.MaxResults; set => Search.MaxResults = value; }
+    [JsonIgnore] public int SearchDepth { get => Search.SearchDepth; set => Search.SearchDepth = value; }
+    [JsonIgnore] public bool IndexHiddenFolders { get => Search.IndexHiddenFolders; set => Search.IndexHiddenFolders = value; }
+    [JsonIgnore] public bool IndexBrowserBookmarks { get => Search.IndexBrowserBookmarks; set => Search.IndexBrowserBookmarks = value; }
+    [JsonIgnore] public bool EnableAliases { get => Search.EnableAliases; set => Search.EnableAliases = value; }
+    [JsonIgnore] public int SystemSearchDepth { get => Search.SystemSearchDepth; set => Search.SystemSearchDepth = value; }
+    [JsonIgnore] public bool EnableSearchHistory { get => Search.EnableSearchHistory; set => Search.EnableSearchHistory = value; }
+    [JsonIgnore] public int MaxSearchHistory { get => Search.MaxSearchHistory; set => Search.MaxSearchHistory = value; }
+    [JsonIgnore] public List<HistoryItem> SearchHistory { get => Search.SearchHistory; set => Search.SearchHistory = value; }
+    [JsonIgnore] public ScoringWeights ScoringWeights { get => Search.ScoringWeights; set => Search.ScoringWeights = value; }
+    [JsonIgnore] public List<string> IndexedFolders { get => Search.IndexedFolders; set => Search.IndexedFolders = value; }
+    [JsonIgnore] public List<string> FileExtensions { get => Search.FileExtensions; set => Search.FileExtensions = value; }
+    [JsonIgnore] public List<PinnedItem> PinnedItems { get => Search.PinnedItems; set => Search.PinnedItems = value; }
+    [JsonIgnore] public List<CustomScript> Scripts { get => Search.Scripts; set => Search.Scripts = value; }
+    [JsonIgnore] public List<WebSearchEngine> SearchEngines { get => Search.SearchEngines; set => Search.SearchEngines = value; }
+    [JsonIgnore] public bool EnableFileWatcher { get => Search.EnableFileWatcher; set => Search.EnableFileWatcher = value; }
+    [JsonIgnore] public bool AutoReindexEnabled { get => Search.AutoReindexEnabled; set => Search.AutoReindexEnabled = value; }
+    [JsonIgnore] public AutoReindexMode AutoReindexMode { get => Search.AutoReindexMode; set => Search.AutoReindexMode = value; }
+    [JsonIgnore] public int AutoReindexIntervalMinutes { get => Search.AutoReindexIntervalMinutes; set => Search.AutoReindexIntervalMinutes = value; }
+    [JsonIgnore] public string AutoReindexScheduledTime { get => Search.AutoReindexScheduledTime; set => Search.AutoReindexScheduledTime = value; }
 
-    private static List<string> GetDefaultIndexedFolders() =>
-    [
-        Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu),
-        Environment.GetFolderPath(Environment.SpecialFolder.Desktop),
-        Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments)
-    ];
+    // ══════════════════════════════════════════════════════════
+    //  PROXIES DE COMPATIBILITÉ — Appearance
+    // ══════════════════════════════════════════════════════════
     
-    private static List<WebSearchEngine> GetDefaultSearchEngines() =>
-    [
-        new() { Prefix = "g", Name = "Google", UrlTemplate = "https://www.google.com/search?q={query}" },
-        new() { Prefix = "yt", Name = "YouTube", UrlTemplate = "https://www.youtube.com/results?search_query={query}" },
-        new() { Prefix = "gh", Name = "GitHub", UrlTemplate = "https://github.com/search?q={query}" },
-        new() { Prefix = "so", Name = "Stack Overflow", UrlTemplate = "https://stackoverflow.com/search?q={query}" }
-    ];
+    [JsonIgnore] public string Theme { get => Appearance.Theme; set => Appearance.Theme = value; }
+    [JsonIgnore] public ThemeMode ThemeMode { get => Appearance.ThemeMode; set => Appearance.ThemeMode = value; }
+    [JsonIgnore] public string AccentColor { get => Appearance.AccentColor; set => Appearance.AccentColor = value; }
+    [JsonIgnore] public double WindowOpacity { get => Appearance.WindowOpacity; set => Appearance.WindowOpacity = value; }
+    [JsonIgnore] public string WindowPosition { get => Appearance.WindowPosition; set => Appearance.WindowPosition = value; }
+    [JsonIgnore] public double? LastWindowLeft { get => Appearance.LastWindowLeft; set => Appearance.LastWindowLeft = value; }
+    [JsonIgnore] public double? LastWindowTop { get => Appearance.LastWindowTop; set => Appearance.LastWindowTop = value; }
+    [JsonIgnore] public bool ShowInTaskbar { get => Appearance.ShowInTaskbar; set => Appearance.ShowInTaskbar = value; }
+    [JsonIgnore] public bool ShowSettingsButton { get => Appearance.ShowSettingsButton; set => Appearance.ShowSettingsButton = value; }
+    [JsonIgnore] public bool ShowPreviewPanel { get => Appearance.ShowPreviewPanel; set => Appearance.ShowPreviewPanel = value; }
+    [JsonIgnore] public bool ShowShortcutHints { get => Appearance.ShowShortcutHints; set => Appearance.ShowShortcutHints = value; }
+    [JsonIgnore] public bool ShowCategoryBadges { get => Appearance.ShowCategoryBadges; set => Appearance.ShowCategoryBadges = value; }
+    [JsonIgnore] public bool ShowIndexingStatus { get => Appearance.ShowIndexingStatus; set => Appearance.ShowIndexingStatus = value; }
+    [JsonIgnore] public bool EnableAnimations { get => Appearance.EnableAnimations; set => Appearance.EnableAnimations = value; }
+    [JsonIgnore] public int AnimationDurationMs { get => Appearance.AnimationDurationMs; set => Appearance.AnimationDurationMs = value; }
+    [JsonIgnore] public AnimationStyle AnimationStyle { get => Appearance.AnimationStyle; set => Appearance.AnimationStyle = value; }
+    [JsonIgnore] public int StaggerDelayMs { get => Appearance.StaggerDelayMs; set => Appearance.StaggerDelayMs = value; }
+    [JsonIgnore] public string AutoThemeLightStart { get => Appearance.AutoThemeLightStart; set => Appearance.AutoThemeLightStart = value; }
+    [JsonIgnore] public string AutoThemeDarkStart { get => Appearance.AutoThemeDarkStart; set => Appearance.AutoThemeDarkStart = value; }
+    [JsonIgnore] public string LightThemeStartTime { get => Appearance.LightThemeStartTime; set => Appearance.LightThemeStartTime = value; }
+    [JsonIgnore] public string DarkThemeStartTime { get => Appearance.DarkThemeStartTime; set => Appearance.DarkThemeStartTime = value; }
     
-    private static List<SystemControlCommand> GetDefaultSystemCommands() =>
-    [
-        // ═══════════════════════════════════════════════════════════════
-        // 📝 PRODUCTIVITÉ
-        // ═══════════════════════════════════════════════════════════════
-        new() { Type = SystemControlType.Timer, Name = "Minuterie", Prefix = "timer", Icon = "⏱️", Category = "Productivité",
-                Description = "Créer une minuterie (ex: :timer 5m Pause café)", RequiresArgument = true, ArgumentHint = "[durée] [label]" },
-        new() { Type = SystemControlType.Note, Name = "Nouvelle note", Prefix = "note", Icon = "📝", Category = "Productivité",
-                Description = "Créer une note sur le bureau", RequiresArgument = true, ArgumentHint = "[contenu]" },
-        new() { Type = SystemControlType.SystemSearch, Name = "Recherche système", Prefix = "find", Icon = "🔎", Category = "Productivité",
-                Description = "Rechercher des fichiers sur tout le système", RequiresArgument = true, ArgumentHint = "[terme]" },
-        new() { Type = SystemControlType.Screenshot, Name = "Capture d'écran", Prefix = "screenshot", Icon = "📸", Category = "Productivité",
-                Description = "Prendre une capture d'écran", ArgumentHint = "[snip|primary]" },
-
-        // ═══════════════════════════════════════════════════════════════
-        // 🌐 INTÉGRATIONS WEB
-        // ═══════════════════════════════════════════════════════════════
-        new() { Type = SystemControlType.Weather, Name = "Météo", Prefix = "weather", Icon = "🌤️", Category = "Intégrations web",
-                Description = "Afficher la météo actuelle (ex: :weather ou :weather Paris)", ArgumentHint = "[ville]" },
-        new() { Type = SystemControlType.Translate, Name = "Traduction", Prefix = "translate", Icon = "🌐", Category = "Intégrations web",
-                Description = "Traduire du texte (ex: :translate hello ou :translate fr bonjour)", RequiresArgument = true, ArgumentHint = "[lang] <texte>" },
-        new() { Type = SystemControlType.AiChat, Name = "Assistant IA", Prefix = "ai", Icon = "🤖", Category = "Intégrations web",
-                Description = "Poser une question à l'IA (ex: :ai qu'est-ce qu'une API REST?)", RequiresArgument = true, ArgumentHint = "<question>" },
-
-        // ═══════════════════════════════════════════════════════════════
-        // 🔊 MULTIMÉDIA
-        // ═══════════════════════════════════════════════════════════════
-        new() { Type = SystemControlType.Volume, Name = "Volume", Prefix = "volume", Icon = "🔊", Category = "Multimédia",
-                Description = "Régler le volume (0-100, up, down)", RequiresArgument = true, ArgumentHint = "[0-100|up|down]" },
-        new() { Type = SystemControlType.Mute, Name = "Muet", Prefix = "mute", Icon = "🔇", Category = "Multimédia",
-                Description = "Basculer le mode muet" },
-        new() { Type = SystemControlType.Brightness, Name = "Luminosité", Prefix = "brightness", Icon = "☀️", Category = "Multimédia",
-                Description = "Régler la luminosité (0-100)", RequiresArgument = true, ArgumentHint = "[0-100]" },
-
-        // ═══════════════════════════════════════════════════════════════
-        // 🌐 RÉSEAU
-        // ═══════════════════════════════════════════════════════════════
-        new() { Type = SystemControlType.Wifi, Name = "WiFi", Prefix = "wifi", Icon = "📶", Category = "Réseau",
-                Description = "Contrôler le WiFi", RequiresArgument = true, ArgumentHint = "[on|off|status]" },
-        new() { Type = SystemControlType.FlushDns, Name = "Vider DNS", Prefix = "flushdns", Icon = "🌐", Category = "Réseau",
-                Description = "Vider le cache DNS" },
-
-        // ═══════════════════════════════════════════════════════════════
-        // ⚡ SESSION
-        // ═══════════════════════════════════════════════════════════════
-        new() { Type = SystemControlType.Lock, Name = "Verrouiller", Prefix = "lock", Icon = "🔒", Category = "Session",
-                Description = "Verrouiller la session" },
-        new() { Type = SystemControlType.Logoff, Name = "Déconnexion", Prefix = "logoff", Icon = "🚪", Category = "Session",
-                Description = "Déconnecter la session" },
-        new() { Type = SystemControlType.Sleep, Name = "Veille", Prefix = "sleep", Icon = "😴", Category = "Session",
-                Description = "Mettre en veille" },
-        new() { Type = SystemControlType.Hibernate, Name = "Hibernation", Prefix = "hibernate", Icon = "💤", Category = "Session",
-                Description = "Mettre en hibernation" },
-        new() { Type = SystemControlType.Shutdown, Name = "Éteindre", Prefix = "shutdown", Icon = "🔌", Category = "Session",
-                Description = "Éteindre l'ordinateur" },
-        new() { Type = SystemControlType.Restart, Name = "Redémarrer", Prefix = "restart", Icon = "🔄", Category = "Session",
-                Description = "Redémarrer l'ordinateur" },
-
-        // ═══════════════════════════════════════════════════════════════
-        // 🔧 SYSTÈME
-        // ═══════════════════════════════════════════════════════════════
-        new() { Type = SystemControlType.OpenTaskManager, Name = "Gestionnaire tâches", Prefix = "taskmgr", Icon = "📊", Category = "Système",
-                Description = "Ouvrir le Gestionnaire des tâches" },
-        new() { Type = SystemControlType.OpenWindowsSettings, Name = "Paramètres Windows", Prefix = "winsettings", Icon = "⚙️", Category = "Système",
-                Description = "Ouvrir les Paramètres Windows" },
-        new() { Type = SystemControlType.OpenControlPanel, Name = "Panneau config.", Prefix = "control", Icon = "🎛️", Category = "Système",
-                Description = "Ouvrir le Panneau de configuration" },
-        new() { Type = SystemControlType.EmptyRecycleBin, Name = "Vider corbeille", Prefix = "emptybin", Icon = "🗑️", Category = "Système",
-                Description = "Vider la corbeille" },
-        new() { Type = SystemControlType.EmptyTemp, Name = "Vider Temp", Prefix = "emptytemp", Icon = "🧹", Category = "Système",
-                Description = "Vider le dossier temporaire" },
-        new() { Type = SystemControlType.OpenCmdAdmin, Name = "CMD Admin", Prefix = "cmd", Icon = "💻", Category = "Système",
-                Description = "Ouvrir l'invite de commandes (admin)" },
-        new() { Type = SystemControlType.OpenPowerShellAdmin, Name = "PowerShell Admin", Prefix = "powershell", Icon = "🔵", Category = "Système",
-                Description = "Ouvrir PowerShell (admin)" },
-        new() { Type = SystemControlType.RestartExplorer, Name = "Redém. Explorer", Prefix = "restartexplorer", Icon = "📁", Category = "Système",
-                Description = "Redémarrer l'Explorateur Windows" },
-        new() { Type = SystemControlType.OpenStartupFolder, Name = "Démarrage", Prefix = "startup", Icon = "🚀", Category = "Système",
-                Description = "Ouvrir le dossier de démarrage Windows" },
-        new() { Type = SystemControlType.OpenHostsFile, Name = "Fichier hosts", Prefix = "hosts", Icon = "📝", Category = "Système",
-                Description = "Ouvrir le fichier hosts (admin)" }
-    ];
+    // ══════════════════════════════════════════════════════════
+    //  PROXIES DE COMPATIBILITÉ — Integrations
+    // ══════════════════════════════════════════════════════════
     
-    /// <summary>
-    /// Réinitialise les commandes système aux valeurs par défaut.
-    /// </summary>
+    [JsonIgnore] public string WeatherCity { get => Integrations.WeatherCity; set => Integrations.WeatherCity = value; }
+    [JsonIgnore] public string WeatherUnit { get => Integrations.WeatherUnit; set => Integrations.WeatherUnit = value; }
+    [JsonIgnore] public string TranslateTargetLang { get => Integrations.TranslateTargetLang; set => Integrations.TranslateTargetLang = value; }
+    [JsonIgnore] public string TranslateSourceLang { get => Integrations.TranslateSourceLang; set => Integrations.TranslateSourceLang = value; }
+    [JsonIgnore] public string AiProvider { get => Integrations.AiProvider; set => Integrations.AiProvider = value; }
+    [JsonIgnore] public string AiApiUrl { get => Integrations.AiApiUrl; set => Integrations.AiApiUrl = value; }
+    [JsonIgnore] public string AiApiKey { get => Integrations.AiApiKey; set => Integrations.AiApiKey = value; }
+    [JsonIgnore] public string AiModel { get => Integrations.AiModel; set => Integrations.AiModel = value; }
+    [JsonIgnore] public string AiSystemPrompt { get => Integrations.AiSystemPrompt; set => Integrations.AiSystemPrompt = value; }
+    [JsonIgnore] public List<NoteWidgetInfo> NoteWidgets { get => Integrations.NoteWidgets; set => Integrations.NoteWidgets = value; }
+    [JsonIgnore] public List<TimerWidgetInfo> TimerWidgets { get => Integrations.TimerWidgets; set => Integrations.TimerWidgets = value; }
+    [JsonIgnore] public List<NoteItem> Notes { get => Integrations.Notes; set => Integrations.Notes = value; }
+
+    // ══════════════════════════════════════════════════════════
+    //  MÉTHODES PROXY DE COMPATIBILITÉ — Delegated to Search
+    // ══════════════════════════════════════════════════════════
+    
+    public void PinItem(string name, string path, ResultType type, string? icon = null)
+        => Search.PinItem(name, path, type, icon);
+    
+    public bool UnpinItem(string path) => Search.UnpinItem(path);
+    public bool IsPinned(string path) => Search.IsPinned(path);
+    public void MovePinnedItemUp(string path) => Search.MovePinnedItemUp(path);
+    public void MovePinnedItemDown(string path) => Search.MovePinnedItemDown(path);
+    public void AddToSearchHistory(HistoryItem item) => Search.AddToSearchHistory(item);
+    public void ClearSearchHistory() => Search.ClearSearchHistory();
+    
+    // ══════════════════════════════════════════════════════════
+    //  COMMANDES SYSTÈME (migration et réinitialisation)
+    // ══════════════════════════════════════════════════════════
+    
     public void ResetSystemCommands() => SystemCommands = GetDefaultSystemCommands();
-
+    
+    // ══════════════════════════════════════════════════════════
+    //  CHARGEMENT / SAUVEGARDE / MIGRATION
+    // ══════════════════════════════════════════════════════════
+    
     public static AppSettings Load()
     {
         try
         {
-            if (File.Exists(SettingsPath))
+            if (!File.Exists(SettingsPath))
+                return new AppSettings();
+
+            var json = File.ReadAllText(SettingsPath);
+            
+            // Détection du format : ancien (plat) vs nouveau (sections)
+            // Si le JSON contient une clé "search" au top-level, c'est le nouveau format.
+            using var doc = JsonDocument.Parse(json);
+            var isNewFormat = doc.RootElement.TryGetProperty("search", out _);
+            
+            AppSettings? settings;
+            
+            if (isNewFormat)
             {
-                var json = File.ReadAllText(SettingsPath);
-                var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
-                if (settings != null)
-                {
-                    // Migration: ajouter les nouvelles commandes système manquantes
-                    settings.MigrateSystemCommands();
-                    System.Diagnostics.Debug.WriteLine($"[Settings] Chargé avec {settings.PinnedItems.Count} épingles");
-                    return settings;
-                }
+                settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
+            }
+            else
+            {
+                // Ancien format plat → désérialiser via le DTO legacy puis migrer
+                settings = MigrateFromLegacyFormat(json);
+            }
+            
+            if (settings != null)
+            {
+                settings.MigrateSystemCommands();
+                System.Diagnostics.Debug.WriteLine($"[Settings] Chargé avec {settings.PinnedItems.Count} épingles (format: {(isNewFormat ? "v2" : "legacy→v2")})");
+                return settings;
             }
         }
         catch (Exception ex)
@@ -284,6 +218,95 @@ public sealed class AppSettings
         }
         
         return new AppSettings();
+    }
+    
+    /// <summary>
+    /// Migre l'ancien format JSON plat vers le nouveau format sectionné.
+    /// Utilise JsonElement pour lire les propriétés à plat et peupler les sections.
+    /// </summary>
+    private static AppSettings MigrateFromLegacyFormat(string json)
+    {
+        // Stratégie: on désérialise tout dans un dictionnaire générique,
+        // puis on reconstruit les sections manuellement.
+        // Alternative plus simple: on désérialise dans un objet legacy qui a toutes
+        // les propriétés à plat, puis on copie.
+        var legacy = JsonSerializer.Deserialize<LegacyAppSettings>(json, JsonOptions);
+        if (legacy == null) return new AppSettings();
+        
+        var settings = new AppSettings();
+        
+        // Search
+        settings.Search.MaxResults = legacy.MaxResults;
+        settings.Search.SearchDepth = legacy.SearchDepth;
+        settings.Search.IndexHiddenFolders = legacy.IndexHiddenFolders;
+        settings.Search.IndexBrowserBookmarks = legacy.IndexBrowserBookmarks;
+        settings.Search.EnableAliases = legacy.EnableAliases;
+        settings.Search.SystemSearchDepth = legacy.SystemSearchDepth;
+        settings.Search.EnableSearchHistory = legacy.EnableSearchHistory;
+        settings.Search.MaxSearchHistory = legacy.MaxSearchHistory;
+        settings.Search.SearchHistory = legacy.SearchHistory ?? [];
+        settings.Search.ScoringWeights = legacy.ScoringWeights ?? new ScoringWeights();
+        settings.Search.IndexedFolders = legacy.IndexedFolders ?? settings.Search.IndexedFolders;
+        settings.Search.FileExtensions = legacy.FileExtensions ?? settings.Search.FileExtensions;
+        settings.Search.PinnedItems = legacy.PinnedItems ?? [];
+        settings.Search.Scripts = legacy.Scripts ?? [];
+        settings.Search.SearchEngines = legacy.SearchEngines ?? settings.Search.SearchEngines;
+        settings.Search.EnableFileWatcher = legacy.EnableFileWatcher;
+        settings.Search.AutoReindexEnabled = legacy.AutoReindexEnabled;
+        settings.Search.AutoReindexMode = legacy.AutoReindexMode;
+        settings.Search.AutoReindexIntervalMinutes = legacy.AutoReindexIntervalMinutes;
+        settings.Search.AutoReindexScheduledTime = legacy.AutoReindexScheduledTime ?? "03:00";
+        
+        // Appearance
+        settings.Appearance.Theme = legacy.Theme ?? "Dark";
+        settings.Appearance.ThemeMode = legacy.ThemeMode;
+        settings.Appearance.AccentColor = legacy.AccentColor ?? Constants.Colors.DefaultAccent;
+        settings.Appearance.WindowOpacity = legacy.WindowOpacity;
+        settings.Appearance.WindowPosition = legacy.WindowPosition ?? "Center";
+        settings.Appearance.LastWindowLeft = legacy.LastWindowLeft;
+        settings.Appearance.LastWindowTop = legacy.LastWindowTop;
+        settings.Appearance.ShowInTaskbar = legacy.ShowInTaskbar;
+        settings.Appearance.ShowSettingsButton = legacy.ShowSettingsButton;
+        settings.Appearance.ShowPreviewPanel = legacy.ShowPreviewPanel;
+        settings.Appearance.ShowShortcutHints = legacy.ShowShortcutHints;
+        settings.Appearance.ShowCategoryBadges = legacy.ShowCategoryBadges;
+        settings.Appearance.ShowIndexingStatus = legacy.ShowIndexingStatus;
+        settings.Appearance.EnableAnimations = legacy.EnableAnimations;
+        settings.Appearance.AnimationDurationMs = legacy.AnimationDurationMs;
+        settings.Appearance.AnimationStyle = legacy.AnimationStyle;
+        settings.Appearance.StaggerDelayMs = legacy.StaggerDelayMs;
+        settings.Appearance.AutoThemeLightStart = legacy.AutoThemeLightStart ?? "07:00";
+        settings.Appearance.AutoThemeDarkStart = legacy.AutoThemeDarkStart ?? "19:00";
+        settings.Appearance.LightThemeStartTime = legacy.LightThemeStartTime ?? "07:00";
+        settings.Appearance.DarkThemeStartTime = legacy.DarkThemeStartTime ?? "19:00";
+        
+        // Integrations
+        settings.Integrations.WeatherCity = legacy.WeatherCity ?? "Montreal";
+        settings.Integrations.WeatherUnit = legacy.WeatherUnit ?? "celsius";
+        settings.Integrations.TranslateTargetLang = legacy.TranslateTargetLang ?? "en";
+        settings.Integrations.TranslateSourceLang = legacy.TranslateSourceLang ?? "auto";
+        settings.Integrations.AiProvider = legacy.AiProvider ?? "chatgpt";
+        settings.Integrations.AiApiUrl = legacy.AiApiUrl ?? "https://api.openai.com/v1/chat/completions";
+        settings.Integrations.AiApiKey = legacy.AiApiKey ?? string.Empty;
+        settings.Integrations.AiModel = legacy.AiModel ?? "gpt-4o-mini";
+        settings.Integrations.AiSystemPrompt = legacy.AiSystemPrompt ?? settings.Integrations.AiSystemPrompt;
+        settings.Integrations.NoteWidgets = legacy.NoteWidgets ?? [];
+        settings.Integrations.TimerWidgets = legacy.TimerWidgets ?? [];
+        settings.Integrations.Notes = legacy.Notes ?? [];
+        
+        // Root
+        settings.SystemCommands = legacy.SystemCommands ?? GetDefaultSystemCommands();
+        settings.Hotkey = legacy.Hotkey ?? new HotkeySettings();
+        settings.StartWithWindows = legacy.StartWithWindows;
+        settings.CloseAfterLaunch = legacy.CloseAfterLaunch;
+        settings.MinimizeOnStartup = legacy.MinimizeOnStartup;
+        settings.SingleClickLaunch = legacy.SingleClickLaunch;
+        
+        // Sauvegarder immédiatement au nouveau format pour ne migrer qu'une seule fois
+        settings.Save();
+        System.Diagnostics.Debug.WriteLine("[Settings] Migration legacy → v2 effectuée");
+        
+        return settings;
     }
 
     /// <summary>
@@ -294,32 +317,24 @@ public sealed class AppSettings
         var defaultCommands = GetDefaultSystemCommands();
         var existingTypes = SystemCommands.Select(c => c.Type).ToHashSet();
         
-        // Supprimer les commandes obsolètes (Notes et Timers ont été remplacés par des widgets)
         SystemCommands.RemoveAll(c => c.Type == SystemControlType.Notes || c.Type == SystemControlType.Timers);
         
-        // Ajouter les commandes manquantes
         foreach (var cmd in defaultCommands)
         {
             if (!existingTypes.Contains(cmd.Type))
-            {
                 SystemCommands.Add(cmd);
-            }
         }
         
-        // Mettre à jour les catégories des commandes existantes (si vides)
         foreach (var existingCmd in SystemCommands)
         {
             if (string.IsNullOrEmpty(existingCmd.Category))
             {
                 var defaultCmd = defaultCommands.FirstOrDefault(d => d.Type == existingCmd.Type);
                 if (defaultCmd != null)
-                {
                     existingCmd.Category = defaultCmd.Category;
-                }
             }
         }
         
-        // Réorganiser les commandes selon l'ordre par défaut (par catégorie)
         var orderedTypes = defaultCommands.Select(c => c.Type).ToList();
         SystemCommands = SystemCommands
             .OrderBy(c => orderedTypes.IndexOf(c.Type))
@@ -342,113 +357,149 @@ public sealed class AppSettings
         }
     }
     
-    public void AddToSearchHistory(HistoryItem item)
-    {
-        if (!EnableSearchHistory || item == null || string.IsNullOrWhiteSpace(item.Path)) return;
-        
-        // Supprimer les doublons basés sur le chemin
-        SearchHistory.RemoveAll(h => h.Path.Equals(item.Path, StringComparison.OrdinalIgnoreCase));
-        SearchHistory.Insert(0, item);
-        
-        if (SearchHistory.Count > MaxSearchHistory)
-            SearchHistory.RemoveRange(MaxSearchHistory, SearchHistory.Count - MaxSearchHistory);
-    }
-    
-    public void ClearSearchHistory() => SearchHistory.Clear();
-    
-    // === Gestion des items épinglés ===
-    
-    /// <summary>
-    /// Épingle un item.
-    /// </summary>
-    public void PinItem(string name, string path, ResultType type, string? icon = null)
-    {
-        if (string.IsNullOrWhiteSpace(path)) return;
-        
-        // Vérifier si déjà épinglé
-        if (PinnedItems.Any(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase)))
-            return;
-        
-        PinnedItems.Add(new PinnedItem
-        {
-            Name = name,
-            Path = path,
-            Type = type,
-            Icon = icon,
-            PinnedAt = DateTime.Now,
-            Order = PinnedItems.Count
-        });
-    }
-    
-    /// <summary>
-    /// Désépingle un item.
-    /// </summary>
-    public bool UnpinItem(string path)
-    {
-        var item = PinnedItems.FirstOrDefault(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
-        if (item != null)
-        {
-            PinnedItems.Remove(item);
-            // Réordonner
-            for (int i = 0; i < PinnedItems.Count; i++)
-                PinnedItems[i].Order = i;
-            return true;
-        }
-        return false;
-    }
-    
-    /// <summary>
-    /// Vérifie si un item est épinglé.
-    /// </summary>
-    public bool IsPinned(string path)
-    {
-        return PinnedItems.Any(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
-    }
-    
-    /// <summary>
-    /// Déplace un item épinglé vers le haut.
-    /// </summary>
-    public void MovePinnedItemUp(string path)
-    {
-        var index = PinnedItems.FindIndex(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
-        if (index > 0)
-        {
-            (PinnedItems[index], PinnedItems[index - 1]) = (PinnedItems[index - 1], PinnedItems[index]);
-            PinnedItems[index].Order = index;
-            PinnedItems[index - 1].Order = index - 1;
-        }
-    }
-    
-    /// <summary>
-    /// Déplace un item épinglé vers le bas.
-    /// </summary>
-    public void MovePinnedItemDown(string path)
-    {
-        var index = PinnedItems.FindIndex(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
-        if (index >= 0 && index < PinnedItems.Count - 1)
-        {
-            (PinnedItems[index], PinnedItems[index + 1]) = (PinnedItems[index + 1], PinnedItems[index]);
-            PinnedItems[index].Order = index;
-            PinnedItems[index + 1].Order = index + 1;
-        }
-    }
-    
     public static void Reset()
     {
-        try
-        {
-            if (File.Exists(SettingsPath))
-                File.Delete(SettingsPath);
-        }
-        catch { /* Ignore les erreurs */ }
+        try { if (File.Exists(SettingsPath)) File.Delete(SettingsPath); }
+        catch { /* Ignore */ }
     }
     
     public static string GetSettingsPath() => SettingsPath;
+    
+    // ══════════════════════════════════════════════════════════
+    //  COMMANDES SYSTÈME PAR DÉFAUT
+    // ══════════════════════════════════════════════════════════
+    
+    private static List<SystemControlCommand> GetDefaultSystemCommands() =>
+    [
+        // Productivité
+        new() { Type = SystemControlType.Timer, Name = "Minuterie", Prefix = "timer", Icon = "⏱️", Category = "Productivité",
+                Description = "Créer une minuterie (ex: :timer 5m Pause café)", RequiresArgument = true, ArgumentHint = "[durée] [label]" },
+        new() { Type = SystemControlType.Note, Name = "Nouvelle note", Prefix = "note", Icon = "📝", Category = "Productivité",
+                Description = "Créer une note sur le bureau", RequiresArgument = true, ArgumentHint = "[contenu]" },
+        new() { Type = SystemControlType.SystemSearch, Name = "Recherche système", Prefix = "find", Icon = "🔎", Category = "Productivité",
+                Description = "Rechercher des fichiers sur tout le système", RequiresArgument = true, ArgumentHint = "[terme]" },
+        new() { Type = SystemControlType.Screenshot, Name = "Capture d'écran", Prefix = "screenshot", Icon = "📸", Category = "Productivité",
+                Description = "Prendre une capture d'écran", ArgumentHint = "[snip|primary]" },
+        // Intégrations web
+        new() { Type = SystemControlType.Weather, Name = "Météo", Prefix = "weather", Icon = "🌤️", Category = "Intégrations web",
+                Description = "Afficher la météo actuelle (ex: :weather ou :weather Paris)", ArgumentHint = "[ville]" },
+        new() { Type = SystemControlType.Translate, Name = "Traduction", Prefix = "translate", Icon = "🌐", Category = "Intégrations web",
+                Description = "Traduire du texte (ex: :translate hello ou :translate fr bonjour)", RequiresArgument = true, ArgumentHint = "[lang] <texte>" },
+        new() { Type = SystemControlType.AiChat, Name = "Assistant IA", Prefix = "ai", Icon = "🤖", Category = "Intégrations web",
+                Description = "Poser une question à l'IA (ex: :ai qu'est-ce qu'une API REST?)", RequiresArgument = true, ArgumentHint = "<question>" },
+        // Multimédia
+        new() { Type = SystemControlType.Volume, Name = "Volume", Prefix = "volume", Icon = "🔊", Category = "Multimédia",
+                Description = "Régler le volume (0-100, up, down)", RequiresArgument = true, ArgumentHint = "[0-100|up|down]" },
+        new() { Type = SystemControlType.Mute, Name = "Muet", Prefix = "mute", Icon = "🔇", Category = "Multimédia",
+                Description = "Basculer le mode muet" },
+        new() { Type = SystemControlType.Brightness, Name = "Luminosité", Prefix = "brightness", Icon = "☀️", Category = "Multimédia",
+                Description = "Régler la luminosité (0-100)", RequiresArgument = true, ArgumentHint = "[0-100]" },
+        // Réseau
+        new() { Type = SystemControlType.Wifi, Name = "WiFi", Prefix = "wifi", Icon = "📶", Category = "Réseau",
+                Description = "Contrôler le WiFi", RequiresArgument = true, ArgumentHint = "[on|off|status]" },
+        new() { Type = SystemControlType.FlushDns, Name = "Vider DNS", Prefix = "flushdns", Icon = "🌐", Category = "Réseau",
+                Description = "Vider le cache DNS" },
+        // Session
+        new() { Type = SystemControlType.Lock, Name = "Verrouiller", Prefix = "lock", Icon = "🔒", Category = "Session", Description = "Verrouiller la session" },
+        new() { Type = SystemControlType.Logoff, Name = "Déconnexion", Prefix = "logoff", Icon = "🚪", Category = "Session", Description = "Déconnecter la session" },
+        new() { Type = SystemControlType.Sleep, Name = "Veille", Prefix = "sleep", Icon = "😴", Category = "Session", Description = "Mettre en veille" },
+        new() { Type = SystemControlType.Hibernate, Name = "Hibernation", Prefix = "hibernate", Icon = "💤", Category = "Session", Description = "Mettre en hibernation" },
+        new() { Type = SystemControlType.Shutdown, Name = "Éteindre", Prefix = "shutdown", Icon = "🔌", Category = "Session", Description = "Éteindre l'ordinateur" },
+        new() { Type = SystemControlType.Restart, Name = "Redémarrer", Prefix = "restart", Icon = "🔄", Category = "Session", Description = "Redémarrer l'ordinateur" },
+        // Système
+        new() { Type = SystemControlType.OpenTaskManager, Name = "Gestionnaire tâches", Prefix = "taskmgr", Icon = "📊", Category = "Système", Description = "Ouvrir le Gestionnaire des tâches" },
+        new() { Type = SystemControlType.OpenWindowsSettings, Name = "Paramètres Windows", Prefix = "winsettings", Icon = "⚙️", Category = "Système", Description = "Ouvrir les Paramètres Windows" },
+        new() { Type = SystemControlType.OpenControlPanel, Name = "Panneau config.", Prefix = "control", Icon = "🎛️", Category = "Système", Description = "Ouvrir le Panneau de configuration" },
+        new() { Type = SystemControlType.EmptyRecycleBin, Name = "Vider corbeille", Prefix = "emptybin", Icon = "🗑️", Category = "Système", Description = "Vider la corbeille" },
+        new() { Type = SystemControlType.EmptyTemp, Name = "Vider Temp", Prefix = "emptytemp", Icon = "🧹", Category = "Système", Description = "Vider le dossier temporaire" },
+        new() { Type = SystemControlType.OpenCmdAdmin, Name = "CMD Admin", Prefix = "cmd", Icon = "💻", Category = "Système", Description = "Ouvrir l'invite de commandes (admin)" },
+        new() { Type = SystemControlType.OpenPowerShellAdmin, Name = "PowerShell Admin", Prefix = "powershell", Icon = "🔵", Category = "Système", Description = "Ouvrir PowerShell (admin)" },
+        new() { Type = SystemControlType.RestartExplorer, Name = "Redém. Explorer", Prefix = "restartexplorer", Icon = "📁", Category = "Système", Description = "Redémarrer l'Explorateur Windows" },
+        new() { Type = SystemControlType.OpenStartupFolder, Name = "Démarrage", Prefix = "startup", Icon = "🚀", Category = "Système", Description = "Ouvrir le dossier de démarrage Windows" },
+        new() { Type = SystemControlType.OpenHostsFile, Name = "Fichier hosts", Prefix = "hosts", Icon = "📝", Category = "Système", Description = "Ouvrir le fichier hosts (admin)" }
+    ];
 }
 
-/// <summary>
-/// Configuration du raccourci clavier global.
-/// </summary>
+// ══════════════════════════════════════════════════════════
+//  DTO LEGACY — utilisé uniquement pour la migration
+//  de l'ancien format JSON plat vers le nouveau.
+// ══════════════════════════════════════════════════════════
+
+internal sealed class LegacyAppSettings
+{
+    // Search
+    public int MaxResults { get; set; } = Constants.DefaultMaxResults;
+    public int SearchDepth { get; set; } = Constants.DefaultSearchDepth;
+    public bool IndexHiddenFolders { get; set; }
+    public bool IndexBrowserBookmarks { get; set; } = true;
+    public bool EnableAliases { get; set; } = true;
+    public int SystemSearchDepth { get; set; } = 5;
+    public bool EnableSearchHistory { get; set; } = true;
+    public int MaxSearchHistory { get; set; } = Constants.DefaultMaxSearchHistory;
+    public List<HistoryItem>? SearchHistory { get; set; }
+    public ScoringWeights? ScoringWeights { get; set; }
+    public List<string>? IndexedFolders { get; set; }
+    public List<string>? FileExtensions { get; set; }
+    public List<PinnedItem>? PinnedItems { get; set; }
+    public List<CustomScript>? Scripts { get; set; }
+    public List<WebSearchEngine>? SearchEngines { get; set; }
+    public bool EnableFileWatcher { get; set; } = true;
+    public bool AutoReindexEnabled { get; set; }
+    public AutoReindexMode AutoReindexMode { get; set; } = AutoReindexMode.Interval;
+    public int AutoReindexIntervalMinutes { get; set; } = 60;
+    public string? AutoReindexScheduledTime { get; set; }
+    
+    // Appearance
+    public string? Theme { get; set; }
+    public ThemeMode ThemeMode { get; set; } = ThemeMode.Dark;
+    public string? AccentColor { get; set; }
+    public double WindowOpacity { get; set; } = 1.0;
+    public string? WindowPosition { get; set; }
+    public double? LastWindowLeft { get; set; }
+    public double? LastWindowTop { get; set; }
+    public bool ShowInTaskbar { get; set; }
+    public bool ShowSettingsButton { get; set; } = true;
+    public bool ShowPreviewPanel { get; set; } = true;
+    public bool ShowShortcutHints { get; set; } = true;
+    public bool ShowCategoryBadges { get; set; } = true;
+    public bool ShowIndexingStatus { get; set; } = true;
+    public bool EnableAnimations { get; set; } = true;
+    public int AnimationDurationMs { get; set; } = 140;
+    public AnimationStyle AnimationStyle { get; set; } = AnimationStyle.FadeSlide;
+    public int StaggerDelayMs { get; set; } = 30;
+    public string? AutoThemeLightStart { get; set; }
+    public string? AutoThemeDarkStart { get; set; }
+    public string? LightThemeStartTime { get; set; }
+    public string? DarkThemeStartTime { get; set; }
+    
+    // Integrations
+    public string? WeatherCity { get; set; }
+    public string? WeatherUnit { get; set; }
+    public string? TranslateTargetLang { get; set; }
+    public string? TranslateSourceLang { get; set; }
+    public string? AiProvider { get; set; }
+    public string? AiApiUrl { get; set; }
+    public string? AiApiKey { get; set; }
+    public string? AiModel { get; set; }
+    public string? AiSystemPrompt { get; set; }
+    public List<NoteWidgetInfo>? NoteWidgets { get; set; }
+    public List<TimerWidgetInfo>? TimerWidgets { get; set; }
+    public List<NoteItem>? Notes { get; set; }
+    
+    // Root
+    public List<SystemControlCommand>? SystemCommands { get; set; }
+    public HotkeySettings? Hotkey { get; set; }
+    public bool StartWithWindows { get; set; } = true;
+    public bool CloseAfterLaunch { get; set; } = true;
+    public bool MinimizeOnStartup { get; set; } = true;
+    public bool SingleClickLaunch { get; set; }
+}
+
+// ══════════════════════════════════════════════════════════
+//  TYPES SUPPORT (inchangés)
+// ══════════════════════════════════════════════════════════
+
+/// <summary>Configuration du raccourci clavier global.</summary>
 public sealed class HotkeySettings
 {
     public bool UseAlt { get; set; } = true;
@@ -469,9 +520,6 @@ public sealed class HotkeySettings
     }
 }
 
-/// <summary>
-/// Configuration d'un script personnalisé.
-/// </summary>
 public sealed class CustomScript
 {
     public string Name { get; set; } = string.Empty;
@@ -482,9 +530,6 @@ public sealed class CustomScript
     public string Keyword { get; set; } = string.Empty;
 }
 
-/// <summary>
-/// Configuration d'un moteur de recherche web.
-/// </summary>
 public sealed class WebSearchEngine
 {
     public string Prefix { get; set; } = string.Empty;
@@ -492,54 +537,18 @@ public sealed class WebSearchEngine
     public string UrlTemplate { get; set; } = string.Empty;
 }
 
-/// <summary>
-/// Types d'actions de contrôle système.
-/// IMPORTANT: Ne pas réorganiser les valeurs existantes pour la compatibilité JSON!
-/// </summary>
 public enum SystemControlType
 {
-    // Valeurs originales (ne pas modifier l'ordre)
-    Volume = 0,
-    Mute = 1,
-    Brightness = 2,
-    Wifi = 3,
-    Lock = 4,
-    Sleep = 5,
-    Hibernate = 6,
-    Shutdown = 7,
-    Restart = 8,
-    Screenshot = 9,
-    
-    // Nouvelles valeurs (ajouter à la fin uniquement)
-    FlushDns = 10,
-    Logoff = 11,
-    EmptyRecycleBin = 12,
-    OpenTaskManager = 13,
-    OpenWindowsSettings = 14,
-    OpenControlPanel = 15,
-    EmptyTemp = 16,
-    OpenCmdAdmin = 17,
-    OpenPowerShellAdmin = 18,
-    RestartExplorer = 19,
-    SystemSearch = 20,
-    Timer = 21,
-    Timers = 22,
-    Note = 23,
-    Notes = 24,
-    
-    // Commandes supplémentaires
-    OpenStartupFolder = 25,
-    OpenHostsFile = 26,
-    
-    // Intégrations web (APIs directes)
-    Weather = 27,
-    Translate = 28,
-    AiChat = 29
+    Volume = 0, Mute = 1, Brightness = 2, Wifi = 3, Lock = 4, Sleep = 5,
+    Hibernate = 6, Shutdown = 7, Restart = 8, Screenshot = 9,
+    FlushDns = 10, Logoff = 11, EmptyRecycleBin = 12, OpenTaskManager = 13,
+    OpenWindowsSettings = 14, OpenControlPanel = 15, EmptyTemp = 16,
+    OpenCmdAdmin = 17, OpenPowerShellAdmin = 18, RestartExplorer = 19,
+    SystemSearch = 20, Timer = 21, Timers = 22, Note = 23, Notes = 24,
+    OpenStartupFolder = 25, OpenHostsFile = 26,
+    Weather = 27, Translate = 28, AiChat = 29
 }
 
-/// <summary>
-/// Configuration d'une commande de contrôle système personnalisable.
-/// </summary>
 public sealed class SystemControlCommand
 {
     public SystemControlType Type { get; set; }
@@ -552,191 +561,65 @@ public sealed class SystemControlCommand
     public string ArgumentHint { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
     
-    /// <summary>
-    /// Crée une copie de la commande.
-    /// </summary>
     public SystemControlCommand Clone() => new()
     {
-        Type = Type,
-        Name = Name,
-        Prefix = Prefix,
-        Icon = Icon,
-        Description = Description,
-        IsEnabled = IsEnabled,
-        RequiresArgument = RequiresArgument,
-        ArgumentHint = ArgumentHint,
-        Category = Category,
+        Type = Type, Name = Name, Prefix = Prefix, Icon = Icon,
+        Description = Description, IsEnabled = IsEnabled,
+        RequiresArgument = RequiresArgument, ArgumentHint = ArgumentHint, Category = Category,
     };
 }
 
-/// <summary>
-/// Poids configurables pour l'algorithme de scoring de recherche.
-/// Permet aux utilisateurs de personnaliser l'importance relative des différents types de correspondance.
-/// </summary>
 public sealed class ScoringWeights
 {
-    /// <summary>
-    /// Score pour une correspondance exacte (nom == requête).
-    /// </summary>
     public int ExactMatch { get; set; } = 1000;
-    
-    /// <summary>
-    /// Score de base lorsque le nom commence par la requête.
-    /// </summary>
     public int StartsWith { get; set; } = 800;
-    
-    /// <summary>
-    /// Score de base lorsque le nom contient la requête.
-    /// </summary>
     public int Contains { get; set; } = 600;
-    
-    /// <summary>
-    /// Score pour une correspondance par initiales (ex: "vs" -> "Visual Studio").
-    /// </summary>
     public int InitialsMatch { get; set; } = 500;
-    
-    /// <summary>
-    /// Score de base pour une correspondance par sous-séquence.
-    /// </summary>
     public int SubsequenceMatch { get; set; } = 300;
-    
-    /// <summary>
-    /// Multiplicateur maximum pour la similarité de Levenshtein (fuzzy matching).
-    /// Le score final est: similarity * FuzzyMatchMultiplier
-    /// </summary>
     public int FuzzyMatchMultiplier { get; set; } = 250;
-    
-    /// <summary>
-    /// Score maximum ajouté pour la fréquence d'utilisation.
-    /// </summary>
     public int MaxUsageBonus { get; set; } = 500;
-    
-    /// <summary>
-    /// Points ajoutés par utilisation (plafonné par MaxUsageBonus).
-    /// </summary>
     public int UsageBonusPerUse { get; set; } = 50;
-    
-    /// <summary>
-    /// Bonus pour un mot de la requête correspondant exactement à un mot du résultat.
-    /// </summary>
     public int ExactWordBonus { get; set; } = 50;
-    
-    /// <summary>
-    /// Seuil minimum de similarité pour le fuzzy matching (0.0 à 1.0).
-    /// </summary>
     public double FuzzyMatchThreshold { get; set; } = 0.6;
-    
-    /// <summary>
-    /// Bonus pour les correspondances de caractères consécutifs dans les sous-séquences.
-    /// </summary>
     public int ConsecutiveMatchBonus { get; set; } = 10;
-    
-    /// <summary>
-    /// Bonus lorsqu'une correspondance est au début d'un mot.
-    /// </summary>
     public int WordBoundaryBonus { get; set; } = 20;
-    
-    // === Fuzzy Per-Word (tolérance aux typos mot par mot) ===
-    
-    /// <summary>
-    /// Multiplicateur pour le scoring fuzzy per-word.
-    /// Le score final est: similaritéMoyenne * FuzzyPerWordMultiplier.
-    /// Ex: "firfox" vs "Firefox" → similarité 0.86 × 500 = 430
-    /// </summary>
     public int FuzzyPerWordMultiplier { get; set; } = 500;
-    
-    // === Recency Decay (bonus pour les items récemment utilisés) ===
-    
-    /// <summary>
-    /// Active/désactive le bonus de recency (items récemment utilisés).
-    /// </summary>
     public bool EnableRecencyBonus { get; set; } = true;
-    
-    /// <summary>
-    /// Bonus maximum pour un item utilisé aujourd'hui.
-    /// </summary>
     public int MaxRecencyBonus { get; set; } = 150;
-    
-    /// <summary>
-    /// Nombre de points perdus par jour depuis la dernière utilisation.
-    /// Exemple: avec DecayPerDay=5 et MaxRecencyBonus=150, le bonus atteint 0 après 30 jours.
-    /// </summary>
     public int RecencyDecayPerDay { get; set; } = 5;
-    
-    // === Path Fuzzy Matching (recherche multi-mots sur le chemin complet) ===
-    
-    /// <summary>
-    /// Active/désactive le fuzzy matching sur les chemins complets.
-    /// Permet de trouver "proj quick" → C:\Projects\QuickLauncher
-    /// </summary>
     public bool EnablePathFuzzyMatch { get; set; } = true;
-    
-    /// <summary>
-    /// Score pour une correspondance exacte d'un segment de chemin.
-    /// </summary>
     public int PathExactSegmentMatch { get; set; } = 200;
-    
-    /// <summary>
-    /// Bonus additionnel quand tous les mots de la requête matchent des segments.
-    /// </summary>
     public int PathAllWordsMatchBonus { get; set; } = 100;
     
-    /// <summary>
-    /// Réinitialise tous les poids aux valeurs par défaut.
-    /// </summary>
     public void ResetToDefaults()
     {
-        ExactMatch = 1000;
-        StartsWith = 800;
-        Contains = 600;
-        InitialsMatch = 500;
-        SubsequenceMatch = 300;
-        FuzzyMatchMultiplier = 250;
-        MaxUsageBonus = 500;
-        UsageBonusPerUse = 50;
-        ExactWordBonus = 50;
-        FuzzyMatchThreshold = 0.6;
-        ConsecutiveMatchBonus = 10;
-        WordBoundaryBonus = 20;
-        FuzzyPerWordMultiplier = 500;
-        EnableRecencyBonus = true;
-        MaxRecencyBonus = 150;
-        RecencyDecayPerDay = 5;
-        EnablePathFuzzyMatch = true;
-        PathExactSegmentMatch = 200;
-        PathAllWordsMatchBonus = 100;
+        var defaults = new ScoringWeights();
+        ExactMatch = defaults.ExactMatch; StartsWith = defaults.StartsWith;
+        Contains = defaults.Contains; InitialsMatch = defaults.InitialsMatch;
+        SubsequenceMatch = defaults.SubsequenceMatch; FuzzyMatchMultiplier = defaults.FuzzyMatchMultiplier;
+        MaxUsageBonus = defaults.MaxUsageBonus; UsageBonusPerUse = defaults.UsageBonusPerUse;
+        ExactWordBonus = defaults.ExactWordBonus; FuzzyMatchThreshold = defaults.FuzzyMatchThreshold;
+        ConsecutiveMatchBonus = defaults.ConsecutiveMatchBonus; WordBoundaryBonus = defaults.WordBoundaryBonus;
+        FuzzyPerWordMultiplier = defaults.FuzzyPerWordMultiplier; EnableRecencyBonus = defaults.EnableRecencyBonus;
+        MaxRecencyBonus = defaults.MaxRecencyBonus; RecencyDecayPerDay = defaults.RecencyDecayPerDay;
+        EnablePathFuzzyMatch = defaults.EnablePathFuzzyMatch; PathExactSegmentMatch = defaults.PathExactSegmentMatch;
+        PathAllWordsMatchBonus = defaults.PathAllWordsMatchBonus;
     }
     
-    /// <summary>
-    /// Crée une copie des poids.
-    /// </summary>
     public ScoringWeights Clone() => new()
     {
-        ExactMatch = ExactMatch,
-        StartsWith = StartsWith,
-        Contains = Contains,
-        InitialsMatch = InitialsMatch,
-        SubsequenceMatch = SubsequenceMatch,
-        FuzzyMatchMultiplier = FuzzyMatchMultiplier,
-        MaxUsageBonus = MaxUsageBonus,
-        UsageBonusPerUse = UsageBonusPerUse,
-        ExactWordBonus = ExactWordBonus,
-        FuzzyMatchThreshold = FuzzyMatchThreshold,
-        ConsecutiveMatchBonus = ConsecutiveMatchBonus,
-        WordBoundaryBonus = WordBoundaryBonus,
-        FuzzyPerWordMultiplier = FuzzyPerWordMultiplier,
-        EnableRecencyBonus = EnableRecencyBonus,
-        MaxRecencyBonus = MaxRecencyBonus,
-        RecencyDecayPerDay = RecencyDecayPerDay,
-        EnablePathFuzzyMatch = EnablePathFuzzyMatch,
-        PathExactSegmentMatch = PathExactSegmentMatch,
-        PathAllWordsMatchBonus = PathAllWordsMatchBonus
+        ExactMatch = ExactMatch, StartsWith = StartsWith, Contains = Contains,
+        InitialsMatch = InitialsMatch, SubsequenceMatch = SubsequenceMatch,
+        FuzzyMatchMultiplier = FuzzyMatchMultiplier, MaxUsageBonus = MaxUsageBonus,
+        UsageBonusPerUse = UsageBonusPerUse, ExactWordBonus = ExactWordBonus,
+        FuzzyMatchThreshold = FuzzyMatchThreshold, ConsecutiveMatchBonus = ConsecutiveMatchBonus,
+        WordBoundaryBonus = WordBoundaryBonus, FuzzyPerWordMultiplier = FuzzyPerWordMultiplier,
+        EnableRecencyBonus = EnableRecencyBonus, MaxRecencyBonus = MaxRecencyBonus,
+        RecencyDecayPerDay = RecencyDecayPerDay, EnablePathFuzzyMatch = EnablePathFuzzyMatch,
+        PathExactSegmentMatch = PathExactSegmentMatch, PathAllWordsMatchBonus = PathAllWordsMatchBonus
     };
 }
 
-/// <summary>
-/// Item épinglé par l'utilisateur pour accès rapide.
-/// </summary>
 public sealed class PinnedItem
 {
     public string Name { get; set; } = string.Empty;
@@ -746,54 +629,31 @@ public sealed class PinnedItem
     public DateTime PinnedAt { get; set; }
     public int Order { get; set; }
     
-    /// <summary>
-    /// Convertit en SearchResult pour l'affichage.
-    /// </summary>
     public SearchResult ToSearchResult() => new()
     {
-        Name = Name,
-        Path = Path,
-        Type = Type,
+        Name = Name, Path = Path, Type = Type,
         Description = "⭐ Épinglé",
         DisplayIcon = Icon ?? GetDefaultIcon(),
-        Score = 10000 + (1000 - Order) // Score très élevé pour apparaître en premier
+        Score = 10000 + (1000 - Order)
     };
     
     private string GetDefaultIcon() => Type switch
     {
-        ResultType.Application => "🚀",
-        ResultType.StoreApp => "🪧",
-        ResultType.File => "📄",
-        ResultType.Folder => "📁",
-        ResultType.Script => "⚡",
-        ResultType.Bookmark => "⭐",
-        _ => "📌"
+        ResultType.Application => "🚀", ResultType.StoreApp => "🪧",
+        ResultType.File => "📄", ResultType.Folder => "📁",
+        ResultType.Script => "⚡", ResultType.Bookmark => "⭐", _ => "📌"
     };
 }
 
-/// <summary>
-/// Note rapide de l'utilisateur.
-/// </summary>
 public sealed class NoteItem
 {
     public int Id { get; set; }
     public string Content { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
-    
-    /// <summary>
-    /// Retourne un aperçu tronqué de la note.
-    /// </summary>
     public string Preview => Content.Length > 50 ? Content[..47] + "..." : Content;
-    
-    /// <summary>
-    /// Retourne la date formatée.
-    /// </summary>
     public string DateFormatted => CreatedAt.ToString("dd/MM/yyyy HH:mm");
 }
 
-/// <summary>
-/// Item de l'historique (programme/fichier cliqué).
-/// </summary>
 public sealed class HistoryItem
 {
     public string Name { get; set; } = string.Empty;
@@ -802,33 +662,19 @@ public sealed class HistoryItem
     public string? Icon { get; set; }
     public DateTime LastUsed { get; set; }
     
-    /// <summary>
-    /// Convertit en SearchResult pour l'affichage.
-    /// </summary>
     public SearchResult ToSearchResult() => new()
     {
-        Name = Name,
-        Path = Path,
-        Type = Type,
+        Name = Name, Path = Path, Type = Type,
         Description = $"🕐 {LastUsed:dd/MM HH:mm}",
-        DisplayIcon = Icon ?? GetDefaultIcon()
-    };
-    
-    private string GetDefaultIcon() => Type switch
-    {
-        ResultType.Application => "🚀",
-        ResultType.StoreApp => "🪧",
-        ResultType.File => "📄",
-        ResultType.Folder => "📁",
-        ResultType.Script => "⚡",
-        ResultType.Bookmark => "⭐",
-        _ => "📌"
+        DisplayIcon = Icon ?? (Type switch
+        {
+            ResultType.Application => "🚀", ResultType.StoreApp => "🪧",
+            ResultType.File => "📄", ResultType.Folder => "📁",
+            ResultType.Script => "⚡", ResultType.Bookmark => "⭐", _ => "📌"
+        })
     };
 }
 
-/// <summary>
-/// Information d'un widget de note sur le bureau.
-/// </summary>
 public sealed class NoteWidgetInfo
 {
     public int Id { get; set; }
@@ -838,9 +684,6 @@ public sealed class NoteWidgetInfo
     public DateTime CreatedAt { get; set; }
 }
 
-/// <summary>
-/// Information d'un widget de minuterie sur le bureau.
-/// </summary>
 public sealed class TimerWidgetInfo
 {
     public int Id { get; set; }

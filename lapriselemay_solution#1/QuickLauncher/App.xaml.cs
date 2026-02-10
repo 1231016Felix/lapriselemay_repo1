@@ -8,6 +8,8 @@ using Microsoft.Extensions.DependencyInjection;
 using QuickLauncher.Models;
 using QuickLauncher.Services;
 using QuickLauncher.Views;
+using QuickLauncher.Services.CommandHandlers;
+using QuickLauncher.ViewModels;
 using Shared.Logging;
 
 using Application = System.Windows.Application;
@@ -123,6 +125,20 @@ public partial class App : Application
         // Assistant IA
         services.AddSingleton<AiChatService>();
         
+        // === Command Handlers (chaque handler gère un type de commande :xxx) ===
+        services.AddSingleton<ICommandHandler, WeatherCommandHandler>();
+        services.AddSingleton<ICommandHandler, TranslationCommandHandler>();
+        services.AddSingleton<ICommandHandler, AiCommandHandler>();
+        services.AddSingleton<ICommandHandler, WindowsSearchCommandHandler>();
+        services.AddSingleton<CommandRouter>();
+        
+        // === System Control Executor (exécution des commandes système via Entrée) ===
+        services.AddSingleton<ISystemControlExecutor, SystemControlExecutor>();
+        
+        // === ViewModel et fenêtre principale (singletons réutilisés entre Show/Hide) ===
+        services.AddSingleton<LauncherViewModel>();
+        services.AddSingleton<LauncherWindow>();
+        
         _logger.Info("Services DI configurés");
     }
 
@@ -219,19 +235,11 @@ public partial class App : Application
     {
         try
         {
-            var indexingService = Services.GetRequiredService<IndexingService>();
-            var settingsProvider = Services.GetRequiredService<ISettingsProvider>();
-            var aliasService = Services.GetRequiredService<AliasService>();
-            var noteWidgetService = Services.GetRequiredService<NoteWidgetService>();
-            var timerWidgetService = Services.GetRequiredService<TimerWidgetService>();
-            var notesService = Services.GetRequiredService<NotesService>();
-            var webIntegrationService = Services.GetRequiredService<WebIntegrationService>();
-            var fileWatcherService = Services.GetService<FileWatcherService>();
-            var aiChatService = Services.GetRequiredService<AiChatService>();
-            
+            // La fenêtre est un singleton DI : réutilisée entre Show/Hide,
+            // plus besoin de résoudre manuellement chaque service.
             if (_launcherWindow is not { IsLoaded: true })
             {
-                _launcherWindow = new LauncherWindow(indexingService, settingsProvider, aliasService, noteWidgetService, timerWidgetService, notesService, webIntegrationService, aiChatService, fileWatcherService);
+                _launcherWindow = Services.GetRequiredService<LauncherWindow>();
                 _launcherWindow.Closed += (_, _) => _launcherWindow = null;
                 _launcherWindow.RequestOpenSettings += (_, _) => Dispatcher.Invoke(ShowSettings);
                 _launcherWindow.RequestQuit += (_, _) => Dispatcher.Invoke(ExitApplication);

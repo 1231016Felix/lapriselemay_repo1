@@ -820,6 +820,10 @@ public partial class SettingsWindow : Window
                 AiApiUrlBox.Text = "https://api.openai.com/v1/chat/completions";
                 AiModelBox.Text = "gpt-4o-mini";
                 break;
+            case "gemini":
+                AiApiUrlBox.Text = "https://generativelanguage.googleapis.com/v1beta";
+                AiModelBox.Text = "gemini-2.0-flash";
+                break;
             case "ollama":
                 AiApiUrlBox.Text = "http://localhost:11434/v1/chat/completions";
                 AiModelBox.Text = "llama3.2";
@@ -853,6 +857,7 @@ public partial class SettingsWindow : Window
             {
                 "ollama" => "(optionnel)",
                 "chatgpt" => "(requis)",
+                "gemini" => "(requis — Google AI Studio)",
                 _ => "(selon le fournisseur)"
             };
         }
@@ -905,10 +910,12 @@ public partial class SettingsWindow : Window
         try
         {
             using var aiService = new AiChatService();
+            var providerTag = (AiProviderCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "chatgpt";
             var (success, message) = await aiService.TestConnectionAsync(
                 AiApiUrlBox.Text.Trim(),
                 AiApiKeyBox.Password,
-                AiModelBox.Text.Trim());
+                AiModelBox.Text.Trim(),
+                providerTag);
             
             if (success)
             {

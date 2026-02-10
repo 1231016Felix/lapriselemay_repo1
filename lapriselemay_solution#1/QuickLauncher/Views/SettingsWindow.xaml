@@ -100,6 +100,35 @@
             <Setter Property="Padding" Value="15"/>
             <Setter Property="Margin" Value="0,8,0,0"/>
         </Style>
+        
+        <!-- Style dark pour les ComboBox (dropdown + items) -->
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#1E1E1E"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#555"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="#2A2A2A"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="#0078D4"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </Trigger>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#3E3E3E"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+        
+        <!-- Override des couleurs système pour le popup des ComboBox -->
+        <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#2A2A2A"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#0078D4"/>
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="White"/>
     </Window.Resources>
     
     <Grid Margin="20">
@@ -566,6 +595,7 @@
                                         <TextBlock Text="Fournisseur:" Foreground="#AAA" FontSize="12" VerticalAlignment="Center" Width="110"/>
                                         <ComboBox x:Name="AiProviderCombo" Width="200" SelectionChanged="AiProviderCombo_SelectionChanged" Background="#1E1E1E" Foreground="White" BorderBrush="#555" FontSize="11">
                                             <ComboBoxItem Content="☁️ ChatGPT (OpenAI)" Tag="chatgpt"/>
+                                            <ComboBoxItem Content="✨ Gemini (Google)" Tag="gemini"/>
                                             <ComboBoxItem Content="🦙 Ollama (local)" Tag="ollama"/>
                                             <ComboBoxItem Content="⚙️ Personnalisé" Tag="custom"/>
                                         </ComboBox>

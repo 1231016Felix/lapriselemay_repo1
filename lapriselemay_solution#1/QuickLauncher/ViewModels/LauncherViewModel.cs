@@ -1,11 +1,11 @@
 using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Timers;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickLauncher.Models;
 using QuickLauncher.Services;
+using QuickLauncher.Services.CommandHandlers;
 
 namespace QuickLauncher.ViewModels;
 
@@ -21,12 +21,11 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private readonly NoteWidgetService _noteWidgetService;
     private readonly TimerWidgetService _timerWidgetService;
     private readonly NotesService _notesService;
-    private readonly WebIntegrationService _webIntegrationService;
-    private readonly AiChatService _aiChatService;
-    private readonly System.Timers.Timer _debounceTimer;
+    private readonly CommandRouter _commandRouter;
+    private readonly ISystemControlExecutor _systemControlExecutor;
     private CancellationTokenSource? _searchCts;
+    private CancellationTokenSource? _debounceCts;
     private bool _disposed;
-    private string _pendingSearchText = string.Empty;
     
     private static readonly FrozenDictionary<string, AppSystemCommand> AppCommands = 
         new Dictionary<string, AppSystemCommand>(StringComparer.OrdinalIgnoreCase)
@@ -100,7 +99,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
 
     public LauncherViewModel(IndexingService indexingService, ISettingsProvider settingsProvider,
         AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
-        NotesService notesService, WebIntegrationService webIntegrationService, AiChatService aiChatService,
+        NotesService notesService, CommandRouter commandRouter, ISystemControlExecutor systemControlExecutor,
         FileWatcherService? fileWatcherService = null)
     {
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
@@ -109,8 +108,8 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         _noteWidgetService = noteWidgetService ?? throw new ArgumentNullException(nameof(noteWidgetService));
         _timerWidgetService = timerWidgetService ?? throw new ArgumentNullException(nameof(timerWidgetService));
         _notesService = notesService ?? throw new ArgumentNullException(nameof(notesService));
-        _webIntegrationService = webIntegrationService ?? throw new ArgumentNullException(nameof(webIntegrationService));
-        _aiChatService = aiChatService ?? throw new ArgumentNullException(nameof(aiChatService));
+        _commandRouter = commandRouter ?? throw new ArgumentNullException(nameof(commandRouter));
+        _systemControlExecutor = systemControlExecutor ?? throw new ArgumentNullException(nameof(systemControlExecutor));
         
         // Initialiser les propriétés d'apparence depuis les settings
         ShowCategoryBadges = _settings.ShowCategoryBadges;
@@ -125,11 +124,6 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             _fileWatcherService?.Start();
         };
         
-        // Initialiser le timer de debouncing
-        _debounceTimer = new System.Timers.Timer(Constants.SearchDebounceMs);
-        _debounceTimer.AutoReset = false;
-        _debounceTimer.Elapsed += OnDebounceTimerElapsed;
-        
         // FileWatcher (injecté via DI, optionnel)
         _fileWatcherService = fileWatcherService;
         if (_fileWatcherService != null)
@@ -138,23 +132,29 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
 
     partial void OnSearchTextChanged(string value)
     {
-        // Stocker le texte en attente et redémarrer le timer de debouncing
-        _pendingSearchText = value;
-        _debounceTimer.Stop();
-        _debounceTimer.Start();
+        // Annuler le debounce précédent et en démarrer un nouveau
+        _debounceCts?.Cancel();
+        _debounceCts = new CancellationTokenSource();
+        _ = DebounceSearchAsync(value, _debounceCts.Token);
     }
     
-    private void OnDebounceTimerElapsed(object? sender, ElapsedEventArgs e)
+    /// <summary>
+    /// Debounce async : attend un court délai avant de lancer la recherche.
+    /// Plus propre que System.Timers.Timer + Dispatcher.Invoke (pas de marshalling cross-thread).
+    /// </summary>
+    private async Task DebounceSearchAsync(string text, CancellationToken token)
     {
-        // Exécuter la mise à jour sur le thread UI
-        System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+        try
         {
+            await Task.Delay(Constants.SearchDebounceMs, token);
             // Vérifier que le texte n'a pas changé pendant le debounce
-            if (_pendingSearchText == SearchText)
-            {
+            if (!token.IsCancellationRequested && text == SearchText)
                 UpdateResultsInternal();
-            }
-        });
+        }
+        catch (OperationCanceledException)
+        {
+            // Debounce annulé par une nouvelle frappe, c'est normal
+        }
     }
     
     partial void OnSelectedIndexChanged(int value)
@@ -247,22 +247,20 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         var query = SearchText.Trim();
         var queryLower = query.ToLowerInvariant();
         
-        // Commande :find pour la recherche Windows Search (vérifier si activée)
+        // === Commandes asynchrones spécialisées ===
+        // Le CommandRouter dispatche vers le bon handler (météo, traduction, IA, recherche système).
+        var handler = _commandRouter.FindHandler(queryLower);
+        if (handler != null)
+        {
+            _ = DispatchCommandAsync(handler, queryLower, _searchCts.Token);
+            return;
+        }
+        
+        // Suggestion pour :find (si activée, quand l'utilisateur tape le préfixe sans argument)
         var findCmd = _settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.SystemSearch);
         var findPrefix = findCmd?.Prefix ?? "find";
         var findEnabled = findCmd?.IsEnabled ?? true;
         
-        if (findEnabled && queryLower.StartsWith($":{findPrefix} ") && query.Length > findPrefix.Length + 2)
-        {
-            var searchQuery = query[(findPrefix.Length + 2)..].Trim();
-            if (searchQuery.Length >= 2)
-            {
-                _ = PerformWindowsSearchAsync(searchQuery, _searchCts.Token);
-                return;
-            }
-        }
-        
-        // Suggestion pour :find (si activée)
         if (findEnabled && (queryLower.StartsWith($":{findPrefix}") || $":{findPrefix}".StartsWith(queryLower)))
         {
             Results.Add(new SearchResult
@@ -277,50 +275,6 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             if (queryLower == $":{findPrefix}")
             {
                 FinalizeResults();
-                return;
-            }
-        }
-        
-        // Commande :weather pour la météo en direct
-        var weatherCmd = _settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.Weather);
-        var weatherPrefix = weatherCmd?.Prefix ?? "weather";
-        var weatherEnabled = weatherCmd?.IsEnabled ?? true;
-        
-        if (weatherEnabled && queryLower.StartsWith($":{weatherPrefix}"))
-        {
-            var weatherArg = query.Length > weatherPrefix.Length + 2 
-                ? query[(weatherPrefix.Length + 2)..].Trim() 
-                : null;
-            _ = PerformWeatherSearchAsync(weatherArg, _searchCts.Token);
-            return;
-        }
-        
-        // Commande :translate pour la traduction en direct
-        var translateCmd = _settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.Translate);
-        var translatePrefix = translateCmd?.Prefix ?? "translate";
-        var translateEnabled = translateCmd?.IsEnabled ?? true;
-        
-        if (translateEnabled && queryLower.StartsWith($":{translatePrefix} ") && query.Length > translatePrefix.Length + 2)
-        {
-            var translateArg = query[(translatePrefix.Length + 2)..].Trim();
-            if (translateArg.Length >= 1)
-            {
-                _ = PerformTranslationAsync(translateArg, _searchCts.Token);
-                return;
-            }
-        }
-        
-        // Commande :ai pour l'assistant IA
-        var aiCmd = _settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.AiChat);
-        var aiPrefix = aiCmd?.Prefix ?? "ai";
-        var aiEnabled = aiCmd?.IsEnabled ?? true;
-        
-        if (aiEnabled && queryLower.StartsWith($":{aiPrefix} ") && query.Length > aiPrefix.Length + 2)
-        {
-            var aiQuestion = query[(aiPrefix.Length + 2)..].Trim();
-            if (aiQuestion.Length >= 2)
-            {
-                _ = PerformAiSearchAsync(aiQuestion, _searchCts.Token);
                 return;
             }
         }
@@ -363,455 +317,6 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         FinalizeResults();
     }
     
-    private async Task PerformWindowsSearchAsync(string query, CancellationToken token)
-    {
-        IsSearching = true;
-        
-        try
-        {
-            // Appliquer la profondeur de recherche depuis les paramètres
-            UniversalSearchService.MaxSearchDepth = _settings.SystemSearchDepth;
-            
-            // Déterminer le moteur utilisé pour l'affichage
-            var engineInfo = UniversalSearchService.GetEngineInfo();
-            var engineName = engineInfo.Name;
-            
-            // Afficher un indicateur de recherche
-            Results.Add(new SearchResult
-            {
-                Name = "Recherche en cours...",
-                Description = $"Recherche de '{query}' via {engineName}",
-                Type = ResultType.SystemCommand,
-                DisplayIcon = "⏳"
-            });
-            FinalizeResults();
-            
-            var results = await UniversalSearchService.SearchAsync(query, null, token);
-            
-            if (token.IsCancellationRequested) return;
-            
-            Results.Clear();
-            
-            if (results.Count == 0)
-            {
-                Results.Add(new SearchResult
-                {
-                    Name = "Aucun résultat",
-                    Description = $"Aucun fichier trouvé pour '{query}'",
-                    Type = ResultType.SystemCommand,
-                    DisplayIcon = "❌"
-                });
-            }
-            else
-            {
-                foreach (var result in results)
-                    Results.Add(result);
-            }
-            
-            FinalizeResults();
-        }
-        catch (OperationCanceledException)
-        {
-            // Recherche annulée
-        }
-        catch (Exception ex)
-        {
-            Results.Clear();
-            Results.Add(new SearchResult
-            {
-                Name = "Erreur de recherche",
-                Description = ex.Message,
-                Type = ResultType.SystemCommand,
-                DisplayIcon = "⚠️"
-            });
-            FinalizeResults();
-        }
-        finally
-        {
-            IsSearching = false;
-        }
-    }
-
-    /// <summary>
-    /// Recherche la météo et affiche les résultats directement dans le launcher.
-    /// </summary>
-    private async Task PerformWeatherSearchAsync(string? city, CancellationToken token)
-    {
-        IsSearching = true;
-        
-        try
-        {
-            var targetCity = string.IsNullOrWhiteSpace(city) ? _settings.WeatherCity : city;
-            
-            // Indicateur de chargement
-            Results.Add(new SearchResult
-            {
-                Name = $"🌤️ Chargement météo pour {targetCity}...",
-                Description = "Requête en cours...",
-                Type = ResultType.SystemControl,
-                DisplayIcon = "⏳"
-            });
-            FinalizeResults();
-            
-            var result = await _webIntegrationService.GetWeatherAsync(targetCity, _settings.WeatherUnit, token);
-            
-            if (token.IsCancellationRequested) return;
-            
-            Results.Clear();
-            
-            if (result == null)
-            {
-                Results.Add(new SearchResult
-                {
-                    Name = "❌ Erreur météo",
-                    Description = "Impossible de récupérer la météo",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = "❌"
-                });
-            }
-            else if (result.HasError)
-            {
-                Results.Add(new SearchResult
-                {
-                    Name = $"❌ {result.Error}",
-                    Description = "Vérifiez le nom de la ville",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = "❌"
-                });
-            }
-            else
-            {
-                // Ligne principale: température et conditions
-                var locationText = result.Country != null ? $"{result.City}, {result.Country}" : result.City;
-                Results.Add(new SearchResult
-                {
-                    Name = $"{result.WeatherIcon} {result.Temperature:F0}{result.UnitSymbol} — {result.WeatherDescription}",
-                    Description = $"📍 {locationText}",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = result.WeatherIcon,
-                    Path = ":weather:current",
-                    IsInfoBlock = true
-                });
-                
-                // Détails: ressenti, humidité, vent
-                Results.Add(new SearchResult
-                {
-                    Name = $"Ressenti {result.FeelsLike:F0}{result.UnitSymbol} • Humidité {result.Humidity}%",
-                    Description = $"💨 Vent {result.WindSpeed:F0} km/h {result.WindDirection}",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = "🌡️",
-                    IsInfoBlock = true
-                });
-                
-                // Prévisions
-                foreach (var forecast in result.Forecasts.Skip(1))
-                {
-                    Results.Add(new SearchResult
-                    {
-                        Name = $"{forecast.Icon} {forecast.DayName}: {forecast.MaxTemp:F0}°/{forecast.MinTemp:F0}°",
-                        Description = $"🌧️ Précipitations {forecast.PrecipitationProbability}%",
-                        Type = ResultType.SystemControl,
-                        DisplayIcon = forecast.Icon,
-                        IsInfoBlock = true
-                    });
-                }
-            }
-            
-            FinalizeResults();
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            Results.Clear();
-            Results.Add(new SearchResult
-            {
-                Name = "❌ Erreur météo",
-                Description = ex.Message,
-                Type = ResultType.SystemControl,
-                DisplayIcon = "⚠️"
-            });
-            FinalizeResults();
-        }
-        finally
-        {
-            IsSearching = false;
-        }
-    }
-    
-    /// <summary>
-    /// Traduit du texte et affiche le résultat directement dans le launcher.
-    /// Formats supportés:
-    ///   :translate hello          → traduit vers la langue par défaut
-    ///   :translate fr hello       → traduit vers le français
-    ///   :translate fr>en bonjour  → traduit du français vers l'anglais
-    /// </summary>
-    private async Task PerformTranslationAsync(string input, CancellationToken token)
-    {
-        IsSearching = true;
-        
-        try
-        {
-            // Parser l'input: [lang] texte ou [src>dst] texte
-            var (sourceLang, targetLang, textToTranslate) = ParseTranslationInput(input);
-            
-            if (string.IsNullOrWhiteSpace(textToTranslate))
-            {
-                Results.Clear();
-                Results.Add(new SearchResult
-                {
-                    Name = "🌐 Entrez du texte à traduire",
-                    Description = "Formats: :translate hello • :translate fr hello • :translate fr>en bonjour",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = "🌐"
-                });
-                FinalizeResults();
-                return;
-            }
-            
-            // Indicateur de chargement
-            Results.Clear();
-            Results.Add(new SearchResult
-            {
-                Name = $"🌐 Traduction en cours...",
-                Description = textToTranslate,
-                Type = ResultType.SystemControl,
-                DisplayIcon = "⏳"
-            });
-            FinalizeResults();
-            
-            var result = await _webIntegrationService.TranslateAsync(textToTranslate, targetLang, sourceLang, token);
-            
-            if (token.IsCancellationRequested) return;
-            
-            Results.Clear();
-            
-            if (result == null)
-            {
-                Results.Add(new SearchResult
-                {
-                    Name = "❌ Erreur de traduction",
-                    Description = "Impossible d'obtenir la traduction",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = "❌"
-                });
-            }
-            else if (result.HasError)
-            {
-                Results.Add(new SearchResult
-                {
-                    Name = $"❌ {result.Error}",
-                    Description = "Réessayez plus tard",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = "❌"
-                });
-            }
-            else
-            {
-                // Résultat principal (cliquable pour copier)
-                Results.Add(new SearchResult
-                {
-                    Name = result.TranslatedText,
-                    Description = $"{result.SourceLanguageName} → {result.TargetLanguageName} • Entrée pour copier",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = "🌐",
-                    Path = $":translate:copy:{result.TranslatedText}",
-                    IsInfoBlock = true
-                });
-                
-                // Texte original
-                Results.Add(new SearchResult
-                {
-                    Name = $"📝 {result.OriginalText}",
-                    Description = $"Texte original ({result.SourceLanguageName})",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = "📝",
-                    IsInfoBlock = true
-                });
-            }
-            
-            FinalizeResults();
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            Results.Clear();
-            Results.Add(new SearchResult
-            {
-                Name = "❌ Erreur de traduction",
-                Description = ex.Message,
-                Type = ResultType.SystemControl,
-                DisplayIcon = "⚠️"
-            });
-            FinalizeResults();
-        }
-        finally
-        {
-            IsSearching = false;
-        }
-    }
-    
-    /// <summary>
-    /// Parse l'input de traduction pour en extraire la langue cible et le texte.
-    /// </summary>
-    private (string Source, string Target, string Text) ParseTranslationInput(string input)
-    {
-        var defaultTarget = _settings.TranslateTargetLang;
-        var defaultSource = _settings.TranslateSourceLang;
-        var parts = input.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-        
-        if (parts.Length < 1)
-            return (defaultSource, defaultTarget, string.Empty);
-        
-        var firstWord = parts[0].ToLowerInvariant().Trim('[', ']');
-        
-        // Format "fr>en texte" ou "eng>fra texte" (source>target)
-        if (firstWord.Contains('>'))
-        {
-            var langs = firstWord.Split('>', 2);
-            var resolvedSrc = WebIntegrationService.ResolveLanguageCode(langs[0]);
-            var resolvedDst = langs.Length == 2 ? WebIntegrationService.ResolveLanguageCode(langs[1]) : null;
-            if (resolvedSrc != null && resolvedDst != null)
-            {
-                return (resolvedSrc, resolvedDst, parts.Length > 1 ? parts[1] : string.Empty);
-            }
-        }
-        
-        // Format "fr texte" ou "eng texte" (juste la langue cible)
-        var resolvedLang = WebIntegrationService.ResolveLanguageCode(firstWord);
-        if (parts.Length >= 2 && resolvedLang != null)
-        {
-            return (defaultSource, resolvedLang, parts[1]);
-        }
-        
-        // Pas de langue spécifiée, tout est du texte
-        return (defaultSource, defaultTarget, input);
-    }
-
-    /// <summary>
-    /// Envoie une question à l'assistant IA et affiche la réponse directement dans le launcher.
-    /// </summary>
-    private async Task PerformAiSearchAsync(string question, CancellationToken token)
-    {
-        IsSearching = true;
-        
-        try
-        {
-            // Indicateur de chargement
-            Results.Clear();
-            Results.Add(new SearchResult
-            {
-                Name = "🤖 Réflexion en cours...",
-                Description = question,
-                Type = ResultType.SystemControl,
-                DisplayIcon = "⏳"
-            });
-            FinalizeResults();
-            
-            var result = await _aiChatService.AskAsync(
-                question,
-                _settings.AiApiUrl,
-                _settings.AiApiKey,
-                _settings.AiModel,
-                _settings.AiSystemPrompt,
-                token);
-            
-            if (token.IsCancellationRequested) return;
-            
-            Results.Clear();
-            
-            if (result == null)
-            {
-                Results.Add(new SearchResult
-                {
-                    Name = "❌ Aucune réponse",
-                    Description = "L'assistant IA n'a pas répondu",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = "❌"
-                });
-            }
-            else if (result.HasError)
-            {
-                Results.Add(new SearchResult
-                {
-                    Name = $"❌ {result.Error}",
-                    Description = "Vérifiez la configuration dans Paramètres → Intégrations web",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = "❌"
-                });
-            }
-            else
-            {
-                // Découper la réponse en lignes pour un affichage propre
-                var answerLines = result.Answer
-                    .Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
-                    .Select(l => l.Trim())
-                    .Where(l => l.Length > 0)
-                    .ToList();
-                
-                if (answerLines.Count == 0)
-                {
-                    answerLines.Add(result.Answer.Trim());
-                }
-                
-                // Première ligne = réponse principale (cliquable pour copier)
-                Results.Add(new SearchResult
-                {
-                    Name = answerLines[0],
-                    Description = $"🤖 {result.Model} • Entrée pour copier",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = "🤖",
-                    Path = $":ai:copy:{result.Answer}",
-                    IsInfoBlock = true
-                });
-                
-                // Lignes suivantes
-                foreach (var line in answerLines.Skip(1))
-                {
-                    Results.Add(new SearchResult
-                    {
-                        Name = line,
-                        Description = string.Empty,
-                        Type = ResultType.SystemControl,
-                        DisplayIcon = "   ",
-                        Path = $":ai:copy:{result.Answer}",
-                        IsInfoBlock = true
-                    });
-                }
-                
-                // Footer avec tokens utilisés
-                if (result.TokensUsed.HasValue)
-                {
-                    Results.Add(new SearchResult
-                    {
-                        Name = $"📊 {result.TokensUsed} tokens utilisés",
-                        Description = $"Question: {question}",
-                        Type = ResultType.SystemControl,
-                        DisplayIcon = "📊",
-                        IsInfoBlock = true
-                    });
-                }
-            }
-            
-            FinalizeResults();
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            Results.Clear();
-            Results.Add(new SearchResult
-            {
-                Name = "❌ Erreur IA",
-                Description = ex.Message,
-                Type = ResultType.SystemControl,
-                DisplayIcon = "⚠️"
-            });
-            FinalizeResults();
-        }
-        finally
-        {
-            IsSearching = false;
-        }
-    }
 
     /// <summary>
     /// Vérifie si la requête correspond à une commande de contrôle système.
@@ -831,13 +336,6 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         return false;
     }
     
-    /// <summary>
-    /// Vérifie si une commande système spécifique est activée.
-    /// </summary>
-    private bool IsSystemCommandEnabled(SystemControlType type)
-    {
-        return _settings.SystemCommands.Any(c => c.Type == type && c.IsEnabled);
-    }
 
     /// <summary>
     /// Ajoute les suggestions de commandes de contrôle système basées sur les paramètres.
@@ -1151,6 +649,59 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             Results.Add(cmd);
     }
     
+    /// <summary>
+    /// Dispatche une commande asynchrone vers un handler spécialisé.
+    /// Gère l'indicateur de chargement et l'affichage des résultats.
+    /// Remplace les anciens blocs PerformXxxAsync monolithiques.
+    /// </summary>
+    private async Task DispatchCommandAsync(ICommandHandler handler, string query, CancellationToken token)
+    {
+        IsSearching = true;
+        
+        try
+        {
+            // Indicateur de chargement générique
+            Results.Clear();
+            Results.Add(new SearchResult
+            {
+                Name = "Chargement...",
+                Description = "Requête en cours...",
+                Type = ResultType.SystemControl,
+                DisplayIcon = "⏳"
+            });
+            FinalizeResults();
+            
+            var result = await handler.ExecuteAsync(query, token);
+            
+            if (token.IsCancellationRequested) return;
+            
+            Results.Clear();
+            foreach (var r in result.Results)
+                Results.Add(r);
+            FinalizeResults();
+        }
+        catch (OperationCanceledException)
+        {
+            // Recherche annulée par une nouvelle requête
+        }
+        catch (Exception ex)
+        {
+            Results.Clear();
+            Results.Add(new SearchResult
+            {
+                Name = "Erreur",
+                Description = ex.Message,
+                Type = ResultType.SystemControl,
+                DisplayIcon = "⚠️"
+            });
+            FinalizeResults();
+        }
+        finally
+        {
+            IsSearching = false;
+        }
+    }
+    
     private void FinalizeResults()
     {
         HasResults = Results.Count > 0;
@@ -1410,244 +961,92 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         if (string.IsNullOrEmpty(command))
             return;
         
-        // Gérer le copier-coller depuis :translate
-        if (command.StartsWith(":translate:copy:"))
+        var executionResult = _systemControlExecutor.Execute(command);
+        
+        if (!executionResult.Handled)
         {
-            var textToCopy = command[":translate:copy:".Length..];
-            if (!string.IsNullOrEmpty(textToCopy))
-            {
-                System.Windows.Clipboard.SetText(textToCopy);
-                ShowNotification?.Invoke(this, "📋 Traduction copiée");
-                RequestHide?.Invoke(this, EventArgs.Empty);
-            }
+            // Commande async non gérée par l'executor → re-router via CommandRouter
+            ReRouteAsyncCommand(command);
             return;
         }
         
-        // Gérer le copier-coller depuis :ai
-        if (command.StartsWith(":ai:copy:"))
+        // Appliquer le résultat déclaratif
+        if (executionResult.AutoCompleteText != null)
         {
-            var textToCopy = command[":ai:copy:".Length..];
-            if (!string.IsNullOrEmpty(textToCopy))
-            {
-                System.Windows.Clipboard.SetText(textToCopy);
-                ShowNotification?.Invoke(this, "📋 Réponse IA copiée");
-                RequestHide?.Invoke(this, EventArgs.Empty);
-            }
+            SearchText = executionResult.AutoCompleteText;
+            RequestCaretAtEnd?.Invoke(this, EventArgs.Empty);
             return;
         }
         
-        // Gérer les commandes timer et note
+        if (executionResult.ResultsToShow != null)
+        {
+            Results.Clear();
+            foreach (var r in executionResult.ResultsToShow)
+                Results.Add(r);
+            FinalizeResults();
+        }
+        
+        if (executionResult.Notification != null)
+            ShowNotification?.Invoke(this, executionResult.Notification);
+        
+        if (executionResult.ScreenCaptureMode != null)
+        {
+            RequestHide?.Invoke(this, EventArgs.Empty);
+            _ = HandleScreenCaptureAsync(executionResult.ScreenCaptureMode);
+            return;
+        }
+        
+        if (executionResult.ShouldHide)
+            RequestHide?.Invoke(this, EventArgs.Empty);
+    }
+    
+    /// <summary>
+    /// Re-route une commande async (météo, traduction, IA) vers le CommandRouter
+    /// quand le SystemControlExecutor ne la gère pas (exécution via Enter sur un résultat).
+    /// </summary>
+    private void ReRouteAsyncCommand(string command)
+    {
         var parts = command.TrimStart(':').Split(' ', 2);
         var cmdPrefix = parts[0];
         var arg = parts.Length > 1 ? parts[1] : null;
         
-        var matchedCmd = _settings.SystemCommands.FirstOrDefault(c => 
+        var matchedCmd = _settings.SystemCommands.FirstOrDefault(c =>
             c.IsEnabled && c.Prefix.Equals(cmdPrefix, StringComparison.OrdinalIgnoreCase));
         
-        if (matchedCmd != null)
-        {
-            switch (matchedCmd.Type)
-            {
-                case SystemControlType.Weather:
-                    // Lancer la recherche météo (arg = ville optionnelle)
-                    _ = PerformWeatherSearchAsync(arg, _searchCts?.Token ?? CancellationToken.None);
-                    return;
-                    
-                case SystemControlType.Translate:
-                    // Si on a un argument, lancer la traduction
-                    if (!string.IsNullOrEmpty(arg))
-                    {
-                        _ = PerformTranslationAsync(arg, _searchCts?.Token ?? CancellationToken.None);
-                    }
-                    else
-                    {
-                        // Autocomplete la commande dans la barre de recherche
-                        SearchText = $":{matchedCmd.Prefix} ";
-                        RequestCaretAtEnd?.Invoke(this, EventArgs.Empty);
-                    }
-                    return;
-                    
-                case SystemControlType.AiChat:
-                    if (!string.IsNullOrEmpty(arg))
-                    {
-                        _ = PerformAiSearchAsync(arg, _searchCts?.Token ?? CancellationToken.None);
-                    }
-                    else
-                    {
-                        SearchText = $":{matchedCmd.Prefix} ";
-                        RequestCaretAtEnd?.Invoke(this, EventArgs.Empty);
-                    }
-                    return;
-                    
-                case SystemControlType.Timer:
-                    if (!string.IsNullOrEmpty(arg))
-                    {
-                        var timerParts = arg.Split(' ', 2);
-                        var duration = timerParts[0];
-                        var label = timerParts.Length > 1 ? timerParts[1] : null;
-                        
-                        var timerWidget = _timerWidgetService.CreateWidget(duration, label);
-                        if (timerWidget != null)
-                        {
-                            var durationText = TimerWidgetService.FormatDuration(TimeSpan.FromSeconds(timerWidget.DurationSeconds));
-                            ShowResult($"⏱️ Minuterie créée: {durationText}", timerWidget.Label);
-                            RequestHide?.Invoke(this, EventArgs.Empty);
-                        }
-                        else
-                        {
-                            ShowResult("❌ Format invalide", "Utilisez: 5m, 30s, 1h, 1h30m, etc.");
-                        }
-                    }
-                    return;
-                    
-                case SystemControlType.Note:
-                    if (!string.IsNullOrEmpty(arg))
-                    {
-                        var widgetInfo = _noteWidgetService.CreateWidget(arg);
-                        ShowResult("📝 Note créée!", widgetInfo.Content.Length > 50 ? widgetInfo.Content[..47] + "..." : widgetInfo.Content);
-                        RequestHide?.Invoke(this, EventArgs.Empty);
-                    }
-                    return;
-                    
-                case SystemControlType.Screenshot:
-                    RequestHide?.Invoke(this, EventArgs.Empty);
-                    if (arg is "snip" or "region" or "select")
-                    {
-                        // Capture de région avec annotation personnalisée
-                        _ = Task.Run(async () =>
-                        {
-                            await Task.Delay(200);
-                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                            {
-                                RequestScreenCapture?.Invoke(this, arg);
-                            });
-                        });
-                    }
-                    else
-                    {
-                        // Capture plein écran via Windows (simule Win+Shift+S en mode plein écran)
-                        _ = Task.Run(async () =>
-                        {
-                            await Task.Delay(200);
-                            var path = SystemControlService.TakeScreenshot();
-                            if (path != null)
-                            {
-                                System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                                {
-                                    ShowNotification?.Invoke(this, "📸 Capture sauvegardée");
-                                    // Ouvrir le fichier dans l'explorateur
-                                    System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\"");
-                                });
-                            }
-                        });
-                    }
-                    return;
-            }
-        }
-
-        // Convertir le préfixe personnalisé vers le format attendu par SystemControlService
-        var normalizedCommand = NormalizeSystemCommand(command);
-        var result = SystemControlService.ExecuteCommand(normalizedCommand);
+        if (matchedCmd == null) return;
         
-        if (result != null)
-        {
-            Results.Clear();
-            Results.Add(new SearchResult
-            {
-                Name = result.Message,
-                Description = result.Success ? "Commande exécutée" : "Erreur",
-                Type = ResultType.SystemControl,
-                DisplayIcon = result.Success ? "✅" : "❌"
-            });
-
-            if (result.Success && !string.IsNullOrEmpty(result.FilePath))
-            {
-                Results.Add(new SearchResult
-                {
-                    Name = "Ouvrir la capture",
-                    Description = result.FilePath,
-                    Type = ResultType.File,
-                    Path = result.FilePath,
-                    DisplayIcon = "📂"
-                });
-            }
-
-            FinalizeResults();
-
-            // Pour certaines commandes, fermer après exécution
-            var commandLower = normalizedCommand.ToLowerInvariant();
-            if (result.Success && (commandLower.Contains("sleep") || commandLower.Contains("lock") ||
-                commandLower.Contains("shutdown") || commandLower.Contains("restart") || 
-                commandLower.Contains("hibernate") || commandLower.Contains("logoff") ||
-                commandLower.Contains("restartexplorer")))
-            {
-                RequestHide?.Invoke(this, EventArgs.Empty);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Convertit une commande avec préfixe personnalisé vers le format standard.
-    /// </summary>
-    private string NormalizeSystemCommand(string command)
-    {
-        var parts = command.TrimStart(':').Split(' ', 2);
-        var prefix = parts[0];
-        var arg = parts.Length > 1 ? parts[1] : null;
-        
-        // Trouver la commande correspondante dans les paramètres
-        var matchedCmd = _settings.SystemCommands.FirstOrDefault(c => 
-            c.IsEnabled && c.Prefix.Equals(prefix, StringComparison.OrdinalIgnoreCase));
-        
-        if (matchedCmd == null)
-            return command; // Retourner tel quel si non trouvé
-        
-        // Convertir vers le nom de commande standard utilisé par SystemControlService
-        var standardCmd = matchedCmd.Type switch
-        {
-            SystemControlType.Volume => "volume",
-            SystemControlType.Mute => "mute",
-            SystemControlType.Brightness => "brightness",
-            SystemControlType.Wifi => "wifi",
-            SystemControlType.Lock => "lock",
-            SystemControlType.Sleep => "sleep",
-            SystemControlType.Hibernate => "hibernate",
-            SystemControlType.Shutdown => "shutdown",
-            SystemControlType.Restart => "restart",
-            SystemControlType.Screenshot => "screenshot",
-            SystemControlType.Logoff => "logoff",
-            SystemControlType.EmptyRecycleBin => "emptybin",
-            SystemControlType.OpenTaskManager => "taskmgr",
-            SystemControlType.OpenWindowsSettings => "winsettings",
-            SystemControlType.OpenControlPanel => "control",
-            SystemControlType.EmptyTemp => "emptytemp",
-            SystemControlType.OpenCmdAdmin => "cmd",
-            SystemControlType.OpenPowerShellAdmin => "powershell",
-            SystemControlType.RestartExplorer => "restartexplorer",
-            SystemControlType.FlushDns => "flushdns",
-            SystemControlType.OpenStartupFolder => "startup",
-            SystemControlType.OpenHostsFile => "hosts",
-            _ => prefix
-        };
-        
-        return string.IsNullOrEmpty(arg) ? $":{standardCmd}" : $":{standardCmd} {arg}";
+        var fullQuery = $":{matchedCmd.Prefix}" + (arg != null ? $" {arg}" : "");
+        var handler = _commandRouter.FindHandler(fullQuery);
+        if (handler != null)
+            _ = DispatchCommandAsync(handler, fullQuery, _searchCts?.Token ?? CancellationToken.None);
     }
     
     /// <summary>
-    /// Affiche un résultat simple (message de confirmation).
+    /// Gère la capture d'écran de manière asynchrone après avoir caché la fenêtre.
     /// </summary>
-    private void ShowResult(string name, string description)
+    private async Task HandleScreenCaptureAsync(string mode)
     {
-        Results.Clear();
-        Results.Add(new SearchResult
+        await Task.Delay(200);
+        
+        if (mode is "snip" or "region" or "select")
         {
-            Name = name,
-            Description = description,
-            Type = ResultType.SystemControl,
-            DisplayIcon = name.Contains("✅") ? "✅" : name.Contains("❌") ? "❌" : "ℹ️"
-        });
-        FinalizeResults();
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                RequestScreenCapture?.Invoke(this, mode));
+        }
+        else
+        {
+            var path = SystemControlService.TakeScreenshot();
+            if (path != null)
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                {
+                    ShowNotification?.Invoke(this, "📸 Capture sauvegardée");
+                    System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\"");
+                });
+            }
+        }
     }
+    
     
     private void ShowSearchHistory()
     {
@@ -1839,10 +1238,11 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     
     /// <summary>
     /// Force le rafraîchissement des résultats de recherche.
+    /// Annule tout debounce en cours et exécute la recherche immédiatement.
     /// </summary>
     public void ForceRefresh()
     {
-        _debounceTimer.Stop();
+        _debounceCts?.Cancel();
         UpdateResultsInternal();
     }
     
@@ -1851,8 +1251,8 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         _disposed = true;
         
-        _debounceTimer.Stop();
-        _debounceTimer.Dispose();
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
         _searchCts?.Cancel();
         _searchCts?.Dispose();
         _fileWatcherService?.Dispose();
