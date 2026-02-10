@@ -1378,4 +1378,33 @@ public partial class SettingsWindow : Window
             Debug.WriteLine($"[Startup] ERREUR sync: {ex.Message}");
         }
     }
+    
+    /// <summary>
+    /// Force le scroll du ScrollViewer principal même quand la souris est sur un élément enfant,
+    /// sauf si l'événement vient du ScrollViewer imbriqué des commandes système.
+    /// </summary>
+    private void TabScrollViewer_PreviewMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        if (sender is not ScrollViewer scrollViewer) return;
+        
+        // Vérifier si l'événement vient du ScrollViewer imbriqué des commandes système
+        var source = e.OriginalSource as DependencyObject;
+        while (source != null && source != scrollViewer)
+        {
+            if (source == SystemCommandsScrollViewer)
+            {
+                // Le scroller des commandes gère son propre scroll
+                // Sauf s'il est déjà en haut/bas et ne peut plus scroller
+                var sv = SystemCommandsScrollViewer;
+                if ((e.Delta > 0 && sv.VerticalOffset > 0) ||
+                    (e.Delta < 0 && sv.VerticalOffset < sv.ScrollableHeight))
+                    return;
+                break;
+            }
+            source = VisualTreeHelper.GetParent(source);
+        }
+        
+        scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset - e.Delta);
+        e.Handled = true;
+    }
 }

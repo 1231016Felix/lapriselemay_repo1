@@ -154,7 +154,7 @@
             <!-- ONGLET 1: GÉNÉRAL (Démarrage + Comportement + Apparence + Raccourcis) -->
             <!-- ═══════════════════════════════════════════════════════════ -->
             <TabItem Header="🏠 Général">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20" PreviewMouseWheel="TabScrollViewer_PreviewMouseWheel">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -328,7 +328,7 @@
             <!-- ONGLET 2: INDEXATION (Dossiers + Extensions + Navigateurs + Recherche système) -->
             <!-- ═══════════════════════════════════════════════════════════ -->
             <TabItem Header="📁 Indexation">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20" PreviewMouseWheel="TabScrollViewer_PreviewMouseWheel">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -506,7 +506,8 @@
             <!-- ONGLET 3: COMMANDES (Recherche Web + Contrôle Système) -->
             <!-- ═══════════════════════════════════════════════════════════ -->
             <TabItem Header="🔍 Commandes">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20" PreviewMouseWheel="TabScrollViewer_PreviewMouseWheel">
+                    <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -586,50 +587,7 @@
                                 </StackPanel>
                             </Border>
                             
-                            <!-- Assistant IA (:ai) -->
-                            <Border Style="{StaticResource SettingsCard}" Margin="0,8,0,0">
-                                <StackPanel>
-                                    <TextBlock Text="🤖 Assistant IA (:ai)" Foreground="White" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,8"/>
-                                    
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                        <TextBlock Text="Fournisseur:" Foreground="#AAA" FontSize="12" VerticalAlignment="Center" Width="110"/>
-                                        <ComboBox x:Name="AiProviderCombo" Width="200" SelectionChanged="AiProviderCombo_SelectionChanged" Background="#1E1E1E" Foreground="White" BorderBrush="#555" FontSize="11">
-                                            <ComboBoxItem Content="☁️ ChatGPT (OpenAI)" Tag="chatgpt"/>
-                                            <ComboBoxItem Content="✨ Gemini (Google)" Tag="gemini"/>
-                                            <ComboBoxItem Content="🦙 Ollama (local)" Tag="ollama"/>
-                                            <ComboBoxItem Content="⚙️ Personnalisé" Tag="custom"/>
-                                        </ComboBox>
-                                    </StackPanel>
-                                    
-                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
-                                        <TextBlock Text="URL API:" Foreground="#AAA" FontSize="12" VerticalAlignment="Center" Width="110"/>
-                                        <TextBox x:Name="AiApiUrlBox" Width="260" Background="#1E1E1E" Foreground="White" BorderBrush="#555" BorderThickness="1" Padding="6,4" FontSize="11" FontFamily="Consolas" LostFocus="AiApiUrlBox_LostFocus" ToolTip="URL de l'API OpenAI-compatible (Ollama, OpenAI, Groq, LM Studio...)"/>
-                                    </StackPanel>
-                                    
-                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
-                                        <TextBlock Text="Clé API:" Foreground="#AAA" FontSize="12" VerticalAlignment="Center" Width="110"/>
-                                        <PasswordBox x:Name="AiApiKeyBox" Width="200" Background="#1E1E1E" Foreground="White" BorderBrush="#555" BorderThickness="1" Padding="6,4" FontSize="11" LostFocus="AiApiKeyBox_LostFocus" ToolTip="Clé API du fournisseur"/>
-                                        <TextBlock x:Name="AiApiKeyHint" Text="(requis)" Foreground="#666" FontSize="10" VerticalAlignment="Center" Margin="8,0,0,0"/>
-                                    </StackPanel>
-                                    
-                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
-                                        <TextBlock Text="Modèle:" Foreground="#AAA" FontSize="12" VerticalAlignment="Center" Width="110"/>
-                                        <TextBox x:Name="AiModelBox" Width="160" Background="#1E1E1E" Foreground="White" BorderBrush="#555" BorderThickness="1" Padding="6,4" FontSize="11" FontFamily="Consolas" LostFocus="AiModelBox_LostFocus" ToolTip="Nom du modèle (ex: gpt-4o-mini, gpt-4o, llama3.2...)"/>
-                                    </StackPanel>
-                                    
-                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
-                                        <TextBlock Text="Prompt système:" Foreground="#AAA" FontSize="12" VerticalAlignment="Top" Width="110" Margin="0,6,0,0"/>
-                                        <TextBox x:Name="AiSystemPromptBox" Width="260" Height="60" Background="#1E1E1E" Foreground="White" BorderBrush="#555" BorderThickness="1" Padding="6,4" FontSize="11" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" LostFocus="AiSystemPromptBox_LostFocus" ToolTip="Instructions données au modèle pour cadrer ses réponses"/>
-                                    </StackPanel>
-                                    
-                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                        <Button x:Name="AiTestBtn" Content="🔌 Tester la connexion" Click="AiTestBtn_Click" Background="#3E3E3E" Foreground="White" Padding="10,5" BorderThickness="0" Cursor="Hand" FontSize="11"/>
-                                    </StackPanel>
-                                    <Border x:Name="AiTestResultPanel" CornerRadius="4" Padding="8,4" Margin="0,4,0,0" Visibility="Collapsed">
-                                        <TextBlock x:Name="AiTestResultText" FontSize="11" TextWrapping="Wrap"/>
-                                    </Border>
-                                </StackPanel>
-                            </Border>
+
                         </StackPanel>
                         
                         <!-- Colonne droite: Contrôle Système -->
@@ -637,7 +595,7 @@
                             <TextBlock Text="Contrôle Système" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
                             <TextBlock Text="Tapez ':' + préfixe dans la barre de recherche • Cliquez pour modifier" Foreground="#888" FontSize="11" Margin="0,0,0,8"/>
                             
-                            <ScrollViewer MaxHeight="280" VerticalScrollBarVisibility="Auto">
+                            <ScrollViewer x:Name="SystemCommandsScrollViewer" MaxHeight="280" VerticalScrollBarVisibility="Auto">
                                 <ItemsControl x:Name="SystemCommandsList">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
@@ -803,6 +761,83 @@
                             <Button Content="🔄 Réinitialiser" Click="ResetSystemCommands_Click" Style="{StaticResource ActionButton}" HorizontalAlignment="Left" Margin="0,10,0,0"/>
                         </StackPanel>
                     </Grid>
+                    
+                    <!-- ════════════════════════════════════════════════════ -->
+                    <!-- ASSISTANT IA — Section pleine largeur -->
+                    <!-- ════════════════════════════════════════════════════ -->
+                    <TextBlock Text="🤖 Assistant IA (:ai)" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,8,0,8"/>
+                    <Border Background="#2D2D2D" CornerRadius="8" Padding="20" Margin="0,0,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="30"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <!-- Colonne gauche: Connexion -->
+                            <StackPanel Grid.Column="0">
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Fournisseur:" Foreground="#AAA" FontSize="13" VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="AiProviderCombo" Grid.Column="1" SelectionChanged="AiProviderCombo_SelectionChanged" Background="#1E1E1E" Foreground="White" BorderBrush="#555" FontSize="12">
+                                        <ComboBoxItem Content="☁️ ChatGPT (OpenAI)" Tag="chatgpt"/>
+                                        <ComboBoxItem Content="✨ Gemini (Google)" Tag="gemini"/>
+                                        <ComboBoxItem Content="🦙 Ollama (local)" Tag="ollama"/>
+                                        <ComboBoxItem Content="⚙️ Personnalisé" Tag="custom"/>
+                                    </ComboBox>
+                                </Grid>
+                                
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="URL API:" Foreground="#AAA" FontSize="13" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="AiApiUrlBox" Grid.Column="1" Background="#1E1E1E" Foreground="White" BorderBrush="#555" BorderThickness="1" Padding="8,6" FontSize="12" FontFamily="Consolas" LostFocus="AiApiUrlBox_LostFocus" ToolTip="URL de l'API OpenAI-compatible (Ollama, OpenAI, Groq, LM Studio...)"/>
+                                </Grid>
+                                
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Clé API:" Foreground="#AAA" FontSize="13" VerticalAlignment="Center"/>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                        <PasswordBox x:Name="AiApiKeyBox" Width="150" Background="#1E1E1E" Foreground="White" BorderBrush="#555" BorderThickness="1" Padding="8,6" FontSize="12" LostFocus="AiApiKeyBox_LostFocus" ToolTip="Clé API du fournisseur"/>
+                                        <TextBlock x:Name="AiApiKeyHint" Text="(requis)" Foreground="#666" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                                
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Modèle:" Foreground="#AAA" FontSize="13" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="AiModelBox" Grid.Column="1" Width="200" HorizontalAlignment="Left" Background="#1E1E1E" Foreground="White" BorderBrush="#555" BorderThickness="1" Padding="8,6" FontSize="12" FontFamily="Consolas" LostFocus="AiModelBox_LostFocus" ToolTip="Nom du modèle (ex: gpt-4o-mini, gpt-4o, llama3.2...)"/>
+                                </Grid>
+                            </StackPanel>
+                            
+                            <!-- Colonne droite: Prompt + Test -->
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Prompt système:" Foreground="#AAA" FontSize="13" Margin="0,0,0,6"/>
+                                <TextBox x:Name="AiSystemPromptBox" Background="#1E1E1E" Foreground="White" BorderBrush="#555" BorderThickness="1" Padding="8,6" FontSize="12" Height="120" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" LostFocus="AiSystemPromptBox_LostFocus" ToolTip="Instructions données au modèle pour cadrer ses réponses"/>
+                                <TextBlock Text="Instructions données au modèle pour cadrer ses réponses" Foreground="#666" FontSize="10" Margin="0,4,0,0"/>
+                                
+                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                    <Button x:Name="AiTestBtn" Content="🔌 Tester la connexion" Click="AiTestBtn_Click" Background="#3E3E3E" Foreground="White" Padding="14,8" BorderThickness="0" Cursor="Hand" FontSize="12"/>
+                                </StackPanel>
+                                <Border x:Name="AiTestResultPanel" CornerRadius="4" Padding="10,6" Margin="0,8,0,0" Visibility="Collapsed">
+                                    <TextBlock x:Name="AiTestResultText" FontSize="12" TextWrapping="Wrap"/>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    
+                    </StackPanel>
                 </ScrollViewer>
             </TabItem>
             
@@ -810,7 +845,7 @@
             <!-- ONGLET 4: À PROPOS (Guide + Stats + Infos) -->
             <!-- ═══════════════════════════════════════════════════════════ -->
             <TabItem Header="ℹ️ À propos">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20" PreviewMouseWheel="TabScrollViewer_PreviewMouseWheel">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
