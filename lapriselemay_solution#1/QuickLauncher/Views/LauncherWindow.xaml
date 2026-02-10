@@ -221,8 +221,9 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/> <!-- Tab hint -->
+                        <ColumnDefinition Width="Auto"/> <!-- Clear button -->
+                        <ColumnDefinition Width="Auto"/> <!-- Settings button -->
                     </Grid.ColumnDefinitions>
                     
                     <!-- Icône recherche / indicateur de chargement -->
@@ -242,6 +243,19 @@
                         </TextBlock.Style>
                     </TextBlock>
                     
+                    <!-- Ghost suggestion (behind the real text) -->
+                    <TextBlock x:Name="GhostText"
+                               Grid.Column="1"
+                               Text="{Binding GhostSuggestionText}"
+                               FontSize="18"
+                               FontFamily="{Binding FontFamily, ElementName=SearchBox}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Opacity="0.4"
+                               Background="Transparent"
+                               IsHitTestVisible="False"
+                               VerticalAlignment="Center"
+                               Padding="2,0,0,0"/>
+                    
                     <TextBox x:Name="SearchBox"
                              Grid.Column="1"
                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
@@ -252,9 +266,30 @@
                              CaretBrush="{DynamicResource TextPrimaryBrush}"
                              VerticalAlignment="Center"/>
                     
+                    <!-- Tab hint (visible seulement quand ghost suggestion est affichée) -->
+                    <TextBlock Grid.Column="2"
+                               Text="Tab ⭾"
+                               FontSize="10"
+                               Foreground="{DynamicResource TextSecondaryBrush}"
+                               Opacity="0.5"
+                               VerticalAlignment="Center"
+                               Margin="4,0,4,0"
+                               IsHitTestVisible="False">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding GhostSuggestionText, Converter={StaticResource NullToVis}}" Value="Visible">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    
                     <!-- Bouton Clear -->
                     <Button x:Name="ClearButton"
-                            Grid.Column="2"
+                            Grid.Column="3"
                             Content="✕"
                             Style="{StaticResource ClearButtonStyle}"
                             Click="ClearButton_Click"
@@ -262,7 +297,7 @@
                     
                     <!-- Bouton Settings discret -->
                     <Button x:Name="SettingsButton"
-                            Grid.Column="3"
+                            Grid.Column="4"
                             Content="⚙️"
                             Style="{StaticResource SettingsButtonStyle}"
                             Click="SettingsButton_Click"

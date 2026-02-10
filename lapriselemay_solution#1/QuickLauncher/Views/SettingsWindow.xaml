@@ -276,6 +276,7 @@
                             <!-- Badges de catégorie -->
                             <TextBlock Text="Affichage" Style="{StaticResource SubSectionLabel}" Margin="0,12,0,4"/>
                             <CheckBox x:Name="ShowCategoryBadgesCheck" Content="Afficher les badges de catégorie" Style="{StaticResource SettingsCheckBox}" ToolTip="Affiche un badge coloré (APP, FILE, WEB...) à côté de chaque résultat" Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
+                            <CheckBox x:Name="ShowGhostSuggestionsCheck" Content="Suggestions fantômes (autocomplétion)" Style="{StaticResource SettingsCheckBox}" ToolTip="Affiche une suggestion grisée dans la barre de recherche basée sur vos habitudes. Tab ou → pour accepter." Checked="CheckBox_Changed" Unchecked="CheckBox_Changed"/>
                             
                             <!-- Animations -->
                             <TextBlock Text="Animations (ouverture/fermeture)" Style="{StaticResource SubSectionLabel}" Margin="0,12,0,4"/>

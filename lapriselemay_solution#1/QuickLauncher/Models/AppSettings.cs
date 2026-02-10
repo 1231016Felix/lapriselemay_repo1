@@ -129,6 +129,7 @@ public sealed class AppSettings
     [JsonIgnore] public bool ShowShortcutHints { get => Appearance.ShowShortcutHints; set => Appearance.ShowShortcutHints = value; }
     [JsonIgnore] public bool ShowCategoryBadges { get => Appearance.ShowCategoryBadges; set => Appearance.ShowCategoryBadges = value; }
     [JsonIgnore] public bool ShowIndexingStatus { get => Appearance.ShowIndexingStatus; set => Appearance.ShowIndexingStatus = value; }
+    [JsonIgnore] public bool ShowGhostSuggestions { get => Appearance.ShowGhostSuggestions; set => Appearance.ShowGhostSuggestions = value; }
     [JsonIgnore] public bool EnableAnimations { get => Appearance.EnableAnimations; set => Appearance.EnableAnimations = value; }
     [JsonIgnore] public int AnimationDurationMs { get => Appearance.AnimationDurationMs; set => Appearance.AnimationDurationMs = value; }
     [JsonIgnore] public AnimationStyle AnimationStyle { get => Appearance.AnimationStyle; set => Appearance.AnimationStyle = value; }

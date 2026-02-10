@@ -690,6 +690,24 @@ public partial class LauncherWindow : Window
         // Raccourcis sans modificateurs
         switch (e.Key)
         {
+            case Key.Tab:
+                // Accepter la suggestion fantôme (ghost suggestion)
+                if (_viewModel.AcceptGhostSuggestion())
+                {
+                    e.Handled = true;
+                }
+                break;
+            
+            case Key.Right:
+                // Accepter la suggestion fantôme avec flèche droite (quand le caret est en fin de texte)
+                if (SearchBox.CaretIndex == SearchBox.Text.Length 
+                    && !string.IsNullOrEmpty(_viewModel.GhostSuggestionText))
+                {
+                    _viewModel.AcceptGhostSuggestion();
+                    e.Handled = true;
+                }
+                break;
+                
             case Key.Escape:
                 HideWindow();
                 e.Handled = true;

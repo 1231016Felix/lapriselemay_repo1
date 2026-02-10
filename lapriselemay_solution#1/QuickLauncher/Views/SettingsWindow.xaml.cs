@@ -106,6 +106,8 @@ public partial class SettingsWindow : Window
             DarkStartCombo.SelectedIndex = 2; // 19:00 par défaut
         // Badges de catégorie
         ShowCategoryBadgesCheck.IsChecked = _settings.ShowCategoryBadges;
+        // Suggestions fantômes
+        ShowGhostSuggestionsCheck.IsChecked = _settings.ShowGhostSuggestions;
         // Animations
         EnableAnimationsCheck.IsChecked = _settings.EnableAnimations;
         AnimationSpeedSlider.Value = _settings.AnimationDurationMs;
@@ -692,6 +694,7 @@ public partial class SettingsWindow : Window
         _settings.EnableSearchHistory = EnableSearchHistoryCheck.IsChecked == true;
         _settings.IndexHiddenFolders = IndexHiddenFoldersCheck.IsChecked == true;
         _settings.ShowCategoryBadges = ShowCategoryBadgesCheck.IsChecked == true;
+        _settings.ShowGhostSuggestions = ShowGhostSuggestionsCheck.IsChecked == true;
         _settings.EnableAnimations = EnableAnimationsCheck.IsChecked == true;
         _settings.ScoringWeights.EnableRecencyBonus = EnableRecencyBonusCheck.IsChecked == true;
         

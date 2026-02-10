@@ -71,6 +71,9 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private int _selectedActionIndex;
     
     [ObservableProperty]
+    private string _ghostSuggestionText = string.Empty;
+    
+    [ObservableProperty]
     private bool _showCategoryBadges;
     
     [ObservableProperty]
@@ -132,6 +135,14 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
 
     partial void OnSearchTextChanged(string value)
     {
+        // Effacer le ghost immédiatement si le texte ne correspond plus
+        // (évite un flash de suggestion périmée pendant le debounce)
+        if (!string.IsNullOrEmpty(GhostSuggestionText)
+            && !GhostSuggestionText.StartsWith(value, StringComparison.OrdinalIgnoreCase))
+        {
+            GhostSuggestionText = string.Empty;
+        }
+        
         // Annuler le debounce précédent et en démarrer un nouveau
         _debounceCts?.Cancel();
         _debounceCts = new CancellationTokenSource();
@@ -706,6 +717,65 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     {
         HasResults = Results.Count > 0;
         SelectedIndex = HasResults ? 0 : -1;
+        UpdateGhostSuggestion();
+    }
+    
+    /// <summary>
+    /// Met à jour la suggestion fantôme (ghost text) basée sur le premier résultat
+    /// dont le nom commence par le texte saisi. Priorise les items les plus utilisés.
+    /// </summary>
+    private void UpdateGhostSuggestion()
+    {
+        if (!_settings.ShowGhostSuggestions || string.IsNullOrWhiteSpace(SearchText) || !HasResults)
+        {
+            GhostSuggestionText = string.Empty;
+            return;
+        }
+        
+        var query = SearchText.Trim();
+        
+        // Ne pas suggérer pour les commandes avec arguments (ex: ":note mon texte")
+        // ni pour les préfixes de recherche web (ex: "g query")
+        if (query.Contains(' '))
+        {
+            GhostSuggestionText = string.Empty;
+            return;
+        }
+        
+        // Chercher la meilleure suggestion parmi les résultats dont le nom commence par la query
+        // Prioriser: les applications/fichiers fréquemment utilisés
+        var bestMatch = Results
+            .Where(r => r.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase)
+                        && r.Name.Length > query.Length
+                        && r.Type is not (ResultType.Calculator or ResultType.WebSearch))
+            .OrderByDescending(r => r.UseCount)
+            .ThenByDescending(r => r.Score)
+            .FirstOrDefault();
+        
+        if (bestMatch != null)
+        {
+            // Conserver la casse de l'utilisateur + complétion du résultat
+            GhostSuggestionText = query + bestMatch.Name[query.Length..];
+        }
+        else
+        {
+            GhostSuggestionText = string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Accepte la suggestion fantôme : remplace le texte de recherche par la suggestion complète.
+    /// </summary>
+    /// <returns>true si une suggestion a été acceptée, false sinon.</returns>
+    public bool AcceptGhostSuggestion()
+    {
+        if (string.IsNullOrEmpty(GhostSuggestionText))
+            return false;
+        
+        SearchText = GhostSuggestionText;
+        GhostSuggestionText = string.Empty;
+        RequestCaretAtEnd?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     [RelayCommand]
@@ -1224,6 +1294,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public void Reset()
     {
         SearchText = string.Empty;
+        GhostSuggestionText = string.Empty;
         Results.Clear();
         SelectedIndex = -1;
         HasResults = false;

@@ -31,6 +31,7 @@ public sealed class AppearanceSettings
     public bool ShowShortcutHints { get; set; } = true;
     public bool ShowCategoryBadges { get; set; } = true;
     public bool ShowIndexingStatus { get; set; } = true;
+    public bool ShowGhostSuggestions { get; set; } = true;
     
     // === Animations ===
     public bool EnableAnimations { get; set; } = true;
