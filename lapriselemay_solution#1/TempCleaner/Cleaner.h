@@ -84,6 +84,19 @@ namespace TempCleaner {
         bool cleanBrowserExtended = false;
     };
 
+    // === Scan de gros fichiers ===
+    struct LargeFileInfo {
+        std::filesystem::path path;
+        uint64_t size = 0;
+    };
+
+    struct LargeFileScanResult {
+        std::vector<LargeFileInfo> files;
+        uint64_t totalSize = 0;
+        uint64_t filesScanned = 0;
+        uint64_t directoriesScanned = 0;
+    };
+
     // Callback pour le progrès
     using ProgressCallback = std::function<void(const std::wstring& currentFile, int percentage)>;
 
@@ -111,6 +124,15 @@ namespace TempCleaner {
             uint32_t processesFailed = 0;
         };
         static MemoryPurgeStats purgeMemory();
+
+        // Scan de gros fichiers
+        LargeFileScanResult scanLargeFiles(
+            const std::vector<std::filesystem::path>& scanPaths,
+            uint64_t minSizeBytes,
+            ProgressCallback progressCallback = nullptr);
+        
+        // Suppression de fichiers sélectionnés (retourne bytes libérés)
+        CleaningStats deleteLargeFiles(const std::vector<std::filesystem::path>& files);
 
         // Sauvegarde/charge les options
         static void saveOptions(const CleaningOptions& options);

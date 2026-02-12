@@ -445,8 +445,20 @@
                                     <TextBlock Text="{Binding Name}"
                                                FontSize="14"
                                                FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}"
-                                               TextTrimming="CharacterEllipsis"/>
+                                               Foreground="{DynamicResource TextPrimaryBrush}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                                                <Setter Property="TextWrapping" Value="NoWrap"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsInfoBlock}" Value="True">
+                                                        <Setter Property="TextTrimming" Value="None"/>
+                                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                     <TextBlock Text="{Binding Description}"
                                                FontSize="11"
                                                Foreground="{DynamicResource TextSecondaryBrush}"

@@ -9,6 +9,8 @@
 #include <TlHelp32.h>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
+#include <format>
 
 #pragma comment(lib, "wevtapi.lib")
 #pragma comment(lib, "ole32.lib")
@@ -49,11 +51,26 @@ namespace TempCleaner {
             return message;
         }
 
+        // Helper pour conversion propre std::string -> std::wstring (multi-byte safe)
+        std::wstring Utf8ToWide(const std::string& str) {
+            if (str.empty()) return L"";
+            int size = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, nullptr, 0);
+            if (size <= 0) {
+                // Fallback pour encodage non-UTF8 (ex: ANSI system locale)
+                size = MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, nullptr, 0);
+                if (size <= 0) return L"Erreur de conversion";
+                std::wstring result(size - 1, 0);
+                MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, result.data(), size);
+                return result;
+            }
+            std::wstring result(size - 1, 0);
+            MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, result.data(), size);
+            return result;
+        }
+
         std::wstring GetErrorCodeMessage(const std::error_code& ec) {
             if (!ec) return L"";
-            std::string msg = ec.message();
-            std::wstring wmsg(msg.begin(), msg.end());
-            return wmsg;
+            return Utf8ToWide(ec.message());
         }
         
         // Helper pour obtenir le chemin du profil utilisateur
@@ -573,8 +590,7 @@ namespace TempCleaner {
                 ErrorInfo error;
                 error.filePath = entry.path().wstring();
                 error.category = category;
-                std::string what = e.what();
-                error.errorMessage = std::wstring(what.begin(), what.end());
+                error.errorMessage = Utf8ToWide(e.what());
                 stats.errorDetails.push_back(error);
             } catch (...) {
                 stats.errors++;
@@ -613,10 +629,30 @@ namespace TempCleaner {
             fs::directory_options::skip_permission_denied, ec)) {
             if (m_stopRequested) return;
             try {
-                auto size = entry.is_regular_file() ? entry.file_size(ec) : 0;
-                if (fs::remove_all(entry.path(), ec) > 0) {
-                    stats.filesDeleted++;
-                    stats.bytesFreed += size;
+                // Calculer la taille totale avant suppression
+                // Pour les dossiers, on parcourt récursivement pour obtenir la vraie taille
+                uint64_t entrySize = 0;
+                uint64_t entryFileCount = 0;
+                if (entry.is_regular_file(ec)) {
+                    entrySize = entry.file_size(ec);
+                    entryFileCount = 1;
+                } else if (entry.is_directory(ec)) {
+                    std::error_code ec2;
+                    for (const auto& subEntry : fs::recursive_directory_iterator(
+                        entry.path(), fs::directory_options::skip_permission_denied, ec2)) {
+                        try {
+                            if (subEntry.is_regular_file(ec2)) {
+                                entrySize += subEntry.file_size(ec2);
+                                entryFileCount++;
+                            }
+                        } catch (...) {}
+                    }
+                }
+                
+                auto removed = fs::remove_all(entry.path(), ec);
+                if (removed > 0) {
+                    stats.filesDeleted += (entryFileCount > 0) ? entryFileCount : 1;
+                    stats.bytesFreed += entrySize;
                 } else if (ec) {
                     stats.errors++;
                     ErrorInfo error;
@@ -630,8 +666,7 @@ namespace TempCleaner {
                 ErrorInfo error;
                 error.filePath = entry.path().wstring();
                 error.category = category;
-                std::string what = e.what();
-                error.errorMessage = std::wstring(what.begin(), what.end());
+                error.errorMessage = Utf8ToWide(e.what());
                 stats.errorDetails.push_back(error);
             } catch (...) {
                 stats.errors++;
@@ -698,7 +733,7 @@ namespace TempCleaner {
     }
 
     bool Cleaner::isShortcutBroken(const fs::path& shortcutPath) {
-        CoInitialize(nullptr);
+        // Note: COM doit être initialisé par l'appelant (cleanBrokenShortcuts)
         bool isBroken = false;
         
         IShellLinkW* pShellLink = nullptr;
@@ -733,22 +768,33 @@ namespace TempCleaner {
             pShellLink->Release();
         }
         
-        CoUninitialize();
         return isBroken;
     }
 
     void Cleaner::cleanBrokenShortcuts(CleaningStats& stats) {
+        // Initialiser COM une seule fois pour tous les raccourcis
+        HRESULT comResult = CoInitialize(nullptr);
+        if (FAILED(comResult)) {
+            stats.errors++;
+            ErrorInfo error;
+            error.filePath = L"COM";
+            error.category = L"Raccourcis casses";
+            error.errorMessage = L"Impossible d'initialiser COM";
+            stats.errorDetails.push_back(error);
+            return;
+        }
+        
         auto folders = getShortcutFolders();
         
         for (const auto& folder : folders) {
-            if (m_stopRequested) return;
+            if (m_stopRequested) break;
             if (!fs::exists(folder)) continue;
             
             std::error_code ec;
             for (const auto& entry : fs::recursive_directory_iterator(folder,
                 fs::directory_options::skip_permission_denied, ec)) {
                 
-                if (m_stopRequested) return;
+                if (m_stopRequested) break;
                 
                 try {
                     if (entry.is_regular_file() && 
@@ -772,6 +818,8 @@ namespace TempCleaner {
                 } catch (...) {}
             }
         }
+        
+        CoUninitialize();
     }
 
     void Cleaner::cleanWindowsOld(CleaningStats& stats) {
@@ -1675,6 +1723,123 @@ namespace TempCleaner {
         return paths;
     }
 
+    // ========== SCAN DE GROS FICHIERS ==========
+
+    LargeFileScanResult Cleaner::scanLargeFiles(
+        const std::vector<fs::path>& scanPaths,
+        uint64_t minSizeBytes,
+        ProgressCallback progressCallback) {
+        
+        LargeFileScanResult result;
+        m_running = true;
+        m_stopRequested = false;
+        
+        int totalPaths = static_cast<int>(scanPaths.size());
+        int currentPath = 0;
+        
+        for (const auto& scanRoot : scanPaths) {
+            if (m_stopRequested) break;
+            if (!fs::exists(scanRoot)) {
+                currentPath++;
+                continue;
+            }
+            
+            if (progressCallback) {
+                int progress = totalPaths > 0 ? (currentPath * 100) / totalPaths : 0;
+                progressCallback(L"Scan: " + scanRoot.wstring(), progress);
+            }
+            
+            std::error_code ec;
+            for (const auto& entry : fs::recursive_directory_iterator(
+                scanRoot, fs::directory_options::skip_permission_denied, ec)) {
+                
+                if (m_stopRequested) break;
+                
+                try {
+                    if (entry.is_directory(ec)) {
+                        result.directoriesScanned++;
+                        continue;
+                    }
+                    
+                    if (!entry.is_regular_file(ec)) continue;
+                    
+                    result.filesScanned++;
+                    
+                    // Mettre à jour le statut tous les 5000 fichiers
+                    if (result.filesScanned % 5000 == 0 && progressCallback) {
+                        int progress = totalPaths > 0 ? (currentPath * 100) / totalPaths : 0;
+                        progressCallback(
+                            std::format(L"Scan: {} fichiers analyses...", result.filesScanned),
+                            progress);
+                    }
+                    
+                    auto fileSize = entry.file_size(ec);
+                    if (!ec && fileSize >= minSizeBytes) {
+                        LargeFileInfo info;
+                        info.path = entry.path();
+                        info.size = fileSize;
+                        result.files.push_back(std::move(info));
+                        result.totalSize += fileSize;
+                    }
+                } catch (...) {
+                    // Ignorer les fichiers inaccessibles
+                }
+            }
+            
+            currentPath++;
+        }
+        
+        // Trier par taille décroissante
+        std::sort(result.files.begin(), result.files.end(),
+            [](const LargeFileInfo& a, const LargeFileInfo& b) {
+                return a.size > b.size;
+            });
+        
+        if (progressCallback) {
+            progressCallback(
+                std::format(L"Termine! {} gros fichiers trouves", result.files.size()),
+                100);
+        }
+        
+        m_running = false;
+        return result;
+    }
+
+    CleaningStats Cleaner::deleteLargeFiles(const std::vector<fs::path>& files) {
+        CleaningStats stats;
+        
+        for (const auto& filePath : files) {
+            if (m_stopRequested) break;
+            
+            try {
+                std::error_code ec;
+                auto fileSize = fs::file_size(filePath, ec);
+                if (ec) continue;
+                
+                if (fs::remove(filePath, ec)) {
+                    stats.filesDeleted++;
+                    stats.bytesFreed += fileSize;
+                } else {
+                    stats.errors++;
+                    ErrorInfo error;
+                    error.filePath = filePath.wstring();
+                    error.category = L"Gros fichiers";
+                    error.errorMessage = GetErrorCodeMessage(ec);
+                    stats.errorDetails.push_back(error);
+                }
+            } catch (const std::exception& e) {
+                stats.errors++;
+                ErrorInfo error;
+                error.filePath = filePath.wstring();
+                error.category = L"Gros fichiers";
+                error.errorMessage = Utf8ToWide(e.what());
+                stats.errorDetails.push_back(error);
+            }
+        }
+        
+        return stats;
+    }
+
     // ========== SAUVEGARDE/CHARGEMENT ==========
 
     void Cleaner::saveOptions(const CleaningOptions& options) {
@@ -1784,14 +1949,25 @@ namespace TempCleaner {
         GlobalMemoryStatusEx(&memBefore);
         uint64_t usedBefore = memBefore.ullTotalPhys - memBefore.ullAvailPhys;
         
-        // Activer SeDebugPrivilege pour accéder aux processus système
+        // Activer les privilèges nécessaires pour la purge mémoire
+        // SeDebugPrivilege: accès aux processus système
+        // SeIncreaseQuotaPrivilege: nécessaire pour NtSetSystemInformation (file cache)
+        // SeProfileSingleProcessPrivilege: nécessaire pour purger le standby list
         HANDLE hToken = nullptr;
         if (OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &hToken)) {
-            TOKEN_PRIVILEGES tp = {};
-            tp.PrivilegeCount = 1;
+            // Activer les 3 privilèges d'un coup
+            struct {
+                DWORD PrivilegeCount;
+                LUID_AND_ATTRIBUTES Privileges[3];
+            } tp = {};
+            tp.PrivilegeCount = 3;
             tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
+            tp.Privileges[1].Attributes = SE_PRIVILEGE_ENABLED;
+            tp.Privileges[2].Attributes = SE_PRIVILEGE_ENABLED;
             LookupPrivilegeValueW(nullptr, SE_DEBUG_NAME, &tp.Privileges[0].Luid);
-            AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(tp), nullptr, nullptr);
+            LookupPrivilegeValueW(nullptr, SE_INCREASE_QUOTA_NAME, &tp.Privileges[1].Luid);
+            LookupPrivilegeValueW(nullptr, SE_PROF_SINGLE_PROCESS_NAME, &tp.Privileges[2].Luid);
+            AdjustTokenPrivileges(hToken, FALSE, reinterpret_cast<TOKEN_PRIVILEGES*>(&tp), sizeof(tp), nullptr, nullptr);
             CloseHandle(hToken);
         }
         
@@ -1859,20 +2035,26 @@ namespace TempCleaner {
             auto NtSetSystemInformation = (NtSetSystemInformationFunc)GetProcAddress(hNtdll, "NtSetSystemInformation");
             if (NtSetSystemInformation) {
                 // Vider le cache système (SystemFileCacheInformation = 21)
+                // Requiert SeIncreaseQuotaPrivilege
                 SYSTEM_CACHE_INFORMATION sci = {};
                 sci.MinimumWorkingSet = (SIZE_T)-1;
                 sci.MaximumWorkingSet = (SIZE_T)-1;
-                NtSetSystemInformation(21, &sci, sizeof(sci));
+                NTSTATUS status = NtSetSystemInformation(21, &sci, sizeof(sci));
+                // STATUS_SUCCESS = 0, STATUS_ACCESS_DENIED = 0xC0000022
+                // On continue même si ça échoue (privilèges insuffisants)
                 
                 // Vider le Standby List (SystemMemoryListInformation = 80)
+                // Requiert SeProfileSingleProcessPrivilege
                 SYSTEM_MEMORY_LIST_COMMAND cmd = MemoryPurgeStandbyList;
-                NtSetSystemInformation(80, &cmd, sizeof(cmd));
+                status = NtSetSystemInformation(80, &cmd, sizeof(cmd));
                 
                 cmd = MemoryPurgeLowPriorityStandbyList;
-                NtSetSystemInformation(80, &cmd, sizeof(cmd));
+                status = NtSetSystemInformation(80, &cmd, sizeof(cmd));
                 
                 cmd = MemoryFlushModifiedList;
-                NtSetSystemInformation(80, &cmd, sizeof(cmd));
+                status = NtSetSystemInformation(80, &cmd, sizeof(cmd));
+                
+                (void)status; // Variable utilisée pour débogage si nécessaire
             }
         }
         

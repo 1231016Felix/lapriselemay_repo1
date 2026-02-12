@@ -827,7 +827,7 @@ public sealed partial class IndexingService : IDisposable
         foreach (var ws in windowsSettings)
             items.Add(ws);
         
-        // Supprimer les anciens Store apps, bookmarks et SystemControl
+        // Supprimer les anciens Store apps, bookmarks et SystemControl du cache ET de la DB
         var volatileTypes = new[] { ResultType.StoreApp, ResultType.Bookmark, ResultType.SystemControl };
         var keysToRemove = _cache
             .Where(kv => volatileTypes.Contains(kv.Value.Type))
@@ -836,6 +836,40 @@ public sealed partial class IndexingService : IDisposable
         
         foreach (var key in keysToRemove)
             _cache.TryRemove(key, out _);
+        
+        // Purger les entrées volatiles PÉRIMÉES de la base de données.
+        // On ne supprime que celles dont le Path n'existe plus dans le nouveau set,
+        // pour éviter que des entrées fantômes (ex: app réinstallée avec un nouveau AppUserModelId)
+        // ne réapparaissent au prochain LoadCacheFromDatabase() tout en préservant le UseCount
+        // des entrées toujours valides.
+        try
+        {
+            var freshPaths = new HashSet<string>(items.Select(i => i.Path), StringComparer.OrdinalIgnoreCase);
+            var stalePaths = keysToRemove.Where(k => !freshPaths.Contains(k)).ToList();
+            
+            if (stalePaths.Count > 0)
+            {
+                await using var conn = new SqliteConnection(_connectionString);
+                await conn.OpenAsync(token);
+                
+                // SQLite ne supporte pas les paramètres de tableau, on construit la requête
+                await using var deleteCmd = conn.CreateCommand();
+                var paramNames = new List<string>(stalePaths.Count);
+                for (var i = 0; i < stalePaths.Count; i++)
+                {
+                    var paramName = $"@p{i}";
+                    paramNames.Add(paramName);
+                    deleteCmd.Parameters.AddWithValue(paramName, stalePaths[i]);
+                }
+                deleteCmd.CommandText = $"DELETE FROM Items WHERE Path IN ({string.Join(", ", paramNames)})";
+                var purged = await deleteCmd.ExecuteNonQueryAsync(token);
+                _logger.Info($"[Volatile] Purgé {purged} entrées volatiles périmées de la DB");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Erreur purge volatiles: {ex.Message}");
+        }
         
         // Sauvegarder les items frais
         var newItems = items.ToList();

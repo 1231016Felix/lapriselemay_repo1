@@ -45,6 +45,16 @@ static uint64_t g_diskFreeAfter = 0;
 static uint64_t g_diskTotal = 0;
 static bool g_showDiskChart = false;
 
+// Large file scan state
+static bool g_showLargeFileScan = false;
+static bool g_isScanning = false;
+static TempCleaner::LargeFileScanResult g_scanResult;
+static std::vector<char> g_scanSelection;
+static int g_scanMinSizeMB = 100;  // Taille minimum en Mo
+static bool g_scanDriveC = true;
+static bool g_scanDriveD = false;
+static std::wstring g_scanStatusText;
+
 uint64_t GetDiskFreeSpace() {
     wchar_t sysDir[MAX_PATH];
     GetSystemDirectoryW(sysDir, MAX_PATH);
@@ -175,6 +185,10 @@ void StartCleaning() {
     g_diskFreeBefore = GetDiskFreeSpace();
     g_showDiskChart = false;
     
+    // Copie locale des options pour éviter une race condition
+    // si l'utilisateur modifie les paramètres pendant le nettoyage
+    TempCleaner::CleaningOptions optionsCopy = g_options;
+    
     {
         std::lock_guard<std::mutex> lock(g_mutex);
         g_isRunning = true;
@@ -184,7 +198,7 @@ void StartCleaning() {
         g_statusText = L"Nettoyage en cours...";
     }
 
-    std::thread([]() {
+    std::thread([optionsCopy]() {
         try {
             auto callback = [](const std::wstring& status, int progress) {
                 std::lock_guard<std::mutex> lock(g_mutex);
@@ -192,7 +206,7 @@ void StartCleaning() {
                 g_progress = progress;
             };
 
-            auto stats = g_cleaner.clean(g_options, callback);
+            auto stats = g_cleaner.clean(optionsCopy, callback);
             
             // Capture disk space after cleaning
             g_diskFreeAfter = GetDiskFreeSpace();
@@ -211,8 +225,16 @@ void StartCleaning() {
             g_showDiskChart = (g_diskFreeAfter > g_diskFreeBefore);
         } catch (const std::exception& e) {
             std::lock_guard<std::mutex> lock(g_mutex);
+            // Conversion propre multi-byte
             std::string what = e.what();
-            g_resultText = L"Erreur: " + std::wstring(what.begin(), what.end());
+            int wsize = MultiByteToWideChar(CP_UTF8, 0, what.c_str(), -1, nullptr, 0);
+            if (wsize > 0) {
+                std::wstring wwhat(wsize - 1, 0);
+                MultiByteToWideChar(CP_UTF8, 0, what.c_str(), -1, wwhat.data(), wsize);
+                g_resultText = L"Erreur: " + wwhat;
+            } else {
+                g_resultText = L"Erreur inconnue";
+            }
             g_statusText = L"Erreur!";
             g_progress = 100;
             g_isRunning = false;
@@ -227,6 +249,9 @@ void StartCleaning() {
 }
 
 void StartEstimate() {
+    // Copie locale des options pour éviter une race condition
+    TempCleaner::CleaningOptions optionsCopy = g_options;
+    
     {
         std::lock_guard<std::mutex> lock(g_mutex);
         g_isRunning = true;
@@ -235,7 +260,7 @@ void StartEstimate() {
         g_estimate = {};
     }
 
-    std::thread([]() {
+    std::thread([optionsCopy]() {
         try {
             auto callback = [](const std::wstring& status, int progress) {
                 std::lock_guard<std::mutex> lock(g_mutex);
@@ -243,7 +268,7 @@ void StartEstimate() {
                 g_progress = progress;
             };
 
-            auto est = g_cleaner.estimate(g_options, callback);
+            auto est = g_cleaner.estimate(optionsCopy, callback);
 
             std::lock_guard<std::mutex> lock(g_mutex);
             g_estimate = std::move(est);
@@ -292,6 +317,77 @@ void StartMemoryPurge() {
             g_isMemoryPurging = false;
         }
     }).detach();
+}
+
+void StartLargeFileScan() {
+    std::vector<std::filesystem::path> scanPaths;
+    if (g_scanDriveC) scanPaths.push_back(L"C:\\");
+    if (g_scanDriveD && std::filesystem::exists(L"D:\\")) scanPaths.push_back(L"D:\\");
+    
+    if (scanPaths.empty()) return;
+    
+    uint64_t minSizeBytes = static_cast<uint64_t>(g_scanMinSizeMB) * 1024ULL * 1024ULL;
+    
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        g_isScanning = true;
+        g_scanResult = {};
+        g_scanSelection.clear();
+        g_scanStatusText = L"Scan en cours...";
+    }
+    
+    std::thread([scanPaths, minSizeBytes]() {
+        try {
+            auto callback = [](const std::wstring& status, int progress) {
+                std::lock_guard<std::mutex> lock(g_mutex);
+                g_scanStatusText = status;
+            };
+            
+            auto result = g_cleaner.scanLargeFiles(scanPaths, minSizeBytes, callback);
+            
+            std::lock_guard<std::mutex> lock(g_mutex);
+            g_scanResult = std::move(result);
+            g_scanSelection.assign(g_scanResult.files.size(), 0);
+            g_scanStatusText = std::format(L"{} fichiers trouves ({} analyses)",
+                g_scanResult.files.size(), g_scanResult.filesScanned);
+            g_isScanning = false;
+        } catch (...) {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            g_scanStatusText = L"Erreur lors du scan";
+            g_isScanning = false;
+        }
+    }).detach();
+}
+
+void DeleteSelectedLargeFiles() {
+    std::vector<std::filesystem::path> toDelete;
+    for (size_t i = 0; i < g_scanResult.files.size(); i++) {
+        if (g_scanSelection[i]) {
+            toDelete.push_back(g_scanResult.files[i].path);
+        }
+    }
+    
+    if (toDelete.empty()) return;
+    
+    auto stats = g_cleaner.deleteLargeFiles(toDelete);
+    
+    // Retirer les fichiers supprimés de la liste
+    std::vector<TempCleaner::LargeFileInfo> remaining;
+    std::vector<char> remainingSelection;
+    for (size_t i = 0; i < g_scanResult.files.size(); i++) {
+        if (!g_scanSelection[i] || std::filesystem::exists(g_scanResult.files[i].path)) {
+            remaining.push_back(g_scanResult.files[i]);
+            remainingSelection.push_back(false);
+        }
+    }
+    
+    g_scanResult.files = std::move(remaining);
+    g_scanSelection = std::move(remainingSelection);
+    g_scanResult.totalSize = 0;
+    for (const auto& f : g_scanResult.files) g_scanResult.totalSize += f.size;
+    
+    g_scanStatusText = std::format(L"{} fichiers supprimes, {} liberes",
+        stats.filesDeleted, FormatBytes(stats.bytesFreed));
 }
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
@@ -413,71 +509,84 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         ImGui::Spacing();
         ImGui::Spacing();
 
-        // Resultat
+        // Resultat (copie locale pour éviter de tenir le mutex pendant le rendu)
+        std::wstring resultTextLocal;
+        std::wstring memoryPurgeResultLocal;
+        bool hasErrors = false;
+        bool showDiskChartLocal = false;
+        uint64_t diskTotalLocal = 0, diskFreeBeforeLocal = 0, diskFreeAfterLocal = 0;
         {
             std::lock_guard<std::mutex> lock(g_mutex);
-            if (!g_resultText.empty()) {
-                std::string result = WideToUtf8(g_resultText);
-                
-                std::istringstream stream(result);
-                std::string line;
-                while (std::getline(stream, line)) {
-                    ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(line.c_str()).x) * 0.5f);
-                    ImGui::Text("%s", line.c_str());
-                }
-                
-                // Donut chart - espace disque
-                if (g_showDiskChart && g_diskTotal > 0) {
-                    ImGui::Spacing();
-                    
-                    float chartRadius = 35.0f;
-                    float chartThickness = 10.0f;
-                    ImVec2 chartCenter(ImGui::GetWindowWidth() * 0.5f, ImGui::GetCursorPosY() + chartRadius + 5);
-                    
-                    // Convert to screen coords
-                    ImVec2 windowPos = ImGui::GetWindowPos();
-                    ImVec2 screenCenter(windowPos.x + chartCenter.x, windowPos.y + chartCenter.y);
-                    
-                    float usedBefore = static_cast<float>(g_diskTotal - g_diskFreeBefore) / g_diskTotal;
-                    float usedAfter = static_cast<float>(g_diskTotal - g_diskFreeAfter) / g_diskTotal;
-                    float freedRatio = usedBefore - usedAfter;
-                    
-                    DrawDonutChart(screenCenter, chartRadius, chartThickness, usedAfter, freedRatio, true);
-                    
-                    // Reserve space and add legend
-                    ImGui::Dummy(ImVec2(0, chartRadius * 2 + 15));
-                    
-                    // Compact legend
-                    std::string legendText = WideToUtf8(FormatBytes(g_diskFreeAfter)) + " libre";
-                    ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(legendText.c_str()).x) * 0.5f);
-                    ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.6f, 1.0f), "%s", legendText.c_str());
-                }
-                
-                if (!g_errorDetails.empty()) {
-                    ImGui::Spacing();
-                    float errBtnWidth = 150.0f;
-                    ImGui::SetCursorPosX((ImGui::GetWindowWidth() - errBtnWidth) * 0.5f);
-                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.60f, 0.35f, 0.35f, 1.0f));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.70f, 0.40f, 0.40f, 1.0f));
-                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.80f, 0.45f, 0.45f, 1.0f));
-                    if (ImGui::Button("Voir les erreurs", ImVec2(errBtnWidth, 28))) {
-                        g_showErrors = true;
-                    }
-                    ImGui::PopStyleColor(3);
-                }
+            resultTextLocal = g_resultText;
+            memoryPurgeResultLocal = g_memoryPurgeResult;
+            hasErrors = !g_errorDetails.empty();
+            showDiskChartLocal = g_showDiskChart;
+            diskTotalLocal = g_diskTotal;
+            diskFreeBeforeLocal = g_diskFreeBefore;
+            diskFreeAfterLocal = g_diskFreeAfter;
+        }
+        
+        if (!resultTextLocal.empty()) {
+            std::string result = WideToUtf8(resultTextLocal);
+            
+            std::istringstream stream(result);
+            std::string line;
+            while (std::getline(stream, line)) {
+                ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(line.c_str()).x) * 0.5f);
+                ImGui::Text("%s", line.c_str());
             }
             
-            // Résultat purge mémoire
-            if (!g_memoryPurgeResult.empty()) {
+            // Donut chart - espace disque
+            if (showDiskChartLocal && diskTotalLocal > 0) {
                 ImGui::Spacing();
-                std::string memResult = WideToUtf8(g_memoryPurgeResult);
                 
-                std::istringstream stream(memResult);
-                std::string line;
-                while (std::getline(stream, line)) {
-                    ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(line.c_str()).x) * 0.5f);
-                    ImGui::TextColored(ImVec4(0.6f, 0.8f, 1.0f, 1.0f), "%s", line.c_str());
+                float chartRadius = 35.0f;
+                float chartThickness = 10.0f;
+                ImVec2 chartCenter(ImGui::GetWindowWidth() * 0.5f, ImGui::GetCursorPosY() + chartRadius + 5);
+                
+                // Convert to screen coords
+                ImVec2 windowPos = ImGui::GetWindowPos();
+                ImVec2 screenCenter(windowPos.x + chartCenter.x, windowPos.y + chartCenter.y);
+                
+                float usedBefore = static_cast<float>(diskTotalLocal - diskFreeBeforeLocal) / diskTotalLocal;
+                float usedAfter = static_cast<float>(diskTotalLocal - diskFreeAfterLocal) / diskTotalLocal;
+                float freedRatio = usedBefore - usedAfter;
+                
+                DrawDonutChart(screenCenter, chartRadius, chartThickness, usedAfter, freedRatio, true);
+                
+                // Reserve space and add legend
+                ImGui::Dummy(ImVec2(0, chartRadius * 2 + 15));
+                
+                // Compact legend
+                std::string legendText = WideToUtf8(FormatBytes(diskFreeAfterLocal)) + " libre";
+                ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(legendText.c_str()).x) * 0.5f);
+                ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.6f, 1.0f), "%s", legendText.c_str());
+            }
+            
+            if (hasErrors && !g_showErrors) {
+                ImGui::Spacing();
+                float errBtnWidth = 150.0f;
+                ImGui::SetCursorPosX((ImGui::GetWindowWidth() - errBtnWidth) * 0.5f);
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.60f, 0.35f, 0.35f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.70f, 0.40f, 0.40f, 1.0f));
+                ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.80f, 0.45f, 0.45f, 1.0f));
+                if (ImGui::Button("Voir les erreurs", ImVec2(errBtnWidth, 28))) {
+                    g_showErrors = true;
                 }
+                ImGui::PopStyleColor(3);
+            }
+        }
+        
+        // Résultat purge mémoire
+        if (!memoryPurgeResultLocal.empty()) {
+            ImGui::Spacing();
+            std::string memResult = WideToUtf8(memoryPurgeResultLocal);
+            
+            std::istringstream stream(memResult);
+            std::string line;
+            while (std::getline(stream, line)) {
+                ImGui::SetCursorPosX((ImGui::GetWindowWidth() - ImGui::CalcTextSize(line.c_str()).x) * 0.5f);
+                ImGui::TextColored(ImVec4(0.6f, 0.8f, 1.0f, 1.0f), "%s", line.c_str());
             }
         }
 
@@ -486,6 +595,17 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         if (ImGui::Button("Parametres", ImVec2(100, 30))) {
             g_showSettings = true;
         }
+        
+        // Bouton Gros fichiers au centre bas
+        float scanBtnWidth = 120.0f;
+        ImGui::SetCursorPos(ImVec2((ImGui::GetWindowWidth() - scanBtnWidth) * 0.5f, ImGui::GetWindowHeight() - 45));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.55f, 0.45f, 0.25f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.65f, 0.52f, 0.30f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.75f, 0.60f, 0.35f, 1.0f));
+        if (ImGui::Button("Gros fichiers", ImVec2(scanBtnWidth, 30)) && !g_isRunning) {
+            g_showLargeFileScan = true;
+        }
+        ImGui::PopStyleColor(3);
         
         // Bouton Purger memoire en bas a droite
         ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - 145, ImGui::GetWindowHeight() - 45));
@@ -508,6 +628,26 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
         ImGui::PopStyleColor(3);
 
         ImGui::End();
+
+        // Overlay d'assombrissement quand une fenêtre modale est ouverte
+        bool anyModalOpen = g_showSettings || g_showErrors || g_showEstimate || g_showDismWarning || g_showLargeFileScan;
+        if (anyModalOpen) {
+            ImGui::SetNextWindowPos(ImVec2(0, 0));
+            ImGui::SetNextWindowSize(io.DisplaySize);
+            ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, 0.55f));
+            ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
+            ImGui::Begin("##Overlay", nullptr, 
+                ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | 
+                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+                ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse |
+                ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNav |
+                ImGuiWindowFlags_NoSavedSettings);
+            ImGui::End();
+            ImGui::PopStyleVar(2);
+            ImGui::PopStyleColor(2);
+        }
 
         // Fenetre parametres
         if (g_showSettings) {
@@ -741,63 +881,223 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int nCmdShow) {
             ImGui::End();
         }
 
-        // Fenetre des erreurs
+        // Fenetre des erreurs (copie locale pour éviter de tenir le mutex pendant le rendu)
+        bool showErrorsLocal = false;
+        std::vector<TempCleaner::ErrorInfo> errorDetailsLocal;
         {
             std::lock_guard<std::mutex> lock(g_mutex);
-            if (g_showErrors && !g_errorDetails.empty()) {
-                ImVec2 popupSize(420, 340);
-                ImVec2 popupPos((io.DisplaySize.x - popupSize.x) * 0.5f, 
-                               (io.DisplaySize.y - popupSize.y) * 0.5f);
-                ImGui::SetNextWindowPos(popupPos, ImGuiCond_Always);
-                ImGui::SetNextWindowSize(popupSize, ImGuiCond_Always);
+            showErrorsLocal = g_showErrors && !g_errorDetails.empty();
+            if (showErrorsLocal) {
+                errorDetailsLocal = g_errorDetails;
+            }
+        }
+        
+        if (showErrorsLocal) {
+            ImVec2 popupSize(420, 340);
+            ImVec2 popupPos((io.DisplaySize.x - popupSize.x) * 0.5f, 
+                           (io.DisplaySize.y - popupSize.y) * 0.5f);
+            ImGui::SetNextWindowPos(popupPos, ImGuiCond_Always);
+            ImGui::SetNextWindowSize(popupSize, ImGuiCond_Always);
+            
+            ImGui::Begin("Rapport d'erreurs", &g_showErrors, 
+                ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+            
+            std::string summary = std::format("{} erreur(s)", errorDetailsLocal.size());
+            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", summary.c_str());
+            ImGui::Separator();
+            ImGui::Spacing();
+            
+            if (ImGui::BeginChild("ErrorList", ImVec2(0, -40), true)) {
+                std::wstring currentCategory;
+                for (size_t i = 0; i < errorDetailsLocal.size(); i++) {
+                    const auto& error = errorDetailsLocal[i];
+                    
+                    if (error.category != currentCategory) {
+                        currentCategory = error.category;
+                        if (i > 0) ImGui::Spacing();
+                        std::string cat = WideToUtf8(currentCategory);
+                        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "[%s]", cat.c_str());
+                    }
+                    
+                    std::string fullPath = WideToUtf8(error.filePath);
+                    std::string fileName = fullPath;
+                    size_t lastSlash = fullPath.find_last_of("\\/");
+                    if (lastSlash != std::string::npos) {
+                        fileName = fullPath.substr(lastSlash + 1);
+                    }
+                    if (fileName.length() > 45) {
+                        fileName = fileName.substr(0, 42) + "...";
+                    }
+                    
+                    ImGui::BulletText("%s", fileName.c_str());
+                    
+                    std::string errorMsg = WideToUtf8(error.errorMessage);
+                    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0f);
+                    ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.6f, 1.0f), "%s", errorMsg.c_str());
+                }
+            }
+            ImGui::EndChild();
+            
+            float buttonWidth = 100.0f;
+            ImGui::SetCursorPosX((ImGui::GetWindowWidth() - buttonWidth) * 0.5f);
+            if (ImGui::Button("Fermer", ImVec2(buttonWidth, 30))) {
+                g_showErrors = false;
+            }
+            
+            ImGui::End();
+        }
+
+        // Fenetre scan gros fichiers
+        if (g_showLargeFileScan) {
+            // Utiliser presque toute la fenêtre parente
+            float scanW = io.DisplaySize.x - 20;
+            float scanH = io.DisplaySize.y - 20;
+            ImGui::SetNextWindowSize(ImVec2(scanW, scanH), ImGuiCond_Always);
+            ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
+            
+            ImGui::Begin("Scan de gros fichiers", &g_showLargeFileScan, 
+                ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
+            
+            // Configuration - ligne compacte
+            ImGui::Text("Min:");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(80);
+            ImGui::SliderInt("Mo", &g_scanMinSizeMB, 10, 1000);
+            ImGui::SameLine(0, 15);
+            ImGui::Checkbox("C:\\", &g_scanDriveC);
+            ImGui::SameLine();
+            ImGui::Checkbox("D:\\", &g_scanDriveD);
+            ImGui::SameLine(0, 15);
+            
+            bool canScan = !g_isScanning && !g_isRunning;
+            if (!canScan) ImGui::BeginDisabled();
+            if (ImGui::Button("Scanner", ImVec2(80, 0))) {
+                StartLargeFileScan();
+            }
+            if (!canScan) ImGui::EndDisabled();
+            
+            if (g_isScanning) {
+                ImGui::SameLine();
+                if (ImGui::Button("Stop")) {
+                    g_cleaner.stop();
+                }
+            }
+            
+            // Statut du scan
+            {
+                std::lock_guard<std::mutex> lock(g_mutex);
+                if (!g_scanStatusText.empty()) {
+                    std::string statusStr = WideToUtf8(g_scanStatusText);
+                    ImGui::TextDisabled("%s", statusStr.c_str());
+                }
+            }
+            
+            ImGui::Separator();
+            
+            // Résultats
+            if (!g_scanResult.files.empty()) {
+                // En-tête avec sélection
+                uint64_t selectedSize = 0;
+                int selectedCount = 0;
+                for (size_t i = 0; i < g_scanSelection.size(); i++) {
+                    if (g_scanSelection[i]) {
+                        selectedSize += g_scanResult.files[i].size;
+                        selectedCount++;
+                    }
+                }
                 
-                ImGui::Begin("Rapport d'erreurs", &g_showErrors, 
-                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
+                std::string summary = std::format("{} fichiers, total: {}",
+                    g_scanResult.files.size(), WideToUtf8(FormatBytes(g_scanResult.totalSize)));
+                ImGui::Text("%s", summary.c_str());
                 
-                std::string summary = std::format("{} erreur(s)", g_errorDetails.size());
-                ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", summary.c_str());
-                ImGui::Separator();
-                ImGui::Spacing();
+                if (selectedCount > 0) {
+                    std::string selText = std::format("Selection: {} ({})",
+                        selectedCount, WideToUtf8(FormatBytes(selectedSize)));
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "| %s", selText.c_str());
+                }
                 
-                if (ImGui::BeginChild("ErrorList", ImVec2(0, -40), true)) {
-                    std::wstring currentCategory;
-                    for (size_t i = 0; i < g_errorDetails.size(); i++) {
-                        const auto& error = g_errorDetails[i];
+                // Boutons tout sélectionner / désélectionner / supprimer
+                if (ImGui::SmallButton("Tout")) {
+                    std::fill(g_scanSelection.begin(), g_scanSelection.end(), true);
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Aucun")) {
+                    std::fill(g_scanSelection.begin(), g_scanSelection.end(), false);
+                }
+                if (selectedCount > 0) {
+                    ImGui::SameLine(0, 20);
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.70f, 0.25f, 0.25f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.80f, 0.30f, 0.30f, 1.0f));
+                    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.90f, 0.35f, 0.35f, 1.0f));
+                    std::string delBtn = std::format("Supprimer ({})", selectedCount);
+                    if (ImGui::SmallButton(delBtn.c_str())) {
+                        DeleteSelectedLargeFiles();
+                    }
+                    ImGui::PopStyleColor(3);
+                }
+                
+                // Liste scrollable avec espacement réduit
+                ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(8, 4));
+                ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4, 3));
+                if (ImGui::BeginChild("LargeFileList", ImVec2(0, 0), true)) {
+                    for (int i = 0; i < static_cast<int>(g_scanResult.files.size()); i++) {
+                        const auto& file = g_scanResult.files[i];
+                        ImGui::PushID(i);
                         
-                        if (error.category != currentCategory) {
-                            currentCategory = error.category;
-                            if (i > 0) ImGui::Spacing();
-                            std::string cat = WideToUtf8(currentCategory);
-                            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "[%s]", cat.c_str());
+                        bool selected = g_scanSelection[i] != 0;
+                        if (ImGui::Checkbox("", &selected)) {
+                            g_scanSelection[i] = selected ? 1 : 0;
                         }
+                        ImGui::SameLine();
                         
-                        std::string fullPath = WideToUtf8(error.filePath);
+                        // Taille en couleur
+                        std::string sizeStr = WideToUtf8(FormatBytes(file.size));
+                        ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "%-10s", sizeStr.c_str());
+                        ImGui::SameLine();
+                        
+                        // Nom du fichier seulement (pas le chemin complet)
+                        std::string fullPath = WideToUtf8(file.path.wstring());
                         std::string fileName = fullPath;
                         size_t lastSlash = fullPath.find_last_of("\\/");
                         if (lastSlash != std::string::npos) {
                             fileName = fullPath.substr(lastSlash + 1);
                         }
-                        if (fileName.length() > 45) {
-                            fileName = fileName.substr(0, 42) + "...";
+                        ImGui::Text("%s", fileName.c_str());
+                        
+                        // Chemin parent en dessous, grisé et indenté
+                        if (lastSlash != std::string::npos) {
+                            std::string parentPath = fullPath.substr(0, lastSlash);
+                            // Tronquer le début si trop long
+                            float availWidth = ImGui::GetContentRegionAvail().x - 30;
+                            ImVec2 pathSize = ImGui::CalcTextSize(parentPath.c_str());
+                            if (pathSize.x > availWidth && parentPath.length() > 40) {
+                                parentPath = "..." + parentPath.substr(parentPath.length() - 37);
+                            }
+                            ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 30);
+                            ImGui::TextDisabled("%s", parentPath.c_str());
                         }
                         
-                        ImGui::BulletText("%s", fileName.c_str());
+                        // Tooltip avec chemin complet
+                        if (ImGui::IsItemHovered()) {
+                            ImGui::SetTooltip("%s", fullPath.c_str());
+                        }
                         
-                        std::string errorMsg = WideToUtf8(error.errorMessage);
-                        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 20.0f);
-                        ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.6f, 1.0f), "%s", errorMsg.c_str());
+                        // Séparateur léger entre les fichiers
+                        if (i < static_cast<int>(g_scanResult.files.size()) - 1) {
+                            ImGui::Spacing();
+                        }
+                        
+                        ImGui::PopID();
                     }
                 }
                 ImGui::EndChild();
-                
-                float buttonWidth = 100.0f;
-                ImGui::SetCursorPosX((ImGui::GetWindowWidth() - buttonWidth) * 0.5f);
-                if (ImGui::Button("Fermer", ImVec2(buttonWidth, 30))) {
-                    g_showErrors = false;
-                }
-                
-                ImGui::End();
+                ImGui::PopStyleVar(2);
+            } else if (!g_isScanning) {
+                ImGui::TextDisabled("Aucun resultat. Lancez un scan.");
             }
+            
+            ImGui::End();
         }
 
         // Rendu
