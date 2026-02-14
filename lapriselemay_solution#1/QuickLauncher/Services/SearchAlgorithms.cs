@@ -38,6 +38,12 @@ public static class SearchAlgorithms
         var s = source.ToLowerInvariant();
         var t = target.ToLowerInvariant();
         
+        // Amélioration #6 : ne pas cacher les requêtes < 3 chars.
+        // Pour un launcher où l'on tape lettre par lettre, les paires éphémères
+        // (1-2 chars) polluent le cache LRU sans bénéfice réel.
+        if (s.Length < 3 && t.Length < 3)
+            return ComputeDamerauLevenshtein(s.AsSpan(), t.AsSpan());
+        
         var key = (s, t);
         if (_distanceCache.TryGet(key, out var cached))
             return cached;

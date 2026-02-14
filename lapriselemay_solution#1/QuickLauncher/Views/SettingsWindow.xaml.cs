@@ -25,6 +25,8 @@ public partial class SettingsWindow : Window
     private readonly AppSettings _settings;
     private readonly ISettingsProvider? _settingsProvider;
     private readonly IndexingService? _indexingService;
+    private readonly ThemeService? _themeService;
+    private readonly UniversalSearchService? _universalSearchService;
     private readonly WebIntegrationService _webService = new();
     
     private const string StartupRegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
@@ -43,12 +45,15 @@ public partial class SettingsWindow : Window
     // Timer pour le feedback de sauvegarde
     private readonly DispatcherTimer _saveIndicatorTimer;
 
-    public SettingsWindow(IndexingService? indexingService = null, ISettingsProvider? settingsProvider = null)
+    public SettingsWindow(IndexingService? indexingService = null, ISettingsProvider? settingsProvider = null,
+        ThemeService? themeService = null, UniversalSearchService? universalSearchService = null)
     {
         InitializeComponent();
         _settingsProvider = settingsProvider;
         _settings = settingsProvider?.Current ?? AppSettings.Load();
         _indexingService = indexingService;
+        _themeService = themeService;
+        _universalSearchService = universalSearchService;
         
         // Initialiser le timer pour le feedback de sauvegarde
         _saveIndicatorTimer = new DispatcherTimer
@@ -76,48 +81,48 @@ public partial class SettingsWindow : Window
         StartWithWindowsCheck.IsChecked = _settings.StartWithWindows;
         MinimizeOnStartupCheck.IsChecked = _settings.MinimizeOnStartup;
         CloseAfterLaunchCheck.IsChecked = _settings.CloseAfterLaunch;
-        ShowIndexingStatusCheck.IsChecked = _settings.ShowIndexingStatus;
-        ShowSettingsButtonCheck.IsChecked = _settings.ShowSettingsButton;
+        ShowIndexingStatusCheck.IsChecked = _settings.Appearance.ShowIndexingStatus;
+        ShowSettingsButtonCheck.IsChecked = _settings.Appearance.ShowSettingsButton;
         SingleClickLaunchCheck.IsChecked = _settings.SingleClickLaunch;
-        MaxResultsSlider.Value = _settings.MaxResults;
-        MaxResultsValue.Text = _settings.MaxResults.ToString();
-        SelectComboByTag(WindowPositionCombo, _settings.WindowPosition);
+        MaxResultsSlider.Value = _settings.Search.MaxResults;
+        MaxResultsValue.Text = _settings.Search.MaxResults.ToString();
+        SelectComboByTag(WindowPositionCombo, _settings.Appearance.WindowPosition);
         
         // Historique
-        EnableSearchHistoryCheck.IsChecked = _settings.EnableSearchHistory;
-        MaxHistorySlider.Value = _settings.MaxSearchHistory;
-        MaxHistoryValue.Text = _settings.MaxSearchHistory.ToString();
+        EnableSearchHistoryCheck.IsChecked = _settings.Search.EnableSearchHistory;
+        MaxHistorySlider.Value = _settings.Search.MaxSearchHistory;
+        MaxHistoryValue.Text = _settings.Search.MaxSearchHistory.ToString();
         
         // Recherche intelligente (recency)
-        EnableRecencyBonusCheck.IsChecked = _settings.ScoringWeights.EnableRecencyBonus;
+        EnableRecencyBonusCheck.IsChecked = _settings.Search.ScoringWeights.EnableRecencyBonus;
         
         // Apparence
-        SelectComboByTag(ThemeModeCombo, _settings.Theme);
+        SelectComboByTag(ThemeModeCombo, _settings.Appearance.Theme);
         // Afficher/masquer le panneau Auto selon le mode
-        AutoThemePanel.Visibility = _settings.Theme == "Auto" ? Visibility.Visible : Visibility.Collapsed;
+        AutoThemePanel.Visibility = _settings.Appearance.Theme == "Auto" ? Visibility.Visible : Visibility.Collapsed;
         // Heures pour mode Auto
-        if (!string.IsNullOrEmpty(_settings.LightThemeStartTime))
-            SelectComboByTag(LightStartCombo, _settings.LightThemeStartTime);
+        if (!string.IsNullOrEmpty(_settings.Appearance.LightThemeStartTime))
+            SelectComboByTag(LightStartCombo, _settings.Appearance.LightThemeStartTime);
         else
             LightStartCombo.SelectedIndex = 2; // 07:00 par défaut
-        if (!string.IsNullOrEmpty(_settings.DarkThemeStartTime))
-            SelectComboByTag(DarkStartCombo, _settings.DarkThemeStartTime);
+        if (!string.IsNullOrEmpty(_settings.Appearance.DarkThemeStartTime))
+            SelectComboByTag(DarkStartCombo, _settings.Appearance.DarkThemeStartTime);
         else
             DarkStartCombo.SelectedIndex = 2; // 19:00 par défaut
         // Badges de catégorie
-        ShowCategoryBadgesCheck.IsChecked = _settings.ShowCategoryBadges;
+        ShowCategoryBadgesCheck.IsChecked = _settings.Appearance.ShowCategoryBadges;
         // Suggestions fantômes
-        ShowGhostSuggestionsCheck.IsChecked = _settings.ShowGhostSuggestions;
+        ShowGhostSuggestionsCheck.IsChecked = _settings.Appearance.ShowGhostSuggestions;
         // Animations
-        EnableAnimationsCheck.IsChecked = _settings.EnableAnimations;
-        AnimationSpeedSlider.Value = _settings.AnimationDurationMs;
-        AnimationSpeedValue.Text = $"{_settings.AnimationDurationMs} ms";
-        SelectComboByTag(AnimationStyleCombo, _settings.AnimationStyle.ToString());
+        EnableAnimationsCheck.IsChecked = _settings.Appearance.EnableAnimations;
+        AnimationSpeedSlider.Value = _settings.Appearance.AnimationDurationMs;
+        AnimationSpeedValue.Text = $"{_settings.Appearance.AnimationDurationMs} ms";
+        SelectComboByTag(AnimationStyleCombo, _settings.Appearance.AnimationStyle.ToString());
         UpdateAnimationSpeedPanelVisibility();
-        OpacitySlider.Value = _settings.WindowOpacity;
-        OpacityValue.Text = $"{(int)(_settings.WindowOpacity * 100)}%";
-        SelectComboByTag(AccentColorCombo, _settings.AccentColor);
-        UpdateColorPreview(_settings.AccentColor);
+        OpacitySlider.Value = _settings.Appearance.WindowOpacity;
+        OpacityValue.Text = $"{(int)(_settings.Appearance.WindowOpacity * 100)}%";
+        SelectComboByTag(AccentColorCombo, _settings.Appearance.AccentColor);
+        UpdateColorPreview(_settings.Appearance.AccentColor);
         
         // Raccourci
         HotkeyAltCheck.IsChecked = _settings.Hotkey.UseAlt;
@@ -128,45 +133,45 @@ public partial class SettingsWindow : Window
         UpdateHotkeyDisplay();
         
         // Indexation
-        IndexedFoldersList.ItemsSource = _settings.IndexedFolders;
-        SearchDepthSlider.Value = _settings.SearchDepth;
-        SearchDepthValue.Text = _settings.SearchDepth.ToString();
-        SearchDepthHint.Text = GetSearchDepthHint(_settings.SearchDepth);
-        IndexHiddenFoldersCheck.IsChecked = _settings.IndexHiddenFolders;
+        IndexedFoldersList.ItemsSource = _settings.Search.IndexedFolders;
+        SearchDepthSlider.Value = _settings.Search.SearchDepth;
+        SearchDepthValue.Text = _settings.Search.SearchDepth.ToString();
+        SearchDepthHint.Text = GetSearchDepthHint(_settings.Search.SearchDepth);
+        IndexHiddenFoldersCheck.IsChecked = _settings.Search.IndexHiddenFolders;
         
         // Recherche système
-        SystemSearchDepthSlider.Value = _settings.SystemSearchDepth;
-        SystemSearchDepthValue.Text = _settings.SystemSearchDepth.ToString();
-        SystemSearchDepthHint.Text = GetSystemSearchDepthHint(_settings.SystemSearchDepth);
+        SystemSearchDepthSlider.Value = _settings.Search.SystemSearchDepth;
+        SystemSearchDepthValue.Text = _settings.Search.SystemSearchDepth.ToString();
+        SystemSearchDepthHint.Text = GetSystemSearchDepthHint(_settings.Search.SystemSearchDepth);
         LoadSearchEngineInfo(forceRefresh: true);
         
         // Charger la liste des navigateurs
         LoadBrowsersList();
         
         // Réindexation automatique
-        AutoReindexEnabledCheck.IsChecked = _settings.AutoReindexEnabled;
-        ReindexIntervalRadio.IsChecked = _settings.AutoReindexMode == AutoReindexMode.Interval;
-        ReindexTimeRadio.IsChecked = _settings.AutoReindexMode == AutoReindexMode.ScheduledTime;
-        SelectComboByTag(ReindexIntervalCombo, _settings.AutoReindexIntervalMinutes.ToString());
-        LoadScheduledTime(_settings.AutoReindexScheduledTime);
+        AutoReindexEnabledCheck.IsChecked = _settings.Search.AutoReindexEnabled;
+        ReindexIntervalRadio.IsChecked = _settings.Search.AutoReindexMode == AutoReindexMode.Interval;
+        ReindexTimeRadio.IsChecked = _settings.Search.AutoReindexMode == AutoReindexMode.ScheduledTime;
+        SelectComboByTag(ReindexIntervalCombo, _settings.Search.AutoReindexIntervalMinutes.ToString());
+        LoadScheduledTime(_settings.Search.AutoReindexScheduledTime);
         UpdateAutoReindexOptionsVisibility();
         
         // Recherche Web
-        SearchEnginesList.ItemsSource = _settings.SearchEngines;
+        SearchEnginesList.ItemsSource = _settings.Search.SearchEngines;
         
         // Commandes système
         LoadSystemCommands();
         
         // Intégrations web
-        WeatherCityBox.Text = _settings.WeatherCity;
-        SelectComboByTag(WeatherUnitCombo, _settings.WeatherUnit);
+        WeatherCityBox.Text = _settings.Integrations.WeatherCity;
+        SelectComboByTag(WeatherUnitCombo, _settings.Integrations.WeatherUnit);
         
         // Assistant IA
-        SelectComboByTag(AiProviderCombo, _settings.AiProvider);
-        AiApiUrlBox.Text = _settings.AiApiUrl;
-        AiApiKeyBox.Password = _settings.AiApiKey;
-        AiModelBox.Text = _settings.AiModel;
-        AiSystemPromptBox.Text = _settings.AiSystemPrompt;
+        SelectComboByTag(AiProviderCombo, _settings.Integrations.AiProvider);
+        AiApiUrlBox.Text = _settings.Integrations.AiApiUrl;
+        AiApiKeyBox.Password = _settings.Integrations.AiApiKey;
+        AiModelBox.Text = _settings.Integrations.AiModel;
+        AiSystemPromptBox.Text = _settings.Integrations.AiSystemPrompt;
         UpdateAiFieldsState();
         
         // À propos
@@ -238,10 +243,10 @@ public partial class SettingsWindow : Window
             if (_indexingService != null)
                 stats.Add($"🔢 Éléments indexés: {_indexingService.IndexedItemsCount}");
             
-            stats.Add($"📂 Dossiers surveillés: {_settings.IndexedFolders.Count}");
-            stats.Add($"📄 Extensions indexées: {_settings.FileExtensions.Count}");
-            stats.Add($"🔍 Moteurs de recherche: {_settings.SearchEngines.Count}");
-            stats.Add($"🕐 Historique: {_settings.SearchHistory.Count} entrées");
+            stats.Add($"📂 Dossiers surveillés: {_settings.Search.IndexedFolders.Count}");
+            stats.Add($"📄 Extensions indexées: {_settings.Search.FileExtensions.Count}");
+            stats.Add($"🔍 Moteurs de recherche: {_settings.Search.SearchEngines.Count}");
+            stats.Add($"🕐 Historique: {_settings.Search.SearchHistory.Count} entrées");
             
             StatsText.Text = string.Join("\n", stats);
         }
@@ -260,7 +265,7 @@ public partial class SettingsWindow : Window
         
         if (!_isLoading)
         {
-            _settings.MaxResults = (int)e.NewValue;
+            _settings.Search.MaxResults = (int)e.NewValue;
             AutoSave();
         }
     }
@@ -272,7 +277,7 @@ public partial class SettingsWindow : Window
         
         if (!_isLoading)
         {
-            _settings.MaxSearchHistory = (int)e.NewValue;
+            _settings.Search.MaxSearchHistory = (int)e.NewValue;
             AutoSave();
         }
     }
@@ -284,7 +289,7 @@ public partial class SettingsWindow : Window
         
         if (!_isLoading)
         {
-            _settings.WindowOpacity = e.NewValue;
+            _settings.Appearance.WindowOpacity = e.NewValue;
             AutoSave();
         }
     }
@@ -322,7 +327,7 @@ public partial class SettingsWindow : Window
         
         if (!_isLoading)
         {
-            _settings.SearchDepth = (int)e.NewValue;
+            _settings.Search.SearchDepth = (int)e.NewValue;
             AutoSave();
         }
     }
@@ -337,7 +342,7 @@ public partial class SettingsWindow : Window
         
         if (!_isLoading)
         {
-            _settings.SystemSearchDepth = (int)e.NewValue;
+            _settings.Search.SystemSearchDepth = (int)e.NewValue;
             AutoSave();
         }
     }
@@ -349,7 +354,7 @@ public partial class SettingsWindow : Window
         
         if (!_isLoading)
         {
-            _settings.AnimationDurationMs = (int)e.NewValue;
+            _settings.Appearance.AnimationDurationMs = (int)e.NewValue;
             AutoSave();
         }
     }
@@ -360,7 +365,7 @@ public partial class SettingsWindow : Window
         {
             if (Enum.TryParse<AnimationStyle>(tag, out var style))
             {
-                _settings.AnimationStyle = style;
+                _settings.Appearance.AnimationStyle = style;
                 AutoSave();
             }
         }
@@ -378,7 +383,11 @@ public partial class SettingsWindow : Window
     
     private void LoadSearchEngineInfo(bool forceRefresh = false)
     {
-        var info = UniversalSearchService.GetEngineInfo(forceRefresh);
+        var info = _universalSearchService?.GetEngineInfo(forceRefresh) ?? new SearchEngineInfo
+        {
+            Status = SearchEngineStatus.DirectSearch, Name = "Non disponible",
+            Description = "Service non initialisé", IsOptimal = false, Icon = "❓"
+        };
         
         SearchEngineIcon.Text = info.Icon;
         SearchEngineName.Text = info.Name;
@@ -420,7 +429,7 @@ public partial class SettingsWindow : Window
         if (info.Status == SearchEngineStatus.DirectSearch)
         {
             DirectSearchWarning.Visibility = Visibility.Visible;
-            var folders = UniversalSearchService.GetDefaultSearchPaths()
+            var folders = (_universalSearchService?.GetDefaultSearchPaths() ?? [])
                 .Where(System.IO.Directory.Exists)
                 .Select(p => "• " + p);
             DirectSearchFoldersList.Text = string.Join("\n", folders);
@@ -436,7 +445,7 @@ public partial class SettingsWindow : Window
     
     private void UpdateSearchCacheStats()
     {
-        var (entryCount, totalResults) = UniversalSearchService.GetCacheStats();
+        var (entryCount, totalResults) = _universalSearchService?.GetCacheStats() ?? (0, 0);
         if (entryCount > 0)
             SearchCacheStats.Text = $"Cache: {entryCount} recherches, {totalResults} résultats";
         else
@@ -445,7 +454,7 @@ public partial class SettingsWindow : Window
     
     private void ClearSearchCache_Click(object sender, RoutedEventArgs e)
     {
-        UniversalSearchService.ClearCache();
+        _universalSearchService?.ClearCache();
         UpdateSearchCacheStats();
         MessageBox.Show("Cache de recherche vidé!", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
     }
@@ -474,11 +483,11 @@ public partial class SettingsWindow : Window
     {
         if (!_isLoading && ThemeModeCombo.SelectedItem is ComboBoxItem { Tag: string theme })
         {
-            _settings.Theme = theme;
+            _settings.Appearance.Theme = theme;
             AutoThemePanel.Visibility = theme == "Auto" ? Visibility.Visible : Visibility.Collapsed;
             
             // Appliquer le thème immédiatement (gère Dark, Light, Auto, System)
-            ThemeService.ApplyTheme(theme);
+            _themeService?.ApplyTheme(theme);
             
             AutoSave();
         }
@@ -489,12 +498,12 @@ public partial class SettingsWindow : Window
         if (!_isLoading)
         {
             if (LightStartCombo.SelectedItem is ComboBoxItem { Tag: string lightStart })
-                _settings.LightThemeStartTime = lightStart;
+                _settings.Appearance.LightThemeStartTime = lightStart;
             if (DarkStartCombo.SelectedItem is ComboBoxItem { Tag: string darkStart })
-                _settings.DarkThemeStartTime = darkStart;
+                _settings.Appearance.DarkThemeStartTime = darkStart;
             
             // Réappliquer le thème si en mode Auto
-            if (_settings.Theme == "Auto")
+            if (_settings.Appearance.Theme == "Auto")
             {
                 ApplyAutoTheme();
             }
@@ -505,7 +514,7 @@ public partial class SettingsWindow : Window
     
     private void ApplyAutoTheme()
     {
-        ThemeService.ApplyTheme("Auto");
+        _themeService?.ApplyTheme("Auto");
     }
     
     private void AccentColorCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -515,7 +524,7 @@ public partial class SettingsWindow : Window
             UpdateColorPreview(color);
             if (!_isLoading)
             {
-                _settings.AccentColor = color;
+                _settings.Appearance.AccentColor = color;
                 AutoSave();
             }
         }
@@ -603,9 +612,9 @@ public partial class SettingsWindow : Window
         
         if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
         {
-            if (!_settings.IndexedFolders.Contains(dialog.SelectedPath))
+            if (!_settings.Search.IndexedFolders.Contains(dialog.SelectedPath))
             {
-                _settings.IndexedFolders.Add(dialog.SelectedPath);
+                _settings.Search.IndexedFolders.Add(dialog.SelectedPath);
                 RefreshFoldersList();
                 AutoSave();
             }
@@ -621,9 +630,9 @@ public partial class SettingsWindow : Window
     {
         if (IndexedFoldersList.SelectedItem is string folder)
         {
-            if (_settings.IndexedFolders.Count > 1)
+            if (_settings.Search.IndexedFolders.Count > 1)
             {
-                _settings.IndexedFolders.Remove(folder);
+                _settings.Search.IndexedFolders.Remove(folder);
                 RefreshFoldersList();
                 AutoSave();
             }
@@ -638,7 +647,7 @@ public partial class SettingsWindow : Window
     private void RefreshFoldersList()
     {
         IndexedFoldersList.ItemsSource = null;
-        IndexedFoldersList.ItemsSource = _settings.IndexedFolders;
+        IndexedFoldersList.ItemsSource = _settings.Search.IndexedFolders;
     }
     
     // === Sauvegarde automatique ===
@@ -688,15 +697,15 @@ public partial class SettingsWindow : Window
         _settings.StartWithWindows = StartWithWindowsCheck.IsChecked == true;
         _settings.MinimizeOnStartup = MinimizeOnStartupCheck.IsChecked == true;
         _settings.CloseAfterLaunch = CloseAfterLaunchCheck.IsChecked == true;
-        _settings.ShowIndexingStatus = ShowIndexingStatusCheck.IsChecked == true;
-        _settings.ShowSettingsButton = ShowSettingsButtonCheck.IsChecked == true;
+        _settings.Appearance.ShowIndexingStatus = ShowIndexingStatusCheck.IsChecked == true;
+        _settings.Appearance.ShowSettingsButton = ShowSettingsButtonCheck.IsChecked == true;
         _settings.SingleClickLaunch = SingleClickLaunchCheck.IsChecked == true;
-        _settings.EnableSearchHistory = EnableSearchHistoryCheck.IsChecked == true;
-        _settings.IndexHiddenFolders = IndexHiddenFoldersCheck.IsChecked == true;
-        _settings.ShowCategoryBadges = ShowCategoryBadgesCheck.IsChecked == true;
-        _settings.ShowGhostSuggestions = ShowGhostSuggestionsCheck.IsChecked == true;
-        _settings.EnableAnimations = EnableAnimationsCheck.IsChecked == true;
-        _settings.ScoringWeights.EnableRecencyBonus = EnableRecencyBonusCheck.IsChecked == true;
+        _settings.Search.EnableSearchHistory = EnableSearchHistoryCheck.IsChecked == true;
+        _settings.Search.IndexHiddenFolders = IndexHiddenFoldersCheck.IsChecked == true;
+        _settings.Appearance.ShowCategoryBadges = ShowCategoryBadgesCheck.IsChecked == true;
+        _settings.Appearance.ShowGhostSuggestions = ShowGhostSuggestionsCheck.IsChecked == true;
+        _settings.Appearance.EnableAnimations = EnableAnimationsCheck.IsChecked == true;
+        _settings.Search.ScoringWeights.EnableRecencyBonus = EnableRecencyBonusCheck.IsChecked == true;
         
         UpdateAnimationSpeedPanelVisibility();
         UpdateStartupRegistry();
@@ -707,7 +716,7 @@ public partial class SettingsWindow : Window
     {
         if (!_isLoading && WindowPositionCombo.SelectedItem is ComboBoxItem { Tag: string pos })
         {
-            _settings.WindowPosition = pos;
+            _settings.Appearance.WindowPosition = pos;
             AutoSave();
         }
     }
@@ -718,7 +727,7 @@ public partial class SettingsWindow : Window
     {
         // Validation automatique à la perte de focus seulement si la valeur a changé
         var city = WeatherCityBox.Text.Trim();
-        if (!_isLoading && !string.IsNullOrEmpty(city) && city != _settings.WeatherCity)
+        if (!_isLoading && !string.IsNullOrEmpty(city) && city != _settings.Integrations.WeatherCity)
         {
             _ = ValidateAndSaveWeatherCityAsync(city);
         }
@@ -767,7 +776,7 @@ public partial class SettingsWindow : Window
                 
                 // Utiliser le nom résolu par l'API
                 WeatherCityBox.Text = resolvedCity;
-                _settings.WeatherCity = resolvedCity;
+                _settings.Integrations.WeatherCity = resolvedCity;
                 AutoSave();
                 
                 // Feedback: succès
@@ -778,7 +787,7 @@ public partial class SettingsWindow : Window
             else
             {
                 // Feedback: échec — ne pas sauvegarder
-                WeatherCityBox.Text = _settings.WeatherCity;
+                WeatherCityBox.Text = _settings.Integrations.WeatherCity;
                 WeatherValidationPanel.Background = new SolidColorBrush(Color.FromRgb(0x3D, 0x1A, 0x1A));
                 WeatherValidationText.Foreground = new SolidColorBrush(Color.FromRgb(0xE8, 0x11, 0x23));
                 WeatherValidationText.Text = $"❌ Ville « {city} » introuvable. Valeur restaurée.";
@@ -787,7 +796,7 @@ public partial class SettingsWindow : Window
         catch
         {
             // Erreur réseau — ne pas sauvegarder
-            WeatherCityBox.Text = _settings.WeatherCity;
+            WeatherCityBox.Text = _settings.Integrations.WeatherCity;
             WeatherValidationPanel.Background = new SolidColorBrush(Color.FromRgb(0x3D, 0x2D, 0x1A));
             WeatherValidationText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xB9, 0x00));
             WeatherValidationText.Text = "⚠️ Impossible de valider (pas de connexion). Valeur restaurée.";
@@ -803,7 +812,7 @@ public partial class SettingsWindow : Window
     {
         if (!_isLoading && WeatherUnitCombo.SelectedItem is ComboBoxItem { Tag: string unit })
         {
-            _settings.WeatherUnit = unit;
+            _settings.Integrations.WeatherUnit = unit;
             AutoSave();
         }
     }
@@ -815,7 +824,7 @@ public partial class SettingsWindow : Window
         if (_isLoading || AiProviderCombo.SelectedItem is not ComboBoxItem selected) return;
         
         var provider = selected.Tag?.ToString() ?? "chatgpt";
-        _settings.AiProvider = provider;
+        _settings.Integrations.AiProvider = provider;
         
         switch (provider)
         {
@@ -834,8 +843,8 @@ public partial class SettingsWindow : Window
             // "custom" = on ne touche pas aux champs
         }
         
-        _settings.AiApiUrl = AiApiUrlBox.Text;
-        _settings.AiModel = AiModelBox.Text;
+        _settings.Integrations.AiApiUrl = AiApiUrlBox.Text;
+        _settings.Integrations.AiModel = AiModelBox.Text;
         UpdateAiFieldsState();
         AutoSave();
     }
@@ -870,7 +879,7 @@ public partial class SettingsWindow : Window
     {
         if (!_isLoading)
         {
-            _settings.AiApiUrl = AiApiUrlBox.Text.Trim();
+            _settings.Integrations.AiApiUrl = AiApiUrlBox.Text.Trim();
             AutoSave();
         }
     }
@@ -879,7 +888,7 @@ public partial class SettingsWindow : Window
     {
         if (!_isLoading)
         {
-            _settings.AiApiKey = AiApiKeyBox.Password;
+            _settings.Integrations.AiApiKey = AiApiKeyBox.Password;
             AutoSave();
         }
     }
@@ -888,7 +897,7 @@ public partial class SettingsWindow : Window
     {
         if (!_isLoading)
         {
-            _settings.AiModel = AiModelBox.Text.Trim();
+            _settings.Integrations.AiModel = AiModelBox.Text.Trim();
             AutoSave();
         }
     }
@@ -897,7 +906,7 @@ public partial class SettingsWindow : Window
     {
         if (!_isLoading)
         {
-            _settings.AiSystemPrompt = AiSystemPromptBox.Text;
+            _settings.Integrations.AiSystemPrompt = AiSystemPromptBox.Text;
             AutoSave();
         }
     }
@@ -1010,7 +1019,7 @@ public partial class SettingsWindow : Window
             }
             
             // S'assurer que l'option est activée
-            _settings.IndexBrowserBookmarks = true;
+            _settings.Search.IndexBrowserBookmarks = true;
             _settings.Save();
             
             // Réindexer
@@ -1175,7 +1184,7 @@ public partial class SettingsWindow : Window
         UpdateAutoReindexOptionsVisibility();
         if (!_isLoading)
         {
-            _settings.AutoReindexEnabled = AutoReindexEnabledCheck.IsChecked == true;
+            _settings.Search.AutoReindexEnabled = AutoReindexEnabledCheck.IsChecked == true;
             AutoSave();
             
             // Reconfigurer le timer
@@ -1188,7 +1197,7 @@ public partial class SettingsWindow : Window
     {
         if (!_isLoading)
         {
-            _settings.AutoReindexMode = ReindexTimeRadio.IsChecked == true 
+            _settings.Search.AutoReindexMode = ReindexTimeRadio.IsChecked == true 
                 ? AutoReindexMode.ScheduledTime 
                 : AutoReindexMode.Interval;
             AutoSave();
@@ -1203,7 +1212,7 @@ public partial class SettingsWindow : Window
     {
         if (!_isLoading && ReindexIntervalCombo.SelectedItem is ComboBoxItem { Tag: string tag })
         {
-            _settings.AutoReindexIntervalMinutes = int.Parse(tag);
+            _settings.Search.AutoReindexIntervalMinutes = int.Parse(tag);
             AutoSave();
             
             if (Application.Current is App app)
@@ -1217,7 +1226,7 @@ public partial class SettingsWindow : Window
         {
             var hour = GetComboTag(ReindexHourCombo) ?? "03";
             var minute = GetComboTag(ReindexMinuteCombo) ?? "00";
-            _settings.AutoReindexScheduledTime = $"{hour}:{minute}";
+            _settings.Search.AutoReindexScheduledTime = $"{hour}:{minute}";
             AutoSave();
             
             if (Application.Current is App app)
@@ -1232,7 +1241,7 @@ public partial class SettingsWindow : Window
         if (MessageBox.Show("Voulez-vous effacer tout l'historique de recherche?", "Confirmation",
             MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
         {
-            _settings.ClearSearchHistory();
+            _settings.Search.ClearSearchHistory();
             _settings.Save();
             LoadStatistics();
             MessageBox.Show("Historique effacé!", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);

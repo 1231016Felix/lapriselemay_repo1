@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.IO;
 using QuickLauncher.Models;
 using Shared.Logging;
@@ -49,7 +49,7 @@ public sealed class FileWatcherService : IDisposable
     {
         var settings = _settingsProvider.Current;
         
-        foreach (var folder in settings.IndexedFolders.Where(Directory.Exists))
+        foreach (var folder in settings.Search.IndexedFolders.Where(Directory.Exists))
         {
             StartWatching(folder);
         }
@@ -192,7 +192,7 @@ public sealed class FileWatcherService : IDisposable
             return false;
         
         // Vérifier les extensions autorisées
-        return _settingsProvider.Current.FileExtensions.Contains(ext);
+        return _settingsProvider.Current.Search.FileExtensions.Contains(ext);
     }
 
     private void EnqueueChange(FileChangeType type, string path)

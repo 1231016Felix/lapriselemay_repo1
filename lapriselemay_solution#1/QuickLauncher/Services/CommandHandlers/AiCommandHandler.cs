@@ -1,4 +1,4 @@
-using QuickLauncher.Models;
+﻿using QuickLauncher.Models;
 
 namespace QuickLauncher.Services.CommandHandlers;
 
@@ -35,8 +35,8 @@ public sealed class AiCommandHandler : ICommandHandler
             return new CommandResult();
 
         var result = await _aiService.AskAsync(
-            question, settings.AiApiUrl, settings.AiApiKey,
-            settings.AiModel, settings.AiSystemPrompt, settings.AiProvider, token);
+            question, settings.Integrations.AiApiUrl, settings.Integrations.AiApiKey,
+            settings.Integrations.AiModel, settings.Integrations.AiSystemPrompt, settings.Integrations.AiProvider, token);
 
         if (token.IsCancellationRequested)
             return new CommandResult();

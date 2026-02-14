@@ -412,21 +412,30 @@ public partial class AnnotationWindow : Window
 
     private RenderTargetBitmap RenderAnnotated()
     {
-        // Rendre tout le CanvasHost (image + annotations) en bitmap
-        var width = (int)CanvasHost.ActualWidth;
-        var height = (int)CanvasHost.ActualHeight;
+        var targetWidth = _originalBitmap.Width;
+        var targetHeight = _originalBitmap.Height;
 
-        // Utiliser les dimensions en pixels de l'image originale
-        var dpi = 96.0;
-        var source = PresentationSource.FromVisual(this);
-        if (source?.CompositionTarget != null)
-            dpi = 96.0 * source.CompositionTarget.TransformToDevice.M11;
+        // RenderTargetBitmap.Render() inclut le VisualOffset du CanvasHost
+        // (centré + margin dans le ScrollViewer). On force temporairement
+        // l'alignement en haut-gauche sans marge pour rendre à (0,0).
+        var origHA = CanvasHost.HorizontalAlignment;
+        var origVA = CanvasHost.VerticalAlignment;
+        var origMargin = CanvasHost.Margin;
 
-        var rtb = new RenderTargetBitmap(
-            (int)(width * dpi / 96.0),
-            (int)(height * dpi / 96.0),
-            dpi, dpi, PixelFormats.Pbgra32);
+        CanvasHost.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+        CanvasHost.VerticalAlignment = System.Windows.VerticalAlignment.Top;
+        CanvasHost.Margin = new Thickness(0);
+        CanvasHost.UpdateLayout();
+
+        var rtb = new RenderTargetBitmap(targetWidth, targetHeight, 96, 96, PixelFormats.Pbgra32);
         rtb.Render(CanvasHost);
+
+        // Restaurer le layout
+        CanvasHost.HorizontalAlignment = origHA;
+        CanvasHost.VerticalAlignment = origVA;
+        CanvasHost.Margin = origMargin;
+        CanvasHost.UpdateLayout();
+
         return rtb;
     }
 

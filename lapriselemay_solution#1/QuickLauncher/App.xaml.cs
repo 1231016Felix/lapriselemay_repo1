@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Windows;
@@ -53,9 +53,10 @@ public partial class App : Application
             IconExtractorService.InitializePersistentCache();
             
             _logger.Info("Initialisation du thème...");
-            ThemeService.Initialize(settingsProvider);
-            ThemeService.ApplyTheme(settings.Theme);
-            ThemeService.ApplyAccentColor(settings.AccentColor);
+            var themeService = Services.GetRequiredService<ThemeService>();
+            themeService.Initialize();
+            themeService.ApplyTheme(settings.Appearance.Theme);
+            themeService.ApplyAccentColor(settings.Appearance.AccentColor);
             
             _logger.Info("Synchronisation registre démarrage...");
             SettingsWindow.SyncStartupRegistry();
@@ -118,6 +119,18 @@ public partial class App : Application
         services.AddSingleton<NotesService>();
         services.AddSingleton<NoteWidgetService>();
         services.AddSingleton<TimerWidgetService>();
+        
+        // Recherche universelle (Everything / Windows Search / directe)
+        services.AddSingleton<UniversalSearchService>();
+        
+        // Service de recherche (scoring, filtrage) — Amélioration #3
+        services.AddSingleton<SearchService>();
+        
+        // Thème (gère Dark/Light/Auto/System) — Amélioration #4
+        services.AddSingleton<ThemeService>();
+        
+        // Chargement d'icônes (Amélioration #1/#5)
+        services.AddSingleton<IIconLoader, IconLoaderService>();
         
         // Intégrations web (météo, traduction)
         services.AddSingleton<WebIntegrationService>();
@@ -262,8 +275,10 @@ public partial class App : Application
         {
             var indexingService = Services.GetRequiredService<IndexingService>();
             var settingsProvider = Services.GetRequiredService<ISettingsProvider>();
+            var themeService = Services.GetRequiredService<ThemeService>();
+            var universalSearchService = Services.GetRequiredService<UniversalSearchService>();
             
-            var settingsWindow = new SettingsWindow(indexingService, settingsProvider);
+            var settingsWindow = new SettingsWindow(indexingService, settingsProvider, themeService, universalSearchService);
             settingsWindow.ShowDialog();
             
             // Les paramètres sont déjà sauvegardés via le provider, mais on force un reload
@@ -272,8 +287,8 @@ public partial class App : Application
             var settings = settingsProvider.Current;
             
             // Réappliquer le thème et la couleur d'accent
-            ThemeService.ApplyTheme(settings.Theme);
-            ThemeService.ApplyAccentColor(settings.AccentColor);
+            themeService.ApplyTheme(settings.Appearance.Theme);
+            themeService.ApplyAccentColor(settings.Appearance.AccentColor);
             
             if (_trayIcon != null)
                 _trayIcon.ToolTipText = $"{Constants.AppName} - {settings.Hotkey.DisplayText} pour ouvrir";
@@ -290,7 +305,7 @@ public partial class App : Application
         var settingsProvider = Services.GetRequiredService<ISettingsProvider>();
         var settings = settingsProvider.Current;
         
-        if (!settings.AutoReindexEnabled)
+        if (!settings.Search.AutoReindexEnabled)
         {
             _logger.Info("Réindexation auto désactivée");
             return;
@@ -298,16 +313,16 @@ public partial class App : Application
         
         _autoReindexTimer = new DispatcherTimer();
         
-        if (settings.AutoReindexMode == AutoReindexMode.Interval)
+        if (settings.Search.AutoReindexMode == AutoReindexMode.Interval)
         {
-            _autoReindexTimer.Interval = TimeSpan.FromMinutes(settings.AutoReindexIntervalMinutes);
+            _autoReindexTimer.Interval = TimeSpan.FromMinutes(settings.Search.AutoReindexIntervalMinutes);
             _autoReindexTimer.Tick += async (_, _) =>
             {
-                _logger.Info($"Réindexation auto (intervalle {settings.AutoReindexIntervalMinutes} min)");
+                _logger.Info($"Réindexation auto (intervalle {settings.Search.AutoReindexIntervalMinutes} min)");
                 await ReindexAsync();
             };
             
-            _logger.Info($"Timer réindexation: toutes les {settings.AutoReindexIntervalMinutes} minutes");
+            _logger.Info($"Timer réindexation: toutes les {settings.Search.AutoReindexIntervalMinutes} minutes");
         }
         else
         {
@@ -315,7 +330,7 @@ public partial class App : Application
             _autoReindexTimer.Tick += async (_, _) =>
             {
                 var now = DateTime.Now;
-                var parts = settings.AutoReindexScheduledTime.Split(':');
+                var parts = settings.Search.AutoReindexScheduledTime.Split(':');
                 
                 if (parts.Length == 2 &&
                     int.TryParse(parts[0], out var hour) &&
@@ -324,12 +339,12 @@ public partial class App : Application
                     _lastScheduledReindex?.Date != now.Date)
                 {
                     _lastScheduledReindex = now;
-                    _logger.Info($"Réindexation auto (programmée {settings.AutoReindexScheduledTime})");
+                    _logger.Info($"Réindexation auto (programmée {settings.Search.AutoReindexScheduledTime})");
                     await ReindexAsync();
                 }
             };
             
-            _logger.Info($"Timer réindexation: programmé à {settings.AutoReindexScheduledTime}");
+            _logger.Info($"Timer réindexation: programmé à {settings.Search.AutoReindexScheduledTime}");
         }
         
         _autoReindexTimer.Start();
@@ -403,29 +418,20 @@ public partial class App : Application
         _hotkeyService?.Unregister();
         _hotkeyService?.Dispose();
         
-        // Dispose les services DI
+        // Fermer les widgets avant le dispose DI (ils ont des fenêtres WPF à fermer)
         if (Services != null)
         {
-            var indexingService = Services.GetService<IndexingService>();
-            indexingService?.Dispose();
+            Services.GetService<NoteWidgetService>()?.CloseAll();
+            Services.GetService<TimerWidgetService>()?.CloseAll();
             
-            var fileWatcher = Services.GetService<FileWatcherService>();
-            fileWatcher?.Dispose();
-            
-            var aliasService = Services.GetService<AliasService>();
-            aliasService?.Dispose();
-            
-            var noteWidgetSvc = Services.GetService<NoteWidgetService>();
-            noteWidgetSvc?.CloseAll();
-            
-            var timerWidgetSvc = Services.GetService<TimerWidgetService>();
-            timerWidgetSvc?.CloseAll();
-            
+            // ServiceProvider.Dispose() appelle automatiquement Dispose()
+            // sur tous les singletons IDisposable (IndexingService, FileWatcherService,
+            // AliasService, etc.) — pas besoin de les disposer individuellement.
             Services.Dispose();
         }
         
         _trayIcon?.Dispose();
         DesktopAttachHelper.Shutdown();
-        ThemeService.Shutdown();
+        // ThemeService.Shutdown() est appelé automatiquement via Dispose() par le conteneur DI
     }
 }

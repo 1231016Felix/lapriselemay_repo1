@@ -1,4 +1,4 @@
-using QuickLauncher.Models;
+﻿using QuickLauncher.Models;
 using QuickLauncher.Services.CommandHandlers;
 
 namespace QuickLauncher.Services.CommandHandlers;
@@ -34,8 +34,8 @@ public sealed class WeatherCommandHandler : ICommandHandler
             ? query[(cmd.Prefix.Length + 2)..].Trim()
             : null;
 
-        var targetCity = string.IsNullOrWhiteSpace(weatherArg) ? settings.WeatherCity : weatherArg;
-        var result = await _webService.GetWeatherAsync(targetCity, settings.WeatherUnit, token);
+        var targetCity = string.IsNullOrWhiteSpace(weatherArg) ? settings.Integrations.WeatherCity : weatherArg;
+        var result = await _webService.GetWeatherAsync(targetCity, settings.Integrations.WeatherUnit, token);
 
         if (token.IsCancellationRequested)
             return new CommandResult();

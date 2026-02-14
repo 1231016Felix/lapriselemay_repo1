@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using System.Windows.Media;
 
 namespace QuickLauncher.Models;
@@ -27,7 +26,10 @@ public enum ResultType
 
 /// <summary>
 /// Résultat de recherche avec scoring et métadonnées.
-/// Implémente INotifyPropertyChanged pour notifier l'UI des changements d'icône.
+/// 
+/// DTO pur : ne contient plus de logique de chargement d'icônes.
+/// Le chargement est délégué à <see cref="Services.IIconLoader"/> (Amélioration #1).
+/// Implémente INotifyPropertyChanged uniquement pour la notification WPF de NativeIcon.
 /// </summary>
 public sealed class SearchResult : INotifyPropertyChanged
 {
@@ -53,64 +55,20 @@ public sealed class SearchResult : INotifyPropertyChanged
     
     private string? _customIcon;
     private ImageSource? _nativeIcon;
-    private bool _nativeIconLoaded;
     
     /// <summary>
     /// Icône native extraite du fichier (ImageSource).
-    /// Chargement paresseux avec notification.
+    /// Setter déclenche PropertyChanged pour mettre à jour le binding WPF.
+    /// Le chargement est géré externalement par <see cref="Services.IIconLoader"/>.
     /// </summary>
     public ImageSource? NativeIcon
     {
-        get
-        {
-            if (!_nativeIconLoaded && ShouldLoadNativeIcon())
-            {
-                _nativeIconLoaded = true;
-                // Charger de manière asynchrone et notifier
-                _ = LoadIconInternalAsync();
-            }
-            return _nativeIcon;
-        }
+        get => _nativeIcon;
         set
         {
             _nativeIcon = value;
-            _nativeIconLoaded = true;
             OnPropertyChanged();
             OnPropertyChanged(nameof(HasNativeIcon));
-        }
-    }
-    
-    private async Task LoadIconInternalAsync()
-    {
-        try
-        {
-            var path = Path;
-            var name = Name;
-            System.Diagnostics.Debug.WriteLine($"[SearchResult] Starting icon load for '{name}' path='{path}' type={Type}");
-            
-            var icon = await Task.Run(() => Services.IconExtractorService.GetIcon(path));
-            
-            System.Diagnostics.Debug.WriteLine($"[SearchResult] Icon loaded for '{name}': {(icon != null ? "OK" : "NULL")}");
-            
-            var app = System.Windows.Application.Current;
-            if (app != null)
-            {
-                await app.Dispatcher.InvokeAsync(() =>
-                {
-                    _nativeIcon = icon;
-                    System.Diagnostics.Debug.WriteLine($"[SearchResult] PropertyChanged fired for '{name}'");
-                    OnPropertyChanged(nameof(NativeIcon));
-                    OnPropertyChanged(nameof(HasNativeIcon));
-                });
-            }
-            else
-            {
-                _nativeIcon = icon;
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SearchResult] Icon error for '{Name}': {ex.Message}");
         }
     }
     
@@ -126,23 +84,6 @@ public sealed class SearchResult : INotifyPropertyChanged
     {
         get => _customIcon ?? GetDefaultIcon();
         set => _customIcon = value;
-    }
-    
-    /// <summary>
-    /// Détermine si on doit charger l'icône native pour ce type de résultat.
-    /// </summary>
-    private bool ShouldLoadNativeIcon()
-    {
-        return Type switch
-        {
-            ResultType.Application => true,
-            ResultType.StoreApp => true,
-            ResultType.File => true,
-            ResultType.Folder => true,
-            ResultType.Script => true,
-            ResultType.Bookmark => true,  // Permettre le chargement d'icônes pour les favoris
-            _ => false
-        };
     }
     
     private string GetDefaultIcon() => Type switch

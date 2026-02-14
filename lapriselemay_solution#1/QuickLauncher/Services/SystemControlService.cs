@@ -770,6 +770,115 @@ public static class SystemControlService
 
     #endregion
 
+    #region Process & Disk Info
+
+    /// <summary>
+    /// Tue tous les processus correspondant au nom donné.
+    /// Retourne le nombre de processus tués.
+    /// </summary>
+    public static (bool Success, int KilledCount, string Message) KillProcessByName(string processName)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(processName))
+                return (false, 0, "Nom de processus requis");
+
+            // Retirer l'extension .exe si présente
+            processName = processName.Trim();
+            if (processName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                processName = processName[..^4];
+
+            var processes = Process.GetProcessesByName(processName);
+            if (processes.Length == 0)
+                return (false, 0, $"Aucun processus \"{processName}\" trouvé");
+
+            var killed = 0;
+            var errors = 0;
+            foreach (var proc in processes)
+            {
+                try
+                {
+                    proc.Kill();
+                    proc.WaitForExit(3000);
+                    killed++;
+                }
+                catch
+                {
+                    errors++;
+                }
+                finally
+                {
+                    proc.Dispose();
+                }
+            }
+
+            if (killed == 0)
+                return (false, 0, $"Impossible de tuer \"{processName}\" (accès refusé?)");
+
+            var msg = errors > 0
+                ? $"{killed} processus \"{processName}\" tué(s) ({errors} échoué(s))"
+                : killed == 1
+                    ? $"Processus \"{processName}\" tué"
+                    : $"{killed} processus \"{processName}\" tués";
+
+            return (true, killed, msg);
+        }
+        catch (Exception ex)
+        {
+            return (false, 0, $"Erreur: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Liste les processus correspondant au nom donné (pour l'autocomplétion).
+    /// </summary>
+    public static Process[] FindProcesses(string partialName)
+    {
+        try
+        {
+            return Process.GetProcesses()
+                .Where(p =>
+                {
+                    try { return p.ProcessName.Contains(partialName, StringComparison.OrdinalIgnoreCase); }
+                    catch { return false; }
+                })
+                .ToArray();
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Retourne les informations d'espace disque pour tous les lecteurs prêts.
+    /// </summary>
+    public static List<(string Name, long TotalGB, long FreeGB, long UsedGB, int UsedPercent)> GetDiskInfo()
+    {
+        var result = new List<(string, long, long, long, int)>();
+        try
+        {
+            foreach (var drive in DriveInfo.GetDrives().Where(d => d.IsReady))
+            {
+                var totalGB = drive.TotalSize / (1024L * 1024 * 1024);
+                var freeGB = drive.TotalFreeSpace / (1024L * 1024 * 1024);
+                var usedGB = totalGB - freeGB;
+                var usedPercent = totalGB > 0 ? (int)((usedGB * 100) / totalGB) : 0;
+                var label = string.IsNullOrEmpty(drive.VolumeLabel)
+                    ? drive.Name.TrimEnd('\\')
+                    : $"{drive.Name.TrimEnd('\\')} ({drive.VolumeLabel})";
+                result.Add((label, totalGB, freeGB, usedGB, usedPercent));
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SystemControl] GetDiskInfo erreur: {ex.Message}");
+        }
+        return result;
+    }
+
+    #endregion
+
     #region Command Parser
 
     /// <summary>

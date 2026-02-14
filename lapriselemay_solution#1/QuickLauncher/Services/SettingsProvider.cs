@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using QuickLauncher.Models;
 
 namespace QuickLauncher.Services;
@@ -29,7 +29,7 @@ public sealed class SettingsProvider : ISettingsProvider
     public SettingsProvider()
     {
         _current = AppSettings.Load();
-        Debug.WriteLine($"[SettingsProvider] Initialisé avec {_current.IndexedFolders.Count} dossiers indexés");
+        Debug.WriteLine($"[SettingsProvider] Initialisé avec {_current.Search.IndexedFolders.Count} dossiers indexés");
     }
 
     public void Save()

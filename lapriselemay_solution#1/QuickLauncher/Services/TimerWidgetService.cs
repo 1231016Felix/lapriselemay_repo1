@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using System.Windows;
 using QuickLauncher.Models;
 using QuickLauncher.Views;
@@ -36,7 +36,7 @@ public sealed partial class TimerWidgetService
             var settings = Settings;
             
             // Trouver le prochain ID disponible
-            while (settings.TimerWidgets.Any(w => w.Id == _nextId) || _activeWidgets.ContainsKey(_nextId))
+            while (settings.Integrations.TimerWidgets.Any(w => w.Id == _nextId) || _activeWidgets.ContainsKey(_nextId))
                 _nextId++;
             
             var timerInfo = new TimerWidgetInfo
@@ -72,7 +72,7 @@ public sealed partial class TimerWidgetService
             });
             
             // Sauvegarder
-            _settingsProvider.Update(s => s.TimerWidgets.Add(timerInfo));
+            _settingsProvider.Update(s => s.Integrations.TimerWidgets.Add(timerInfo));
             
             return timerInfo;
         }
@@ -86,7 +86,7 @@ public sealed partial class TimerWidgetService
         lock (_lock)
         {
             _activeWidgets.Remove(timerId);
-            _settingsProvider.Update(s => s.TimerWidgets.RemoveAll(w => w.Id == timerId));
+            _settingsProvider.Update(s => s.Integrations.TimerWidgets.RemoveAll(w => w.Id == timerId));
         }
     }
     
@@ -108,7 +108,7 @@ public sealed partial class TimerWidgetService
         // Supprimer des settings (mais garder le widget visible)
         lock (_lock)
         {
-            _settingsProvider.Update(s => s.TimerWidgets.RemoveAll(w => w.Id == timerId));
+            _settingsProvider.Update(s => s.Integrations.TimerWidgets.RemoveAll(w => w.Id == timerId));
         }
     }
     
@@ -119,7 +119,7 @@ public sealed partial class TimerWidgetService
     {
         _settingsProvider.Update(s =>
         {
-            var timer = s.TimerWidgets.FirstOrDefault(w => w.Id == timerId);
+            var timer = s.Integrations.TimerWidgets.FirstOrDefault(w => w.Id == timerId);
             if (timer != null)
             {
                 timer.Left = left;
@@ -135,7 +135,7 @@ public sealed partial class TimerWidgetService
     {
         var expiredTimers = new List<int>();
         
-        foreach (var timerInfo in Settings.TimerWidgets.ToList())
+        foreach (var timerInfo in Settings.Integrations.TimerWidgets.ToList())
         {
             // Calculer le temps restant depuis la création
             var elapsed = DateTime.Now - timerInfo.CreatedAt;
@@ -174,7 +174,7 @@ public sealed partial class TimerWidgetService
         // Nettoyer les timers expirés
         if (expiredTimers.Count > 0)
         {
-            _settingsProvider.Update(s => s.TimerWidgets.RemoveAll(w => expiredTimers.Contains(w.Id)));
+            _settingsProvider.Update(s => s.Integrations.TimerWidgets.RemoveAll(w => expiredTimers.Contains(w.Id)));
         }
     }
     

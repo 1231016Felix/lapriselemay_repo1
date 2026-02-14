@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -30,6 +30,11 @@ public sealed partial class IndexingService : IDisposable
     
     public bool IsIndexing { get; private set; }
     public int IndexedItemsCount => _cache.Count;
+    
+    /// <summary>
+    /// Accès en lecture au cache pour le SearchService (Amélioration #3).
+    /// </summary>
+    public IReadOnlyDictionary<string, SearchResult> CachedItems => _cache;
 
     public IndexingService(ISettingsProvider settingsProvider, FolderFingerprintService fingerprintService, ILogger? logger = null)
     {
@@ -139,7 +144,7 @@ public sealed partial class IndexingService : IDisposable
             // Indexer les favoris des navigateurs en parallèle
             var bookmarksTask = Task.Run(() =>
             {
-                if (settings.IndexBrowserBookmarks)
+                if (settings.Search.IndexBrowserBookmarks)
                 {
                     var bookmarks = BookmarkService.GetAllBookmarks();
                     foreach (var bookmark in bookmarks)
@@ -148,14 +153,14 @@ public sealed partial class IndexingService : IDisposable
                 }
             }, token);
             
-            // Ajouter les pages de paramètres Windows
-            var windowsSettings = GetWindowsSettingsItems();
+            // Ajouter les pages de paramètres Windows (Amélioration #3 : extrait dans WindowsSettingsProvider)
+            var windowsSettings = WindowsSettingsProvider.GetItems();
             foreach (var ws in windowsSettings)
                 items.Add(ws);
             _logger.Info($"Paramètres Windows: {windowsSettings.Count} ajoutés");
             
             // Indexer les dossiers en parallèle
-            var folderTasks = settings.IndexedFolders
+            var folderTasks = settings.Search.IndexedFolders
                 .Where(Directory.Exists)
                 .Select(folder => Task.Run(() => IndexFolder(folder, items, settings, token), token))
                 .ToArray();
@@ -163,7 +168,7 @@ public sealed partial class IndexingService : IDisposable
             await Task.WhenAll([storeTask, bookmarksTask, ..folderTasks]);
 
             // Ajouter les scripts personnalisés
-            foreach (var script in settings.Scripts)
+            foreach (var script in settings.Search.Scripts)
             {
                 items.Add(new SearchResult
                 {
@@ -212,12 +217,12 @@ public sealed partial class IndexingService : IDisposable
     private void IndexFolderRecursive(string folderPath, ConcurrentBag<SearchResult> items,
         AppSettings settings, ref int count, int depth, CancellationToken token)
     {
-        if (depth > settings.SearchDepth || token.IsCancellationRequested) return;
+        if (depth > settings.Search.SearchDepth || token.IsCancellationRequested) return;
         
         try
         {
             var dirInfo = new DirectoryInfo(folderPath);
-            if (!settings.IndexHiddenFolders && (dirInfo.Attributes & FileAttributes.Hidden) != 0)
+            if (!settings.Search.IndexHiddenFolders && (dirInfo.Attributes & FileAttributes.Hidden) != 0)
                 return;
             
             // Indexer les fichiers
@@ -226,8 +231,8 @@ public sealed partial class IndexingService : IDisposable
                 if (token.IsCancellationRequested) return;
                 
                 var ext = file.Extension.ToLowerInvariant();
-                if (!settings.FileExtensions.Contains(ext)) continue;
-                if (!settings.IndexHiddenFolders && (file.Attributes & FileAttributes.Hidden) != 0) continue;
+                if (!settings.Search.FileExtensions.Contains(ext)) continue;
+                if (!settings.Search.IndexHiddenFolders && (file.Attributes & FileAttributes.Hidden) != 0) continue;
                 
                 var result = CreateSearchResult(file.FullName);
                 if (result != null)
@@ -358,170 +363,9 @@ public sealed partial class IndexingService : IDisposable
     
     public void CancelIndexing() => _indexingCts?.Cancel();
 
-    public List<SearchResult> Search(string query)
-    {
-        if (string.IsNullOrWhiteSpace(query)) 
-            return [];
-        
-        var normalizedQuery = query.Trim().ToLowerInvariant();
-        var settings = _settingsProvider.Current;
-        
-        // Recherche web avec préfixe
-        foreach (var engine in settings.SearchEngines)
-        {
-            var prefix = $"{engine.Prefix} ";
-            if (normalizedQuery.StartsWith(prefix))
-            {
-                var searchQuery = normalizedQuery[prefix.Length..];
-                return
-                [
-                    new SearchResult
-                    {
-                        Name = $"Rechercher '{searchQuery}' sur {engine.Name}",
-                        Path = engine.UrlTemplate.Replace("{query}", Uri.EscapeDataString(searchQuery)),
-                        Type = ResultType.WebSearch,
-                        Score = 100
-                    }
-                ];
-            }
-        }
-        
-        // Calculatrice
-        if (TryCalculate(normalizedQuery, out var calcResult))
-        {
-            return
-            [
-                new SearchResult
-                {
-                    Name = calcResult,
-                    Description = $"= {calcResult}",
-                    Path = calcResult,
-                    Type = ResultType.Calculator,
-                    Score = 100
-                }
-            ];
-        }
-
-        // Recherche avec scoring - parallélisme conditionnel selon la taille du cache
-        const int ParallelThreshold = 500;
-        
-        var scored = _cache.Count > ParallelThreshold
-            ? _cache.Values
-                .AsParallel()
-                .Select(item => (Item: item, Score: CalculateScore(normalizedQuery, item)))
-                .Where(x => x.Score > 0)
-            : _cache.Values
-                .Select(item => (Item: item, Score: CalculateScore(normalizedQuery, item)))
-                .Where(x => x.Score > 0);
-        
-        return scored
-            .OrderByDescending(x => x.Score)
-            .ThenByDescending(x => x.Item.UseCount)
-            .Take(settings.MaxResults)
-            .Select(x =>
-            {
-                x.Item.Score = x.Score;
-                return x.Item;
-            })
-            .ToList();
-    }
-    
-    private int CalculateScore(string query, SearchResult item)
-    {
-        var weights = _settingsProvider.Current.ScoringWeights;
-        
-        // Score principal sur le nom
-        var nameScore = SearchAlgorithms.CalculateFuzzyScore(query, item.Name, item.UseCount, item.LastUsed, weights);
-        
-        // Score additionnel sur le chemin complet (pour les requêtes multi-mots)
-        if (weights.EnablePathFuzzyMatch && !string.IsNullOrEmpty(item.Path))
-        {
-            var pathScore = SearchAlgorithms.CalculatePathFuzzyScore(query, item.Path, weights);
-            
-            // Si le path score est positif mais le name score est nul,
-            // on utilise le path score + les bonus usage/recency
-            if (pathScore > 0 && nameScore == 0)
-            {
-                // Ajouter manuellement les bonus usage et recency
-                if (item.UseCount > 0)
-                    pathScore += Math.Min(item.UseCount * weights.UsageBonusPerUse, weights.MaxUsageBonus);
-                
-                if (weights.EnableRecencyBonus && item.LastUsed > DateTime.MinValue)
-                {
-                    var daysSince = (DateTime.UtcNow - item.LastUsed).TotalDays;
-                    pathScore += Math.Max(0, weights.MaxRecencyBonus - (int)(daysSince * weights.RecencyDecayPerDay));
-                }
-                
-                return pathScore;
-            }
-            
-            // Si les deux matchent, prendre le meilleur
-            nameScore = Math.Max(nameScore, pathScore);
-        }
-        
-        // Score sur la description (pour les paramètres Windows, bookmarks, etc.)
-        // Permet de trouver "DNS", "partition", "variables environnement" via les mots-clés de description.
-        if (!string.IsNullOrEmpty(item.Description))
-        {
-            var descScore = SearchAlgorithms.CalculateDescriptionScore(query, item.Description);
-            if (descScore > 0)
-            {
-                if (nameScore == 0)
-                {
-                    // Pas de match sur le nom ni le path : utiliser le score description réduit
-                    // pour ne pas surclasser les correspondances directes sur le nom.
-                    var adjustedScore = (int)(descScore * 0.6);
-                    
-                    // Ajouter les bonus usage et recency
-                    if (item.UseCount > 0)
-                        adjustedScore += Math.Min(item.UseCount * weights.UsageBonusPerUse, weights.MaxUsageBonus);
-                    
-                    if (weights.EnableRecencyBonus && item.LastUsed > DateTime.MinValue)
-                    {
-                        var daysSince = (DateTime.UtcNow - item.LastUsed).TotalDays;
-                        adjustedScore += Math.Max(0, weights.MaxRecencyBonus - (int)(daysSince * weights.RecencyDecayPerDay));
-                    }
-                    
-                    return adjustedScore;
-                }
-                
-                // Le nom match déjà : petit boost si la description confirme la pertinence
-                nameScore += (int)(descScore * 0.15);
-            }
-        }
-        
-        return nameScore;
-    }
-    
-    [GeneratedRegex(@"^[\d\s\+\-\*\/\(\)\.\,\^]+$")]
-    private static partial Regex MathExpressionRegex();
-    
-    private static bool TryCalculate(string expression, out string result)
-    {
-        result = string.Empty;
-        
-        if (!MathExpressionRegex().IsMatch(expression))
-            return false;
-        
-        if (!expression.Any(c => "+-*/^".Contains(c)))
-            return false;
-        
-        try
-        {
-            var normalized = expression.Replace(',', '.');
-            var table = new System.Data.DataTable();
-            var value = table.Compute(normalized, null);
-            
-            result = value switch
-            {
-                double d => d.ToString("G10"),
-                _ => value?.ToString() ?? string.Empty
-            };
-            
-            return !string.IsNullOrEmpty(result);
-        }
-        catch { return false; }
-    }
+    // Search(), CalculateScore() et TryCalculate() ont été déplacés
+    // vers SearchService et CalculatorService (Amélioration #3 et #7).
+    // Utiliser SearchService.Search() à la place.
     
     public void RecordUsage(SearchResult item)
     {
@@ -676,10 +520,10 @@ public sealed partial class IndexingService : IDisposable
         
         var settings = _settingsProvider.Current;
         var comparison = _fingerprintService.CompareWithStored(
-            settings.IndexedFolders,
-            settings.FileExtensions,
-            settings.SearchDepth,
-            settings.IndexHiddenFolders);
+            settings.Search.IndexedFolders,
+            settings.Search.FileExtensions,
+            settings.Search.SearchDepth,
+            settings.Search.IndexHiddenFolders);
         
         if (!comparison.HasChanges)
         {
@@ -813,7 +657,7 @@ public sealed partial class IndexingService : IDisposable
         
         var bookmarksTask = Task.Run(() =>
         {
-            if (settings.IndexBrowserBookmarks)
+            if (settings.Search.IndexBrowserBookmarks)
             {
                 var bookmarks = BookmarkService.GetAllBookmarks();
                 foreach (var bm in bookmarks) items.Add(bm);
@@ -823,7 +667,7 @@ public sealed partial class IndexingService : IDisposable
         await Task.WhenAll(storeTask, bookmarksTask);
         
         // Ajouter les pages de paramètres Windows (toujours présentes)
-        var windowsSettings = GetWindowsSettingsItems();
+        var windowsSettings = WindowsSettingsProvider.GetItems();
         foreach (var ws in windowsSettings)
             items.Add(ws);
         
@@ -885,10 +729,10 @@ public sealed partial class IndexingService : IDisposable
     /// </summary>
     private void SaveCurrentFingerprints(AppSettings settings)
     {
-        var fingerprints = settings.IndexedFolders
+        var fingerprints = settings.Search.IndexedFolders
             .Where(Directory.Exists)
             .Select(folder => _fingerprintService.ComputeFingerprint(
-                folder, settings.FileExtensions, settings.SearchDepth, settings.IndexHiddenFolders))
+                folder, settings.Search.FileExtensions, settings.Search.SearchDepth, settings.Search.IndexHiddenFolders))
             .ToList();
         
         _fingerprintService.SaveFingerprints(fingerprints);
@@ -896,137 +740,7 @@ public sealed partial class IndexingService : IDisposable
     
     #endregion
     
-    #region Windows Settings Items
-    
-    /// <summary>
-    /// Retourne une liste de pages de paramètres Windows courantes
-    /// pour les rendre accessibles via la recherche primaire (sans préfixe :).
-    /// Chaque item utilise un URI ms-settings: ou une commande control panel.
-    /// </summary>
-    private static List<SearchResult> GetWindowsSettingsItems()
-    {
-        return
-        [
-            // === Système ===
-            WinSetting("⚙️ Paramètres Windows", "ms-settings:", "Ouvrir les paramètres Windows"),
-            WinSetting("🖥️ Affichage", "ms-settings:display", "Résolution, mise à l'échelle, écrans multiples"),
-            WinSetting("🔊 Son", "ms-settings:sound", "Volume, périphériques audio, sortie sonore"),
-            WinSetting("🔔 Notifications", "ms-settings:notifications", "Notifications et actions rapides"),
-            WinSetting("⚡ Alimentation et batterie", "ms-settings:powersleep", "Mode veille, économie d'énergie, alimentation"),
-            WinSetting("💾 Stockage", "ms-settings:storagesense", "Espace disque, nettoyage, assistant de stockage"),
-            WinSetting("📱 Multitâche", "ms-settings:multitasking", "Bureaux virtuels, ancrage des fenêtres"),
-            WinSetting("ℹ️ Informations système", "ms-settings:about", "À propos de votre PC, nom d'ordinateur, spécifications"),
-            
-            // === Réseau ===
-            WinSetting("🌐 Réseau et Internet", "ms-settings:network", "Wi-Fi, Ethernet, VPN, proxy, état du réseau"),
-            WinSetting("📶 Wi-Fi", "ms-settings:network-wifi", "Connexions Wi-Fi, réseaux connus"),
-            WinSetting("🔒 VPN", "ms-settings:network-vpn", "Connexions VPN"),
-            WinSetting("🌐 Proxy", "ms-settings:network-proxy", "Configuration du proxy réseau"),
-            
-            // === Personnalisation ===
-            WinSetting("🎨 Personnalisation", "ms-settings:personalization", "Thème, couleurs, fond d'écran, verrouillage"),
-            WinSetting("🖼️ Arrière-plan", "ms-settings:personalization-background", "Fond d'écran, diaporama"),
-            WinSetting("🎨 Couleurs", "ms-settings:personalization-colors", "Couleur d'accentuation, mode sombre/clair"),
-            WinSetting("🔒 Écran de verrouillage", "ms-settings:lockscreen", "Écran de verrouillage, notifications"),
-            WinSetting("📌 Barre des tâches", "ms-settings:taskbar", "Barre des tâches, icônes système"),
-            WinSetting("🗔️ Menu Démarrer", "ms-settings:personalization-start", "Disposition du menu Démarrer"),
-            
-            // === Applications ===
-            WinSetting("📦 Applications installées", "ms-settings:appsfeatures", "Désinstaller, déplacer, paramètres d'applications"),
-            WinSetting("📦 Applications par défaut", "ms-settings:defaultapps", "Navigateur, lecteur PDF, musique par défaut"),
-            WinSetting("🚀 Applications au démarrage", "ms-settings:startupapps", "Gérer les applications qui se lancent au démarrage"),
-            
-            // === Comptes ===
-            WinSetting("👤 Comptes", "ms-settings:yourinfo", "Informations de compte, photo de profil"),
-            WinSetting("👥 Famille et autres utilisateurs", "ms-settings:otherusers", "Ajouter des utilisateurs"),
-            WinSetting("🔑 Options de connexion", "ms-settings:signinoptions", "Mot de passe, PIN, Windows Hello, empreinte"),
-            
-            // === Heure et langue ===
-            WinSetting("🕒 Date et heure", "ms-settings:dateandtime", "Fuseau horaire, horloge, format de date"),
-            WinSetting("🌐 Langue et région", "ms-settings:regionlanguage", "Langue d'affichage, format régional"),
-            WinSetting("⌨️ Clavier", "ms-settings:typing", "Saisie, correction automatique, clavier tactile"),
-            
-            // === Mise à jour et sécurité ===
-            WinSetting("🔄 Windows Update", "ms-settings:windowsupdate", "Mises à jour, historique, options avancées"),
-            WinSetting("🛡️ Sécurité Windows", "ms-settings:windowsdefender", "Antivirus, pare-feu, protection"),
-            WinSetting("💾 Sauvegarde", "ms-settings:backup", "Sauvegarde de fichiers, OneDrive"),
-            WinSetting("🔧 Récupération", "ms-settings:recovery", "Réinitialiser le PC, démarrage avancé"),
-            
-            // === Accessibilité ===
-            WinSetting("♿ Accessibilité", "ms-settings:easeofaccess", "Vision, audition, interaction, accessibilité"),
-            
-            // === Confidentialité ===
-            WinSetting("🔒 Confidentialité", "ms-settings:privacy", "Autorisations, diagnostics, historique d'activité"),
-            
-            // === Périphériques ===
-            WinSetting("🖨️ Imprimantes et scanners", "ms-settings:printers", "Ajouter une imprimante, gérer les périphériques d'impression"),
-            WinSetting("🖱️ Souris", "ms-settings:mousetouchpad", "Vitesse du curseur, boutons, pavé tactile"),
-            WinSetting("📱 Bluetooth", "ms-settings:bluetooth", "Appareils Bluetooth, couplage"),
-            
-            // === Recherche et indexation (!) ===
-            WinSetting("🔍 Options d'indexation", "control|srchadmin.dll", "Indexation Windows, emplacements indexés, reconstruction d'index"),
-            WinSetting("🔍 Recherche Windows", "ms-settings:search-permissions", "Autorisations de recherche, indexation, recherche améliorée"),
-            WinSetting("🔎 Paramètres de recherche", "ms-settings:cortana-windowssearch", "Recherche Windows, historique de recherche"),
-            
-            // === Panneau de configuration classique ===
-            WinSetting("🛠️ Panneau de configuration", "control|", "Panneau de configuration classique Windows"),
-            WinSetting("💻 Gestionnaire de périphériques", "devmgmt.msc", "Pilotes, matériel, périphériques"),
-            WinSetting("📀 Gestion des disques", "diskmgmt.msc", "Partitions, volumes, formatage de disques"),
-            WinSetting("🔧 Services Windows", "services.msc", "Gérer les services système"),
-            WinSetting("📊 Moniteur de performances", "perfmon.msc", "Performances système, compteurs"),
-            WinSetting("📃 Événements Windows", "eventvwr.msc", "Observateur d'événements, journaux système"),
-            WinSetting("🔥 Pare-feu Windows", "control|firewall.cpl", "Règles de pare-feu, exceptions"),
-            WinSetting("🌐 Connexions réseau", "control|ncpa.cpl", "Adaptateurs réseau, IP, DNS"),
-            WinSetting("🖥️ Programmes et fonctionnalités", "control|appwiz.cpl", "Désinstaller des programmes, fonctionnalités Windows"),
-            WinSetting("👤 Comptes utilisateurs", "control|nusrmgr.cpl", "Gérer les comptes, mots de passe"),
-            WinSetting("⚡ Options d'alimentation", "control|powercfg.cpl", "Plans d'alimentation, veille, écran"),
-            WinSetting("📡 Centre Réseau et partage", "control|/name Microsoft.NetworkAndSharingCenter", "Partage réseau, groupe résidentiel"),
-            WinSetting("📅 Région", "control|intl.cpl", "Format de date, heure, devise, région"),
-            WinSetting("⏰ Planificateur de tâches", "taskschd.msc", "Tâches planifiées, automatisation"),
-            WinSetting("📦 Fonctionnalités Windows", "control|optionalfeatures", "Activer ou désactiver des fonctionnalités Windows"),
-            WinSetting("🎧 Périphériques audio", "control|mmsys.cpl", "Lecture, enregistrement, sons système"),
-            WinSetting("🛰️ Connexion Bureau à distance", "mstsc", "Bureau à distance, Remote Desktop"),
-            
-            // === Paramètres système avancés et outils ===
-            WinSetting("⚙️ Paramètres système avancés", "control|sysdm.cpl,,3", "Variables d'environnement, performances, profils utilisateurs, démarrage, mémoire virtuelle"),
-            WinSetting("🌐 Propriétés Internet", "control|inetcpl.cpl", "Options Internet, proxy navigateur, sécurité web, cookies, certificats"),
-            WinSetting("🔧 Éditeur du registre", "regedit", "Registre Windows, clés, valeurs système, regedit"),
-            WinSetting("📊 Informations système détaillées", "msinfo32", "Matériel, composants, BIOS, mémoire RAM, processeur, carte mère"),
-            WinSetting("🧹 Nettoyage de disque", "cleanmgr", "Libérer espace disque, fichiers temporaires, cache, corbeille"),
-            WinSetting("🔐 Stratégie de sécurité locale", "secpol.msc", "Stratégies de sécurité, audit, droits utilisateurs, mot de passe"),
-            WinSetting("📋 Éditeur de stratégie de groupe", "gpedit.msc", "Stratégies de groupe, GPO, configuration Windows, modèles d'administration"),
-            WinSetting("🎨 ClearType", "control|cttune", "Réglage ClearType, lissage des polices, texte net"),
-            WinSetting("📺 Résolution d'écran", "control|desk.cpl", "Affichage, résolution, orientation, taille du texte"),
-            WinSetting("🔊 Mixeur audio", "sndvol", "Volume par application, mixeur de volume, sorties audio"),
-            WinSetting("🖨️ Gestion d'impression", "printmanagement.msc", "Imprimantes, files d'attente, serveurs d'impression"),
-            WinSetting("💻 Propriétés système", "control|sysdm.cpl", "Nom d'ordinateur, groupe de travail, domaine, matériel, restauration système"),
-            WinSetting("🔄 Restauration du système", "rstrui", "Points de restauration, restauration système, récupération"),
-            WinSetting("💻 Moniteur de ressources", "resmon", "CPU, mémoire, disque, réseau en temps réel, processus"),
-            WinSetting("🔒 Windows Defender Firewall avancé", "wf.msc", "Règles entrantes, sortantes, sécurité connexion, pare-feu avancé"),
-            WinSetting("📁 Options des dossiers", "control|folders", "Affichage fichiers cachés, extensions, explorateur de fichiers"),
-            WinSetting("⏱️ Diagnostics mémoire", "mdsched", "Test mémoire RAM, diagnostic, erreurs mémoire"),
-            WinSetting("📱 Téléphone", "ms-settings:mobile-devices", "Lier téléphone, notifications mobiles, photos"),
-            WinSetting("🌍 Paramètres proxy", "ms-settings:network-proxy", "Configuration proxy, proxy automatique, proxy manuel"),
-            WinSetting("🔋 Batterie", "ms-settings:batterysaver", "Économie de batterie, utilisation batterie, autonomie"),
-        ];
-    }
-    
-    /// <summary>
-    /// Crée un SearchResult représentant une page de paramètres Windows.
-    /// </summary>
-    private static SearchResult WinSetting(string name, string path, string description)
-    {
-        return new SearchResult
-        {
-            Name = name,
-            Path = path,
-            Description = $"⚙️ {description}",
-            Type = ResultType.SystemControl,
-            Score = 0
-        };
-    }
-    
-    #endregion
+    // Région Windows Settings Items supprimée — déplacée dans WindowsSettingsProvider (Amélioration #3).
     
     public void Dispose()
     {

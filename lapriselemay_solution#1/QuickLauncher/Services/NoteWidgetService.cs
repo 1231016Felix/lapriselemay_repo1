@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Windows;
 using QuickLauncher.Models;
 using QuickLauncher.Views;
@@ -20,8 +20,8 @@ public sealed class NoteWidgetService
     public NoteWidgetService(ISettingsProvider settingsProvider)
     {
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
-        _nextId = Settings.NoteWidgets.Count > 0 
-            ? Settings.NoteWidgets.Max(n => n.Id) + 1 
+        _nextId = Settings.Integrations.NoteWidgets.Count > 0 
+            ? Settings.Integrations.NoteWidgets.Max(n => n.Id) + 1 
             : 1;
     }
     
@@ -56,7 +56,7 @@ public sealed class NoteWidgetService
             CreatedAt = DateTime.Now
         };
         
-        _settingsProvider.Update(s => s.NoteWidgets.Add(info));
+        _settingsProvider.Update(s => s.Integrations.NoteWidgets.Add(info));
         
         // Afficher le widget
         _activeWidgets[noteId] = widget;
@@ -74,7 +74,7 @@ public sealed class NoteWidgetService
     {
         _settingsProvider.Update(s =>
         {
-            var info = s.NoteWidgets.FirstOrDefault(n => n.Id == noteId);
+            var info = s.Integrations.NoteWidgets.FirstOrDefault(n => n.Id == noteId);
             if (info != null)
             {
                 info.Left = left;
@@ -93,9 +93,9 @@ public sealed class NoteWidgetService
         
         _settingsProvider.Update(s =>
         {
-            var info = s.NoteWidgets.FirstOrDefault(n => n.Id == noteId);
+            var info = s.Integrations.NoteWidgets.FirstOrDefault(n => n.Id == noteId);
             if (info != null)
-                s.NoteWidgets.Remove(info);
+                s.Integrations.NoteWidgets.Remove(info);
         });
         Debug.WriteLine($"[NoteWidget] Supprimé: ID={noteId}");
     }
@@ -105,7 +105,7 @@ public sealed class NoteWidgetService
     /// </summary>
     public void RestoreWidgets()
     {
-        foreach (var info in Settings.NoteWidgets.ToList())
+        foreach (var info in Settings.Integrations.NoteWidgets.ToList())
         {
             try
             {
@@ -122,9 +122,9 @@ public sealed class NoteWidgetService
         }
         
         // Mettre à jour nextId
-        if (Settings.NoteWidgets.Count > 0)
+        if (Settings.Integrations.NoteWidgets.Count > 0)
         {
-            _nextId = Settings.NoteWidgets.Max(n => n.Id) + 1;
+            _nextId = Settings.Integrations.NoteWidgets.Max(n => n.Id) + 1;
         }
     }
     

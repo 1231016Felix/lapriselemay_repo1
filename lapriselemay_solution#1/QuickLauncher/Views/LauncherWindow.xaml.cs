@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -72,12 +72,12 @@ public partial class LauncherWindow : Window
     /// <summary>
     /// Durée d'animation courante lue depuis les paramètres.
     /// </summary>
-    private Duration AnimDuration => new(TimeSpan.FromMilliseconds(_settings.AnimationDurationMs));
+    private Duration AnimDuration => new(TimeSpan.FromMilliseconds(_settings.Appearance.AnimationDurationMs));
     
     /// <summary>
     /// Durée d'animation items (légèrement plus courte que la fenêtre).
     /// </summary>
-    private Duration ItemAnimDuration => new(TimeSpan.FromMilliseconds(Math.Max(50, _settings.AnimationDurationMs - 20)));
+    private Duration ItemAnimDuration => new(TimeSpan.FromMilliseconds(Math.Max(50, _settings.Appearance.AnimationDurationMs - 20)));
     
     /// <summary>
     /// Accès rapide aux paramètres actuels (toujours à jour via ISettingsProvider).
@@ -172,35 +172,42 @@ public partial class LauncherWindow : Window
     {
         try
         {
-            var captureMode = mode?.ToLowerInvariant();
+            // Masquer immédiatement (sans animation) pour ne pas apparaître sur la capture
+            HideWindowImmediate();
             
-            System.Drawing.Bitmap? bitmap = null;
+            var captureMode = mode?.ToLowerInvariant();
             
             if (captureMode is "snip" or "region" or "select")
             {
-                // Capture de région avec overlay
+                // Capture de région avec overlay → ouvre l'annotateur
                 var overlay = new ScreenshotOverlayWindow();
                 if (overlay.ShowDialog() == true && overlay.CapturedRegion != null)
-                    bitmap = overlay.CapturedRegion;
-            }
-            else if (captureMode is "primary" or "main")
-            {
-                bitmap = CaptureScreen(primaryOnly: true);
+                {
+                    var annotationWindow = new AnnotationWindow(overlay.CapturedRegion);
+                    annotationWindow.ShowDialog();
+
+                    if (!string.IsNullOrEmpty(annotationWindow.SavedFilePath))
+                        System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{annotationWindow.SavedFilePath}\"");
+                }
             }
             else
             {
-                bitmap = CaptureScreen(primaryOnly: false);
-            }
-
-            if (bitmap != null)
-            {
-                var annotationWindow = new AnnotationWindow(bitmap);
-                annotationWindow.ShowDialog();
-
-                if (!string.IsNullOrEmpty(annotationWindow.SavedFilePath))
+                // Capture plein écran ou écran principal → sauvegarde directe, sans rien afficher
+                var primaryOnly = captureMode is "primary" or "main";
+                var bitmap = CaptureScreen(primaryOnly);
+                
+                if (bitmap != null)
                 {
-                    // Ouvrir le dossier avec le fichier sélectionné
-                    System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{annotationWindow.SavedFilePath}\"");
+                    var filePath = SaveScreenshotDirect(bitmap);
+                    bitmap.Dispose();
+                    
+                    if (filePath != null)
+                    {
+                        // Copier aussi dans le presse-papier
+                        var bitmapSource = LoadBitmapSourceFromFile(filePath);
+                        if (bitmapSource != null)
+                            System.Windows.Clipboard.SetImage(bitmapSource);
+                    }
                 }
             }
         }
@@ -209,6 +216,52 @@ public partial class LauncherWindow : Window
             System.Diagnostics.Debug.WriteLine($"[ScreenCapture ERROR] {ex}");
             MessageBox.Show($"Erreur lors de la capture :\n{ex.GetType().Name}: {ex.Message}\n\nStack:\n{ex.StackTrace}", "Erreur",
                 MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Sauvegarde directe d'un bitmap sans ouvrir l'annotateur.
+    /// </summary>
+    private static string? SaveScreenshotDirect(System.Drawing.Bitmap bitmap)
+    {
+        try
+        {
+            var screenshotsFolder = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
+                "Screenshots");
+            System.IO.Directory.CreateDirectory(screenshotsFolder);
+
+            var fileName = $"Screenshot_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png";
+            var filePath = System.IO.Path.Combine(screenshotsFolder, fileName);
+
+            bitmap.Save(filePath, System.Drawing.Imaging.ImageFormat.Png);
+            return filePath;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SaveScreenshotDirect ERROR] {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Charge un BitmapSource depuis un fichier PNG pour le presse-papier.
+    /// </summary>
+    private static System.Windows.Media.Imaging.BitmapSource? LoadBitmapSourceFromFile(string filePath)
+    {
+        try
+        {
+            var bi = new System.Windows.Media.Imaging.BitmapImage();
+            bi.BeginInit();
+            bi.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+            bi.UriSource = new Uri(filePath);
+            bi.EndInit();
+            bi.Freeze();
+            return bi;
+        }
+        catch
+        {
+            return null;
         }
     }
 
@@ -235,8 +288,8 @@ public partial class LauncherWindow : Window
     
     private void ApplySettings()
     {
-        Opacity = _settings.WindowOpacity;
-        SettingsButton.Visibility = _settings.ShowSettingsButton ? Visibility.Visible : Visibility.Collapsed;
+        Opacity = _settings.Appearance.WindowOpacity;
+        SettingsButton.Visibility = _settings.Appearance.ShowSettingsButton ? Visibility.Visible : Visibility.Collapsed;
     }
     
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
@@ -305,7 +358,7 @@ public partial class LauncherWindow : Window
         // Nettoyer les animations précédentes
         ClearAllAnimations();
         
-        if (!_settings.EnableAnimations)
+        if (!_settings.Appearance.EnableAnimations)
         {
             MainBorder.Opacity = 1;
             ShadowBorder.Opacity = 1;
@@ -329,7 +382,7 @@ public partial class LauncherWindow : Window
         // Animation pilote (opacity) — on y attache le retrait du cache
         DoubleAnimation opacityAnim;
         
-        switch (_settings.AnimationStyle)
+        switch (_settings.Appearance.AnimationStyle)
         {
             case AnimationStyle.FadeSlide:
                 MainBorder.Opacity = 0;
@@ -396,7 +449,7 @@ public partial class LauncherWindow : Window
         // Sauvegarder la position maintenant (avant le Hide)
         SaveWindowPosition();
         
-        if (!_settings.EnableAnimations)
+        if (!_settings.Appearance.EnableAnimations)
         {
             _viewModel.Reset();
             ClearAllAnimations();
@@ -418,7 +471,7 @@ public partial class LauncherWindow : Window
         // L'animation « pilote » qui portera le Completed callback
         DoubleAnimation pilot;
         
-        switch (_settings.AnimationStyle)
+        switch (_settings.Appearance.AnimationStyle)
         {
             case AnimationStyle.FadeSlide:
                 pilot = MakeAnimWithCallback(MainBorder.Opacity, 0, dur, EaseIn, gen);
@@ -510,7 +563,7 @@ public partial class LauncherWindow : Window
         item.Opacity = 1;
         
         // Pendant l'animation d'ouverture ou si animations désactivées, pas de stagger
-        if (!_settings.EnableAnimations || _isShowAnimating)
+        if (!_settings.Appearance.EnableAnimations || _isShowAnimating)
             return;
         
         // Déterminer l'index de l'item dans la liste
@@ -521,7 +574,7 @@ public partial class LauncherWindow : Window
         var generation = _searchGeneration;
         
         var dur = ItemAnimDuration;
-        var staggerMs = Math.Max(0, _settings.StaggerDelayMs);
+        var staggerMs = Math.Max(0, _settings.Appearance.StaggerDelayMs);
         var beginTime = TimeSpan.FromMilliseconds(index * staggerMs);
         
         var tg = item.RenderTransform as TransformGroup;
@@ -536,11 +589,11 @@ public partial class LauncherWindow : Window
         // Plus de manipulation d'opacité : les items restent visibles, seuls les transforms bougent
         DoubleAnimation? pilotAnim = null;
         
-        switch (_settings.AnimationStyle)
+        switch (_settings.Appearance.AnimationStyle)
         {
             case AnimationStyle.FadeSlide:
             case AnimationStyle.Slide:
-                var slideFrom = _settings.AnimationStyle == AnimationStyle.FadeSlide ? 4.0 : 6.0;
+                var slideFrom = _settings.Appearance.AnimationStyle == AnimationStyle.FadeSlide ? 4.0 : 6.0;
                 pilotAnim = MakeAnim(slideFrom, 0, dur, beginTime, EaseOut);
                 translate?.BeginAnimation(TranslateTransform.YProperty, pilotAnim);
                 break;
@@ -824,12 +877,12 @@ public partial class LauncherWindow : Window
     
     private void SaveWindowPosition()
     {
-        if (_settings.WindowPosition == "Remember")
+        if (_settings.Appearance.WindowPosition == "Remember")
         {
             _settingsProvider.Update(s =>
             {
-                s.LastWindowLeft = Left;
-                s.LastWindowTop = Top;
+                s.Appearance.LastWindowLeft = Left;
+                s.Appearance.LastWindowTop = Top;
             });
         }
     }
@@ -886,11 +939,11 @@ public partial class LauncherWindow : Window
         // Marge de sécurité en bas pour ne jamais coller à la barre des tâches
         const double bottomMargin = 10;
         
-        switch (_settings.WindowPosition)
+        switch (_settings.Appearance.WindowPosition)
         {
-            case "Remember" when _settings.LastWindowLeft.HasValue && _settings.LastWindowTop.HasValue:
-                var left = _settings.LastWindowLeft.Value;
-                var top = _settings.LastWindowTop.Value;
+            case "Remember" when _settings.Appearance.LastWindowLeft.HasValue && _settings.Appearance.LastWindowTop.HasValue:
+                var left = _settings.Appearance.LastWindowLeft.Value;
+                var top = _settings.Appearance.LastWindowTop.Value;
                 
                 if (left >= workArea.Left && left + windowWidth <= workArea.Right &&
                     top >= workArea.Top && top + windowHeight <= workArea.Bottom)
@@ -940,7 +993,7 @@ public partial class LauncherWindow : Window
             return;
         
         // Obtenir les actions disponibles pour ce résultat
-        var isPinned = _settings.IsPinned(result.Path);
+        var isPinned = _settings.Search.IsPinned(result.Path);
         var actions = FileActionProvider.GetActionsForResult(result, isPinned);
         
         // Créer le style pour les items
@@ -1032,7 +1085,7 @@ public partial class LauncherWindow : Window
         // Cas spécial pour Pin
         if (action.ActionType == FileActionType.Pin)
         {
-            _settings.PinItem(result.Name, result.Path, result.Type, result.DisplayIcon);
+            _settings.Search.PinItem(result.Name, result.Path, result.Type, result.DisplayIcon);
             _settingsProvider.Save();
             OnShowNotification(this, "⭐ Épinglé");
             return;
@@ -1041,7 +1094,7 @@ public partial class LauncherWindow : Window
         // Cas spécial pour Unpin
         if (action.ActionType == FileActionType.Unpin)
         {
-            _settings.UnpinItem(result.Path);
+            _settings.Search.UnpinItem(result.Path);
             _settingsProvider.Save();
             OnShowNotification(this, "📌 Désépinglé");
             // Rafraîchir si on était dans la vue des épingles

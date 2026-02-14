@@ -1,4 +1,4 @@
-using QuickLauncher.Models;
+﻿using QuickLauncher.Models;
 
 namespace QuickLauncher.Services.CommandHandlers;
 
@@ -96,8 +96,8 @@ public sealed class TranslationCommandHandler : ICommandHandler
     /// </summary>
     internal static (string Source, string Target, string Text) ParseTranslationInput(string input, AppSettings settings)
     {
-        var defaultTarget = settings.TranslateTargetLang;
-        var defaultSource = settings.TranslateSourceLang;
+        var defaultTarget = settings.Integrations.TranslateTargetLang;
+        var defaultSource = settings.Integrations.TranslateSourceLang;
         var parts = input.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
 
         if (parts.Length < 1)

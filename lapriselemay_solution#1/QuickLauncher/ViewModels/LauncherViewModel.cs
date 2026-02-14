@@ -1,4 +1,4 @@
-using System.Collections.Frozen;
+﻿using System.Collections.Frozen;
 using System.Collections.ObjectModel;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -23,6 +23,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private readonly NotesService _notesService;
     private readonly CommandRouter _commandRouter;
     private readonly ISystemControlExecutor _systemControlExecutor;
+    private readonly SearchService _searchService;
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _debounceCts;
     private bool _disposed;
@@ -103,7 +104,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public LauncherViewModel(IndexingService indexingService, ISettingsProvider settingsProvider,
         AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
         NotesService notesService, CommandRouter commandRouter, ISystemControlExecutor systemControlExecutor,
-        FileWatcherService? fileWatcherService = null)
+        SearchService searchService, FileWatcherService? fileWatcherService = null)
     {
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
@@ -113,11 +114,12 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         _notesService = notesService ?? throw new ArgumentNullException(nameof(notesService));
         _commandRouter = commandRouter ?? throw new ArgumentNullException(nameof(commandRouter));
         _systemControlExecutor = systemControlExecutor ?? throw new ArgumentNullException(nameof(systemControlExecutor));
+        _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
         
         // Initialiser les propriétés d'apparence depuis les settings
-        ShowCategoryBadges = _settings.ShowCategoryBadges;
-        ShowSettingsButton = _settings.ShowSettingsButton;
-        ShowShortcutHints = _settings.ShowShortcutHints;
+        ShowCategoryBadges = _settings.Appearance.ShowCategoryBadges;
+        ShowSettingsButton = _settings.Appearance.ShowSettingsButton;
+        ShowShortcutHints = _settings.Appearance.ShowShortcutHints;
         
         _indexingService.IndexingStarted += (_, _) => IsIndexing = true;
         _indexingService.IndexingCompleted += (_, _) => 
@@ -171,7 +173,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     partial void OnSelectedIndexChanged(int value)
     {
         // Mettre à jour la prévisualisation quand la sélection change
-        if (value >= 0 && value < Results.Count && _settings.ShowPreviewPanel)
+        if (value >= 0 && value < Results.Count && _settings.Appearance.ShowPreviewPanel)
         {
             _ = UpdatePreviewAsync(Results[value]);
             UpdateAvailableActions(Results[value]);
@@ -208,7 +210,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private void UpdateAvailableActions(SearchResult result)
     {
         AvailableActions.Clear();
-        var isPinned = _settings.IsPinned(result.Path);
+        var isPinned = _settings.Search.IsPinned(result.Path);
         var actions = FileActionProvider.GetActionsForResult(result, isPinned);
         foreach (var action in actions)
             AvailableActions.Add(action);
@@ -309,7 +311,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         }
         
         // Recherche d'alias (priorité haute)
-        if (_settings.EnableAliases)
+        if (_settings.Search.EnableAliases)
         {
             var aliasResults = _aliasService.Search(query);
             foreach (var alias in aliasResults.Take(3))
@@ -321,7 +323,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         }
         
         // Résultats de recherche normaux
-        var searchResults = _indexingService.Search(SearchText);
+        var searchResults = _searchService.Search(SearchText);
         foreach (var result in searchResults)
             Results.Add(result);
         
@@ -623,16 +625,16 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private void ShowRecentHistory()
     {
         // Afficher d'abord les items épinglés
-        foreach (var pinned in _settings.PinnedItems.OrderBy(p => p.Order))
+        foreach (var pinned in _settings.Search.PinnedItems.OrderBy(p => p.Order))
         {
             Results.Add(pinned.ToSearchResult());
         }
         
         // Puis l'historique si activé (items récemment utilisés)
-        if (_settings.EnableSearchHistory && _settings.SearchHistory.Count > 0)
+        if (_settings.Search.EnableSearchHistory && _settings.Search.SearchHistory.Count > 0)
         {
-            var maxHistory = Math.Max(0, 5 - _settings.PinnedItems.Count);
-            foreach (var historyItem in _settings.SearchHistory.Take(maxHistory))
+            var maxHistory = Math.Max(0, 5 - _settings.Search.PinnedItems.Count);
+            foreach (var historyItem in _settings.Search.SearchHistory.Take(maxHistory))
             {
                 Results.Add(historyItem.ToSearchResult());
             }
@@ -726,7 +728,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     /// </summary>
     private void UpdateGhostSuggestion()
     {
-        if (!_settings.ShowGhostSuggestions || string.IsNullOrWhiteSpace(SearchText) || !HasResults)
+        if (!_settings.Appearance.ShowGhostSuggestions || string.IsNullOrWhiteSpace(SearchText) || !HasResults)
         {
             GhostSuggestionText = string.Empty;
             return;
@@ -848,7 +850,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         // Cas spécial pour Pin
         if (action.ActionType == FileActionType.Pin)
         {
-            _settings.PinItem(result.Name, result.Path, result.Type, result.DisplayIcon);
+            _settings.Search.PinItem(result.Name, result.Path, result.Type, result.DisplayIcon);
             _settingsProvider.Save();
             ShowNotification?.Invoke(this, "⭐ Épinglé");
             UpdateAvailableActions(result); // Rafraîchir les actions
@@ -859,7 +861,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         // Cas spécial pour Unpin
         if (action.ActionType == FileActionType.Unpin)
         {
-            _settings.UnpinItem(result.Path);
+            _settings.Search.UnpinItem(result.Path);
             _settingsProvider.Save();
             ShowNotification?.Invoke(this, "📌 Désépinglé");
             UpdateAvailableActions(result); // Rafraîchir les actions
@@ -946,7 +948,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private void TogglePreview()
     {
         ShowPreviewPanel = !ShowPreviewPanel;
-        _settings.ShowPreviewPanel = ShowPreviewPanel;
+        _settings.Appearance.ShowPreviewPanel = ShowPreviewPanel;
         _settingsProvider.Save();
         
         if (ShowPreviewPanel && SelectedIndex >= 0 && SelectedIndex < Results.Count)
@@ -972,7 +974,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private void LaunchItem(SearchResult item)
     {
         // Enregistrer l'item cliqué dans l'historique (au lieu de la requête de recherche)
-        if (_settings.EnableSearchHistory && !string.IsNullOrWhiteSpace(item.Path))
+        if (_settings.Search.EnableSearchHistory && !string.IsNullOrWhiteSpace(item.Path))
         {
             var historyItem = new HistoryItem
             {
@@ -982,7 +984,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                 Icon = item.DisplayIcon,
                 LastUsed = DateTime.Now
             };
-            _settings.AddToSearchHistory(historyItem);
+            _settings.Search.AddToSearchHistory(historyItem);
             _settingsProvider.Save();
         }
         
@@ -1061,8 +1063,8 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         
         if (executionResult.ScreenCaptureMode != null)
         {
-            RequestHide?.Invoke(this, EventArgs.Empty);
-            _ = HandleScreenCaptureAsync(executionResult.ScreenCaptureMode);
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                RequestScreenCapture?.Invoke(this, executionResult.ScreenCaptureMode));
             return;
         }
         
@@ -1091,38 +1093,12 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             _ = DispatchCommandAsync(handler, fullQuery, _searchCts?.Token ?? CancellationToken.None);
     }
     
-    /// <summary>
-    /// Gère la capture d'écran de manière asynchrone après avoir caché la fenêtre.
-    /// </summary>
-    private async Task HandleScreenCaptureAsync(string mode)
-    {
-        await Task.Delay(200);
-        
-        if (mode is "snip" or "region" or "select")
-        {
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                RequestScreenCapture?.Invoke(this, mode));
-        }
-        else
-        {
-            var path = SystemControlService.TakeScreenshot();
-            if (path != null)
-            {
-                System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                {
-                    ShowNotification?.Invoke(this, "📸 Capture sauvegardée");
-                    System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{path}\"");
-                });
-            }
-        }
-    }
-    
     
     private void ShowSearchHistory()
     {
         Results.Clear();
         
-        if (_settings.SearchHistory.Count == 0)
+        if (_settings.Search.SearchHistory.Count == 0)
         {
             Results.Add(new SearchResult
             {
@@ -1134,7 +1110,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         }
         else
         {
-            foreach (var historyItem in _settings.SearchHistory)
+            foreach (var historyItem in _settings.Search.SearchHistory)
             {
                 Results.Add(historyItem.ToSearchResult());
             }
@@ -1145,7 +1121,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     
     private void ClearHistory()
     {
-        _settings.ClearSearchHistory();
+        _settings.Search.ClearSearchHistory();
         _settingsProvider.Save();
         SearchText = string.Empty;
         RequestHide?.Invoke(this, EventArgs.Empty);
@@ -1228,7 +1204,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         }
         
         // Recherche web
-        foreach (var engine in _settings.SearchEngines.Take(4))
+        foreach (var engine in _settings.Search.SearchEngines.Take(4))
         {
             Results.Add(new SearchResult 
             { 
@@ -1286,9 +1262,9 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public void ReloadSettings()
     {
         _settingsProvider.Reload();
-        ShowCategoryBadges = _settings.ShowCategoryBadges;
-        ShowSettingsButton = _settings.ShowSettingsButton;
-        ShowShortcutHints = _settings.ShowShortcutHints;
+        ShowCategoryBadges = _settings.Appearance.ShowCategoryBadges;
+        ShowSettingsButton = _settings.Appearance.ShowSettingsButton;
+        ShowShortcutHints = _settings.Appearance.ShowShortcutHints;
     }
     
     public void Reset()

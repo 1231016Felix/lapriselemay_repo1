@@ -65,6 +65,8 @@ public sealed class SystemControlExecutor : ISystemControlExecutor
             SystemControlType.Timer => ExecuteTimer(arg),
             SystemControlType.Note => ExecuteNote(arg),
             SystemControlType.Screenshot => ExecuteScreenshot(arg),
+            SystemControlType.DiskInfo => ExecuteDiskInfo(),
+            SystemControlType.ProcessKill => ExecuteProcess(arg),
             
             _ => ExecuteNormalizedCommand(command)
         };
@@ -181,6 +183,124 @@ public sealed class SystemControlExecutor : ISystemControlExecutor
         };
     }
     
+    private static SystemControlExecutionResult ExecuteDiskInfo()
+    {
+        var disks = SystemControlService.GetDiskInfo();
+        if (disks.Count == 0)
+            return new SystemControlExecutionResult
+            {
+                Handled = true,
+                ResultsToShow = [new SearchResult
+                {
+                    Name = "❌ Aucun lecteur détecté",
+                    Type = ResultType.SystemControl, DisplayIcon = "❌"
+                }]
+            };
+
+        var results = disks.Select(d =>
+        {
+            var bar = new string('█', d.UsedPercent / 10) + new string('░', 10 - d.UsedPercent / 10);
+            return new SearchResult
+            {
+                Name = $"💾 {d.Name}  {bar}  {d.UsedPercent}%",
+                Description = $"{d.FreeGB} Go libre sur {d.TotalGB} Go ({d.UsedGB} Go utilisé)",
+                Type = ResultType.SystemControl,
+                DisplayIcon = d.UsedPercent >= 90 ? "🔴" : d.UsedPercent >= 70 ? "🟡" : "🟢"
+            };
+        }).ToList();
+
+        return new SystemControlExecutionResult { Handled = true, ResultsToShow = results };
+    }
+
+    private static SystemControlExecutionResult ExecuteProcess(string? arg)
+    {
+        if (string.IsNullOrWhiteSpace(arg))
+            return new SystemControlExecutionResult
+            {
+                Handled = true,
+                ResultsToShow = [new SearchResult
+                {
+                    Name = "Usage: :process kill <nom> ou :process list <nom>",
+                    Description = "Tuer ou lister des processus par nom",
+                    Type = ResultType.SystemControl, DisplayIcon = "ℹ️"
+                }]
+            };
+
+        var parts = arg.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        var subCmd = parts[0].ToLowerInvariant();
+        var processName = parts.Length > 1 ? parts[1] : null;
+
+        if (subCmd is "kill" or "stop" or "end" && !string.IsNullOrWhiteSpace(processName))
+        {
+            var (success, killed, message) = SystemControlService.KillProcessByName(processName);
+            return new SystemControlExecutionResult
+            {
+                Handled = true,
+                ResultsToShow = [new SearchResult
+                {
+                    Name = success ? $"💀 {message}" : $"❌ {message}",
+                    Description = success ? "Processus terminé" : "Échec",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = success ? "✅" : "❌"
+                }]
+            };
+        }
+
+        if (subCmd is "list" or "find" && !string.IsNullOrWhiteSpace(processName))
+        {
+            var procs = SystemControlService.FindProcesses(processName);
+            if (procs.Length == 0)
+            {
+                foreach (var p in procs) p.Dispose();
+                return new SystemControlExecutionResult
+                {
+                    Handled = true,
+                    ResultsToShow = [new SearchResult
+                    {
+                        Name = $"Aucun processus correspondant à \"{processName}\"",
+                        Type = ResultType.SystemControl, DisplayIcon = "❌"
+                    }]
+                };
+            }
+
+            var results = procs
+                .GroupBy(p => { try { return p.ProcessName; } catch { return "?"; } })
+                .OrderByDescending(g => g.Count())
+                .Take(10)
+                .Select(g =>
+                {
+                    long memMB = 0;
+                    try { memMB = g.First().WorkingSet64 / (1024 * 1024); } catch { }
+                    return new SearchResult
+                    {
+                        Name = $"🔹 {g.Key}",
+                        Description = g.Count() == 1
+                            ? $"1 instance • ~{memMB} Mo RAM"
+                            : $"{g.Count()} instances • ~{memMB} Mo RAM (chacun)",
+                        Type = ResultType.SystemControl,
+                        DisplayIcon = "📊"
+                    };
+                }).ToList();
+
+            foreach (var p in procs) p.Dispose();
+            return new SystemControlExecutionResult { Handled = true, ResultsToShow = results };
+        }
+
+        // Raccourci : si l'arg est juste un nom (sans kill/list), traiter comme kill
+        var directResult = SystemControlService.KillProcessByName(arg);
+        return new SystemControlExecutionResult
+        {
+            Handled = true,
+            ResultsToShow = [new SearchResult
+            {
+                Name = directResult.Success ? $"💀 {directResult.Message}" : $"❌ {directResult.Message}",
+                Description = directResult.Success ? "Processus terminé" : "Échec",
+                Type = ResultType.SystemControl,
+                DisplayIcon = directResult.Success ? "✅" : "❌"
+            }]
+        };
+    }
+    
     /// <summary>
     /// Normalise la commande depuis le préfixe personnalisé vers le format standard
     /// attendu par SystemControlService, puis exécute.
@@ -267,6 +387,8 @@ public sealed class SystemControlExecutor : ISystemControlExecutor
             SystemControlType.FlushDns => "flushdns",
             SystemControlType.OpenStartupFolder => "startup",
             SystemControlType.OpenHostsFile => "hosts",
+            SystemControlType.ProcessKill => "process",
+            SystemControlType.DiskInfo => "disk",
             _ => prefix
         };
         

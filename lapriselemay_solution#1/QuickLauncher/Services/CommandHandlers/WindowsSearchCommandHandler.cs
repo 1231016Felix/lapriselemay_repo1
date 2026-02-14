@@ -1,4 +1,4 @@
-using QuickLauncher.Models;
+﻿using QuickLauncher.Models;
 
 namespace QuickLauncher.Services.CommandHandlers;
 
@@ -9,10 +9,12 @@ namespace QuickLauncher.Services.CommandHandlers;
 public sealed class WindowsSearchCommandHandler : ICommandHandler
 {
     private readonly ISettingsProvider _settingsProvider;
+    private readonly UniversalSearchService _universalSearchService;
 
-    public WindowsSearchCommandHandler(ISettingsProvider settingsProvider)
+    public WindowsSearchCommandHandler(ISettingsProvider settingsProvider, UniversalSearchService universalSearchService)
     {
         _settingsProvider = settingsProvider;
+        _universalSearchService = universalSearchService;
     }
 
     public bool CanHandle(string query)
@@ -33,9 +35,9 @@ public sealed class WindowsSearchCommandHandler : ICommandHandler
         if (searchQuery.Length < 2)
             return new CommandResult();
 
-        UniversalSearchService.MaxSearchDepth = settings.SystemSearchDepth;
+        _universalSearchService.MaxSearchDepth = settings.Search.SystemSearchDepth;
 
-        var searchResults = await UniversalSearchService.SearchAsync(searchQuery, null, token);
+        var searchResults = await _universalSearchService.SearchAsync(searchQuery, null, token);
 
         if (token.IsCancellationRequested)
             return new CommandResult();

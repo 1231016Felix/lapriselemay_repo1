@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using QuickLauncher.Models;
 
 namespace QuickLauncher.Services;
@@ -30,12 +30,12 @@ public sealed class NotesService
         
         var note = new NoteItem
         {
-            Id = Settings.Notes.Count > 0 ? Settings.Notes.Max(n => n.Id) + 1 : 1,
+            Id = Settings.Integrations.Notes.Count > 0 ? Settings.Integrations.Notes.Max(n => n.Id) + 1 : 1,
             Content = content.Trim(),
             CreatedAt = DateTime.Now
         };
         
-        _settingsProvider.Update(s => s.Notes.Insert(0, note));
+        _settingsProvider.Update(s => s.Integrations.Notes.Insert(0, note));
         
         NotesChanged?.Invoke(this, EventArgs.Empty);
         Debug.WriteLine($"[Notes] Ajoutée: {note.Content}");
@@ -48,10 +48,10 @@ public sealed class NotesService
     /// </summary>
     public bool DeleteNote(int id)
     {
-        var note = Settings.Notes.FirstOrDefault(n => n.Id == id);
+        var note = Settings.Integrations.Notes.FirstOrDefault(n => n.Id == id);
         if (note != null)
         {
-            _settingsProvider.Update(s => s.Notes.Remove(note));
+            _settingsProvider.Update(s => s.Integrations.Notes.Remove(note));
             NotesChanged?.Invoke(this, EventArgs.Empty);
             Debug.WriteLine($"[Notes] Supprimée: {note.Content}");
             return true;
@@ -64,7 +64,7 @@ public sealed class NotesService
     /// </summary>
     public void ClearAllNotes()
     {
-        _settingsProvider.Update(s => s.Notes.Clear());
+        _settingsProvider.Update(s => s.Integrations.Notes.Clear());
         NotesChanged?.Invoke(this, EventArgs.Empty);
         Debug.WriteLine("[Notes] Toutes les notes supprimées");
     }
@@ -72,7 +72,7 @@ public sealed class NotesService
     /// <summary>
     /// Retourne toutes les notes.
     /// </summary>
-    public IReadOnlyList<NoteItem> GetAllNotes() => Settings.Notes.AsReadOnly();
+    public IReadOnlyList<NoteItem> GetAllNotes() => Settings.Integrations.Notes.AsReadOnly();
     
     /// <summary>
     /// Recherche dans les notes.
@@ -80,9 +80,9 @@ public sealed class NotesService
     public IEnumerable<NoteItem> SearchNotes(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
-            return Settings.Notes;
+            return Settings.Integrations.Notes;
         
-        return Settings.Notes.Where(n => 
+        return Settings.Integrations.Notes.Where(n => 
             n.Content.Contains(query, StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -36,10 +36,7 @@ public enum AnimationStyle
 /// <summary>
 /// Agrégateur de paramètres. Regroupe les sections spécialisées et gère
 /// la sérialisation / migration du format JSON.
-/// 
-/// Les propriétés proxy [JsonIgnore] permettent la compatibilité ascendante :
-/// le code existant peut continuer d'écrire _settings.MaxResults au lieu de
-/// _settings.Search.MaxResults. Les nouvelles classes doivent utiliser les sections.
+/// Tout accès aux paramètres passe par les sections : Search, Appearance, Integrations.
 /// </summary>
 public sealed class AppSettings
 {
@@ -86,91 +83,6 @@ public sealed class AppSettings
     public bool SingleClickLaunch { get; set; }
     
     // ══════════════════════════════════════════════════════════
-    //  PROXIES DE COMPATIBILITÉ — Search
-    //  Permet à l'ancien code d'écrire _settings.MaxResults etc.
-    //  TODO: migrer progressivement vers _settings.Search.MaxResults
-    // ══════════════════════════════════════════════════════════
-    
-    [JsonIgnore] public int MaxResults { get => Search.MaxResults; set => Search.MaxResults = value; }
-    [JsonIgnore] public int SearchDepth { get => Search.SearchDepth; set => Search.SearchDepth = value; }
-    [JsonIgnore] public bool IndexHiddenFolders { get => Search.IndexHiddenFolders; set => Search.IndexHiddenFolders = value; }
-    [JsonIgnore] public bool IndexBrowserBookmarks { get => Search.IndexBrowserBookmarks; set => Search.IndexBrowserBookmarks = value; }
-    [JsonIgnore] public bool EnableAliases { get => Search.EnableAliases; set => Search.EnableAliases = value; }
-    [JsonIgnore] public int SystemSearchDepth { get => Search.SystemSearchDepth; set => Search.SystemSearchDepth = value; }
-    [JsonIgnore] public bool EnableSearchHistory { get => Search.EnableSearchHistory; set => Search.EnableSearchHistory = value; }
-    [JsonIgnore] public int MaxSearchHistory { get => Search.MaxSearchHistory; set => Search.MaxSearchHistory = value; }
-    [JsonIgnore] public List<HistoryItem> SearchHistory { get => Search.SearchHistory; set => Search.SearchHistory = value; }
-    [JsonIgnore] public ScoringWeights ScoringWeights { get => Search.ScoringWeights; set => Search.ScoringWeights = value; }
-    [JsonIgnore] public List<string> IndexedFolders { get => Search.IndexedFolders; set => Search.IndexedFolders = value; }
-    [JsonIgnore] public List<string> FileExtensions { get => Search.FileExtensions; set => Search.FileExtensions = value; }
-    [JsonIgnore] public List<PinnedItem> PinnedItems { get => Search.PinnedItems; set => Search.PinnedItems = value; }
-    [JsonIgnore] public List<CustomScript> Scripts { get => Search.Scripts; set => Search.Scripts = value; }
-    [JsonIgnore] public List<WebSearchEngine> SearchEngines { get => Search.SearchEngines; set => Search.SearchEngines = value; }
-    [JsonIgnore] public bool EnableFileWatcher { get => Search.EnableFileWatcher; set => Search.EnableFileWatcher = value; }
-    [JsonIgnore] public bool AutoReindexEnabled { get => Search.AutoReindexEnabled; set => Search.AutoReindexEnabled = value; }
-    [JsonIgnore] public AutoReindexMode AutoReindexMode { get => Search.AutoReindexMode; set => Search.AutoReindexMode = value; }
-    [JsonIgnore] public int AutoReindexIntervalMinutes { get => Search.AutoReindexIntervalMinutes; set => Search.AutoReindexIntervalMinutes = value; }
-    [JsonIgnore] public string AutoReindexScheduledTime { get => Search.AutoReindexScheduledTime; set => Search.AutoReindexScheduledTime = value; }
-
-    // ══════════════════════════════════════════════════════════
-    //  PROXIES DE COMPATIBILITÉ — Appearance
-    // ══════════════════════════════════════════════════════════
-    
-    [JsonIgnore] public string Theme { get => Appearance.Theme; set => Appearance.Theme = value; }
-    [JsonIgnore] public ThemeMode ThemeMode { get => Appearance.ThemeMode; set => Appearance.ThemeMode = value; }
-    [JsonIgnore] public string AccentColor { get => Appearance.AccentColor; set => Appearance.AccentColor = value; }
-    [JsonIgnore] public double WindowOpacity { get => Appearance.WindowOpacity; set => Appearance.WindowOpacity = value; }
-    [JsonIgnore] public string WindowPosition { get => Appearance.WindowPosition; set => Appearance.WindowPosition = value; }
-    [JsonIgnore] public double? LastWindowLeft { get => Appearance.LastWindowLeft; set => Appearance.LastWindowLeft = value; }
-    [JsonIgnore] public double? LastWindowTop { get => Appearance.LastWindowTop; set => Appearance.LastWindowTop = value; }
-    [JsonIgnore] public bool ShowInTaskbar { get => Appearance.ShowInTaskbar; set => Appearance.ShowInTaskbar = value; }
-    [JsonIgnore] public bool ShowSettingsButton { get => Appearance.ShowSettingsButton; set => Appearance.ShowSettingsButton = value; }
-    [JsonIgnore] public bool ShowPreviewPanel { get => Appearance.ShowPreviewPanel; set => Appearance.ShowPreviewPanel = value; }
-    [JsonIgnore] public bool ShowShortcutHints { get => Appearance.ShowShortcutHints; set => Appearance.ShowShortcutHints = value; }
-    [JsonIgnore] public bool ShowCategoryBadges { get => Appearance.ShowCategoryBadges; set => Appearance.ShowCategoryBadges = value; }
-    [JsonIgnore] public bool ShowIndexingStatus { get => Appearance.ShowIndexingStatus; set => Appearance.ShowIndexingStatus = value; }
-    [JsonIgnore] public bool ShowGhostSuggestions { get => Appearance.ShowGhostSuggestions; set => Appearance.ShowGhostSuggestions = value; }
-    [JsonIgnore] public bool EnableAnimations { get => Appearance.EnableAnimations; set => Appearance.EnableAnimations = value; }
-    [JsonIgnore] public int AnimationDurationMs { get => Appearance.AnimationDurationMs; set => Appearance.AnimationDurationMs = value; }
-    [JsonIgnore] public AnimationStyle AnimationStyle { get => Appearance.AnimationStyle; set => Appearance.AnimationStyle = value; }
-    [JsonIgnore] public int StaggerDelayMs { get => Appearance.StaggerDelayMs; set => Appearance.StaggerDelayMs = value; }
-    [JsonIgnore] public string AutoThemeLightStart { get => Appearance.AutoThemeLightStart; set => Appearance.AutoThemeLightStart = value; }
-    [JsonIgnore] public string AutoThemeDarkStart { get => Appearance.AutoThemeDarkStart; set => Appearance.AutoThemeDarkStart = value; }
-    [JsonIgnore] public string LightThemeStartTime { get => Appearance.LightThemeStartTime; set => Appearance.LightThemeStartTime = value; }
-    [JsonIgnore] public string DarkThemeStartTime { get => Appearance.DarkThemeStartTime; set => Appearance.DarkThemeStartTime = value; }
-    
-    // ══════════════════════════════════════════════════════════
-    //  PROXIES DE COMPATIBILITÉ — Integrations
-    // ══════════════════════════════════════════════════════════
-    
-    [JsonIgnore] public string WeatherCity { get => Integrations.WeatherCity; set => Integrations.WeatherCity = value; }
-    [JsonIgnore] public string WeatherUnit { get => Integrations.WeatherUnit; set => Integrations.WeatherUnit = value; }
-    [JsonIgnore] public string TranslateTargetLang { get => Integrations.TranslateTargetLang; set => Integrations.TranslateTargetLang = value; }
-    [JsonIgnore] public string TranslateSourceLang { get => Integrations.TranslateSourceLang; set => Integrations.TranslateSourceLang = value; }
-    [JsonIgnore] public string AiProvider { get => Integrations.AiProvider; set => Integrations.AiProvider = value; }
-    [JsonIgnore] public string AiApiUrl { get => Integrations.AiApiUrl; set => Integrations.AiApiUrl = value; }
-    [JsonIgnore] public string AiApiKey { get => Integrations.AiApiKey; set => Integrations.AiApiKey = value; }
-    [JsonIgnore] public string AiModel { get => Integrations.AiModel; set => Integrations.AiModel = value; }
-    [JsonIgnore] public string AiSystemPrompt { get => Integrations.AiSystemPrompt; set => Integrations.AiSystemPrompt = value; }
-    [JsonIgnore] public List<NoteWidgetInfo> NoteWidgets { get => Integrations.NoteWidgets; set => Integrations.NoteWidgets = value; }
-    [JsonIgnore] public List<TimerWidgetInfo> TimerWidgets { get => Integrations.TimerWidgets; set => Integrations.TimerWidgets = value; }
-    [JsonIgnore] public List<NoteItem> Notes { get => Integrations.Notes; set => Integrations.Notes = value; }
-
-    // ══════════════════════════════════════════════════════════
-    //  MÉTHODES PROXY DE COMPATIBILITÉ — Delegated to Search
-    // ══════════════════════════════════════════════════════════
-    
-    public void PinItem(string name, string path, ResultType type, string? icon = null)
-        => Search.PinItem(name, path, type, icon);
-    
-    public bool UnpinItem(string path) => Search.UnpinItem(path);
-    public bool IsPinned(string path) => Search.IsPinned(path);
-    public void MovePinnedItemUp(string path) => Search.MovePinnedItemUp(path);
-    public void MovePinnedItemDown(string path) => Search.MovePinnedItemDown(path);
-    public void AddToSearchHistory(HistoryItem item) => Search.AddToSearchHistory(item);
-    public void ClearSearchHistory() => Search.ClearSearchHistory();
-    
-    // ══════════════════════════════════════════════════════════
     //  COMMANDES SYSTÈME (migration et réinitialisation)
     // ══════════════════════════════════════════════════════════
     
@@ -209,7 +121,7 @@ public sealed class AppSettings
             if (settings != null)
             {
                 settings.MigrateSystemCommands();
-                System.Diagnostics.Debug.WriteLine($"[Settings] Chargé avec {settings.PinnedItems.Count} épingles (format: {(isNewFormat ? "v2" : "legacy→v2")})");
+                System.Diagnostics.Debug.WriteLine($"[Settings] Chargé avec {settings.Search.PinnedItems.Count} épingles (format: {(isNewFormat ? "v2" : "legacy→v2")})");
                 return settings;
             }
         }
@@ -350,7 +262,7 @@ public sealed class AppSettings
             Directory.CreateDirectory(SettingsDir);
             var json = JsonSerializer.Serialize(this, JsonOptions);
             File.WriteAllText(SettingsPath, json);
-            System.Diagnostics.Debug.WriteLine($"[Settings] Sauvegardé avec {PinnedItems.Count} épingles");
+            System.Diagnostics.Debug.WriteLine($"[Settings] Sauvegardé avec {Search.PinnedItems.Count} épingles");
         }
         catch (Exception ex)
         {
@@ -417,7 +329,11 @@ public sealed class AppSettings
         new() { Type = SystemControlType.OpenPowerShellAdmin, Name = "PowerShell Admin", Prefix = "powershell", Icon = "🔵", Category = "Système", Description = "Ouvrir PowerShell (admin)" },
         new() { Type = SystemControlType.RestartExplorer, Name = "Redém. Explorer", Prefix = "restartexplorer", Icon = "📁", Category = "Système", Description = "Redémarrer l'Explorateur Windows" },
         new() { Type = SystemControlType.OpenStartupFolder, Name = "Démarrage", Prefix = "startup", Icon = "🚀", Category = "Système", Description = "Ouvrir le dossier de démarrage Windows" },
-        new() { Type = SystemControlType.OpenHostsFile, Name = "Fichier hosts", Prefix = "hosts", Icon = "📝", Category = "Système", Description = "Ouvrir le fichier hosts (admin)" }
+        new() { Type = SystemControlType.OpenHostsFile, Name = "Fichier hosts", Prefix = "hosts", Icon = "📝", Category = "Système", Description = "Ouvrir le fichier hosts (admin)" },
+        new() { Type = SystemControlType.ProcessKill, Name = "Tuer processus", Prefix = "process", Icon = "💀", Category = "Système",
+                Description = "Tuer un processus par nom (ex: :process kill notepad)", RequiresArgument = true, ArgumentHint = "kill <nom>" },
+        new() { Type = SystemControlType.DiskInfo, Name = "Espace disque", Prefix = "disk", Icon = "💾", Category = "Système",
+                Description = "Afficher l'espace disque disponible" }
     ];
 }
 
@@ -547,7 +463,8 @@ public enum SystemControlType
     OpenCmdAdmin = 17, OpenPowerShellAdmin = 18, RestartExplorer = 19,
     SystemSearch = 20, Timer = 21, Timers = 22, Note = 23, Notes = 24,
     OpenStartupFolder = 25, OpenHostsFile = 26,
-    Weather = 27, Translate = 28, AiChat = 29
+    Weather = 27, Translate = 28, AiChat = 29,
+    ProcessKill = 30, DiskInfo = 31
 }
 
 public sealed class SystemControlCommand
