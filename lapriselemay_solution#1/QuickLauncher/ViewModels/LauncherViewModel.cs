@@ -289,6 +289,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         // Vérifier les commandes de contrôle système (inclut les commandes applicatives)
         if (IsSystemControlCommand(queryLower))
         {
+            Results.Clear();
             AddSystemControlSuggestions(queryLower);
             FinalizeResults();
             return;
@@ -360,9 +361,46 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     {
         var enabledCommands = _settings.SystemCommands.Where(c => c.IsEnabled).ToList();
         
-        // Ajouter les suggestions correspondantes
+        // Déterminer si la requête contient un argument (ex: ":sc snip" → arg = "snip")
+        var parts = query.Split(' ', 2);
+        var cmdPrefix = parts[0].TrimStart(':');
+        var arg = parts.Length > 1 ? parts[1] : null;
+        
+        // Trouver la commande exacte correspondant au préfixe
+        var matchedCmd = enabledCommands.FirstOrDefault(c => 
+            c.Prefix.Equals(cmdPrefix, StringComparison.OrdinalIgnoreCase));
+        
+        // Si on a une commande exacte avec argument, ne générer QUE le résultat exécutable
+        // (pas de suggestions de préfixe ni de sous-commandes, on sait ce que l'utilisateur veut)
+        if (matchedCmd != null && arg != null)
+        {
+            AddExecutableResult(matchedCmd, arg, query);
+            return;
+        }
+        
+        // Ensemble des types déjà ajoutés via le builder, pour éviter les doublons
+        var typesFromBuilder = new HashSet<SystemControlType>();
+        
+        // Si on a une commande exacte SANS argument, ajouter le résultat exécutable en premier
+        if (matchedCmd != null)
+        {
+            var suggestions = _suggestionBuilder.Build(matchedCmd, null, query);
+            if (suggestions is { Count: > 0 })
+            {
+                foreach (var s in suggestions)
+                    Results.Add(s);
+                typesFromBuilder.Add(matchedCmd.Type);
+            }
+        }
+        
+        // Ajouter les suggestions de préfixe partiel (pour les commandes dont le préfixe
+        // commence par la saisie, ex: ":s" → ":sc", ":settings", ":sleep", ...)
         foreach (var cmd in enabledCommands)
         {
+            // Ne pas dupliquer la commande déjà traitée par le builder
+            if (typesFromBuilder.Contains(cmd.Type))
+                continue;
+            
             var prefix = $":{cmd.Prefix}";
             var displayName = cmd.RequiresArgument 
                 ? $":{cmd.Prefix} {cmd.ArgumentHint}" 
@@ -392,22 +430,6 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                         Path = snipName
                     });
                 }
-            }
-        }
-
-        // Traitement des commandes avec arguments
-        var parts = query.Split(' ', 2);
-        if (parts.Length >= 1)
-        {
-            var cmdPrefix = parts[0].TrimStart(':');
-            var arg = parts.Length > 1 ? parts[1] : null;
-            
-            var matchedCmd = enabledCommands.FirstOrDefault(c => 
-                c.Prefix.Equals(cmdPrefix, StringComparison.OrdinalIgnoreCase));
-            
-            if (matchedCmd != null)
-            {
-                AddExecutableResult(matchedCmd, arg, query);
             }
         }
     }

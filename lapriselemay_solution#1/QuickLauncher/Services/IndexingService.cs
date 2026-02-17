@@ -193,11 +193,12 @@ public sealed partial class IndexingService : IDisposable
                 });
             }
             
-            // Dédupliquer par (nom + type) pour éviter de masquer des fichiers différents portant le même nom.
-            // On regroupe uniquement les items qui ont le même nom ET le même type (ex: 2 raccourcis "Chrome").
-            // Les items de types différents avec le même nom sont conservés (ex: "Config" fichier + "Config" dossier).
+            // Dédupliquer par (nom + catégorie de type) pour éviter de masquer des fichiers différents portant le même nom.
+            // Application et StoreApp sont regroupés dans la même catégorie car un même programme
+            // peut apparaître via shell:AppsFolder (StoreApp) ET via un raccourci .lnk (Application).
+            // Les items de catégories différentes avec le même nom sont conservés (ex: "Config" fichier + "Config" dossier).
             var deduplicated = items
-                .GroupBy(i => (Name: i.Name.ToLowerInvariant(), i.Type))
+                .GroupBy(i => (Name: i.Name.ToLowerInvariant(), TypeCategory: GetDeduplicationCategory(i.Type)))
                 .Select(g => g.OrderByDescending(i => i.Type == ResultType.StoreApp ? 1 : 0)
                               .ThenByDescending(i => i.UseCount)
                               .First())
@@ -392,6 +393,18 @@ public sealed partial class IndexingService : IDisposable
     // Search(), CalculateScore() et TryCalculate() ont été déplacés
     // vers SearchService et CalculatorService (Amélioration #3 et #7).
     // Utiliser SearchService.Search() à la place.
+    
+    /// <summary>
+    /// Retourne une catégorie de type pour la déduplication.
+    /// Application et StoreApp sont fusionnés car un même programme peut apparaître
+    /// via shell:AppsFolder (StoreApp) ET via un raccourci .lnk (Application).
+    /// </summary>
+    private static ResultType GetDeduplicationCategory(ResultType type) => type switch
+    {
+        ResultType.Application => ResultType.Application,
+        ResultType.StoreApp => ResultType.Application, // Même catégorie que Application
+        _ => type
+    };
     
     public void RecordUsage(SearchResult item)
     {

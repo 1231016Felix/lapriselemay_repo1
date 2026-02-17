@@ -750,9 +750,15 @@ public partial class LauncherWindow : Window
         switch (e.Key)
         {
             case Key.Tab:
-                // Accepter la suggestion fantôme (ghost suggestion)
+                // Priorité 1 : accepter la suggestion fantôme (ghost suggestion)
                 if (_viewModel.AcceptGhostSuggestion())
                 {
+                    e.Handled = true;
+                }
+                // Priorité 2 : ouvrir le menu contextuel sur l'item sélectionné
+                else if (_viewModel.SelectedIndex >= 0 && _viewModel.SelectedIndex < _viewModel.Results.Count)
+                {
+                    OpenContextMenuOnSelectedItem();
                     e.Handled = true;
                 }
                 break;
@@ -779,11 +785,13 @@ public partial class LauncherWindow : Window
                 
             case Key.Down:
                 _viewModel.MoveSelection(1);
+                ScrollSelectedItemIntoView();
                 e.Handled = true;
                 break;
                 
             case Key.Up:
                 _viewModel.MoveSelection(-1);
+                ScrollSelectedItemIntoView();
                 e.Handled = true;
                 break;
                 
@@ -936,6 +944,19 @@ public partial class LauncherWindow : Window
             hwndSource.CompositionTarget.RenderMode = RenderMode.Default;
         
         CenterOnScreen();
+    }
+    
+    /// <summary>
+    /// Fait défiler la liste pour rendre l'item sélectionné visible.
+    /// Appelé après MoveSelection pour que les flèches Haut/Bas
+    /// scrollent automatiquement la liste.
+    /// </summary>
+    private void ScrollSelectedItemIntoView()
+    {
+        if (_viewModel.SelectedIndex >= 0 && _viewModel.SelectedIndex < _viewModel.Results.Count)
+        {
+            ResultsList.ScrollIntoView(_viewModel.Results[_viewModel.SelectedIndex]);
+        }
     }
     
     private void CenterOnScreen()
@@ -1182,6 +1203,24 @@ public partial class LauncherWindow : Window
     #endregion
 
     #region Context Menu Handlers
+
+    /// <summary>
+    /// Ouvre le menu contextuel sur l'item actuellement sélectionné dans la liste.
+    /// Utilisé par la touche Tab pour permettre la navigation 100% clavier.
+    /// </summary>
+    private void OpenContextMenuOnSelectedItem()
+    {
+        var container = ResultsList.ItemContainerGenerator.ContainerFromIndex(_viewModel.SelectedIndex) as ListBoxItem;
+        if (container == null) return;
+
+        // Récupérer ou créer le menu contextuel pour cet item
+        var contextMenu = container.ContextMenu ?? FindResource("ResultContextMenu") as ContextMenu;
+        if (contextMenu == null) return;
+
+        contextMenu.PlacementTarget = container;
+        contextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        contextMenu.IsOpen = true;
+    }
 
     /// <summary>
     /// Génère dynamiquement le menu contextuel en fonction du résultat sélectionné.
