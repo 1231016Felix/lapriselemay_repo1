@@ -15,11 +15,16 @@ public sealed partial class IndexingService : IDisposable
 {
     private readonly string _dbPath;
     private readonly string _connectionString;
-    private readonly ConcurrentDictionary<string, SearchResult> _cache = new();
+    // Amélioration #5 : OrdinalIgnoreCase pour éviter les doublons sur des paths de casses différentes (Windows)
+    private readonly ConcurrentDictionary<string, SearchResult> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _indexLock = new(1, 1);
     private readonly ILogger _logger;
     private readonly ISettingsProvider _settingsProvider;
     private readonly FolderFingerprintService _fingerprintService;
+    
+    // Amélioration #2 : connexion SQLite persistante pour éviter d'ouvrir/fermer à chaque opération
+    private readonly SqliteConnection _persistentConnection;
+    private readonly object _dbLock = new();
     
     private CancellationTokenSource? _indexingCts;
     private bool _disposed;
@@ -48,8 +53,17 @@ public sealed partial class IndexingService : IDisposable
         
         Directory.CreateDirectory(appData);
         _dbPath = Path.Combine(appData, Constants.DatabaseFileName);
-        // Microsoft.Data.Sqlite utilise une syntaxe de connexion différente
         _connectionString = $"Data Source={_dbPath};Mode=ReadWriteCreate;Cache=Shared";
+        
+        // Amélioration #2 : connexion persistante en mode WAL pour les opérations fréquentes
+        // (RecordUsage, AddOrUpdateItem, RemoveItem)
+        _persistentConnection = new SqliteConnection(_connectionString);
+        _persistentConnection.Open();
+        using (var pragmaCmd = _persistentConnection.CreateCommand())
+        {
+            pragmaCmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
+            pragmaCmd.ExecuteNonQuery();
+        }
         
         InitializeDatabase();
         LoadCacheFromDatabase();
@@ -293,7 +307,12 @@ public sealed partial class IndexingService : IDisposable
                 Type = type 
             };
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            // Amélioration #6 : logger les erreurs au lieu de les avaler silencieusement
+            _logger.Warning($"Erreur CreateSearchResult '{filePath}': {ex.Message}");
+            return null;
+        }
     }
     
     private async Task SaveToDatabaseAsync(List<SearchResult> items, CancellationToken token)
@@ -317,6 +336,9 @@ public sealed partial class IndexingService : IDisposable
             var descParam = cmd.Parameters.Add("@desc", SqliteType.Text);
             var typeParam = cmd.Parameters.Add("@type", SqliteType.Integer);
             var indexedParam = cmd.Parameters.Add("@indexed", SqliteType.Text);
+            
+            // Pré-compiler la requête pour éviter le re-parse à chaque itération
+            cmd.Prepare();
             
             var now = DateTime.UtcNow.ToString("o");
             var progress = 0;
@@ -358,6 +380,10 @@ public sealed partial class IndexingService : IDisposable
         await cmd.ExecuteNonQueryAsync(cancellationToken);
         
         _cache.Clear();
+        
+        // Purger le cache de distances fuzzy pour éviter l'accumulation d'entrées périmées
+        SearchAlgorithms.ClearCache();
+        
         await StartIndexingAsync(cancellationToken);
     }
     
@@ -371,14 +397,15 @@ public sealed partial class IndexingService : IDisposable
     {
         try
         {
-            using var conn = new SqliteConnection(_connectionString);
-            conn.Open();
-            
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "UPDATE Items SET UseCount = UseCount + 1, LastUsed = @now WHERE Path = @path";
-            cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
-            cmd.Parameters.AddWithValue("@path", item.Path);
-            cmd.ExecuteNonQuery();
+            // Amélioration #2 : utilise la connexion persistante (pas d'ouverture/fermeture)
+            lock (_dbLock)
+            {
+                using var cmd = _persistentConnection.CreateCommand();
+                cmd.CommandText = "UPDATE Items SET UseCount = UseCount + 1, LastUsed = @now WHERE Path = @path";
+                cmd.Parameters.AddWithValue("@now", DateTime.UtcNow.ToString("o"));
+                cmd.Parameters.AddWithValue("@path", item.Path);
+                cmd.ExecuteNonQuery();
+            }
             
             if (_cache.TryGetValue(item.Path, out var cached))
             {
@@ -406,26 +433,25 @@ public sealed partial class IndexingService : IDisposable
             var result = CreateSearchResult(filePath);
             if (result == null) return;
             
-            using var conn = new SqliteConnection(_connectionString);
-            conn.Open();
+            // Amélioration #2 : connexion persistante
+            lock (_dbLock)
+            {
+                using var cmd = _persistentConnection.CreateCommand();
+                cmd.CommandText = """
+                    INSERT OR REPLACE INTO Items (Path, Name, Description, Type, UseCount, IndexedAt)
+                    VALUES (@path, @name, @desc, @type, 
+                        COALESCE((SELECT UseCount FROM Items WHERE Path = @path), 0), 
+                        @indexed)
+                    """;
+                cmd.Parameters.AddWithValue("@path", result.Path);
+                cmd.Parameters.AddWithValue("@name", result.Name);
+                cmd.Parameters.AddWithValue("@desc", result.Description);
+                cmd.Parameters.AddWithValue("@type", (int)result.Type);
+                cmd.Parameters.AddWithValue("@indexed", DateTime.UtcNow.ToString("o"));
+                cmd.ExecuteNonQuery();
+            }
             
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = """
-                INSERT OR REPLACE INTO Items (Path, Name, Description, Type, UseCount, IndexedAt)
-                VALUES (@path, @name, @desc, @type, 
-                    COALESCE((SELECT UseCount FROM Items WHERE Path = @path), 0), 
-                    @indexed)
-                """;
-            cmd.Parameters.AddWithValue("@path", result.Path);
-            cmd.Parameters.AddWithValue("@name", result.Name);
-            cmd.Parameters.AddWithValue("@desc", result.Description);
-            cmd.Parameters.AddWithValue("@type", (int)result.Type);
-            cmd.Parameters.AddWithValue("@indexed", DateTime.UtcNow.ToString("o"));
-            cmd.ExecuteNonQuery();
-            
-            // Mettre à jour le cache
             _cache[result.Path] = result;
-            
             _logger.Info($"[Incremental] Ajouté/MàJ: {result.Name}");
         }
         catch (Exception ex)
@@ -443,18 +469,17 @@ public sealed partial class IndexingService : IDisposable
         
         try
         {
-            using var conn = new SqliteConnection(_connectionString);
-            conn.Open();
+            int affected;
+            // Amélioration #2 : connexion persistante
+            lock (_dbLock)
+            {
+                using var cmd = _persistentConnection.CreateCommand();
+                cmd.CommandText = "DELETE FROM Items WHERE Path = @path";
+                cmd.Parameters.AddWithValue("@path", filePath);
+                affected = cmd.ExecuteNonQuery();
+            }
             
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "DELETE FROM Items WHERE Path = @path";
-            cmd.Parameters.AddWithValue("@path", filePath);
-            var affected = cmd.ExecuteNonQuery();
-            
-            // Retirer du cache
             _cache.TryRemove(filePath, out _);
-            
-            // Invalider le cache d'icône
             IconCacheService.Invalidate(filePath);
             
             if (affected > 0)
@@ -626,13 +651,15 @@ public sealed partial class IndexingService : IDisposable
         {
             try
             {
-                using var conn = new SqliteConnection(_connectionString);
-                conn.Open();
-                using var cmd = conn.CreateCommand();
-                cmd.CommandText = "DELETE FROM Items WHERE Path LIKE @prefix";
-                cmd.Parameters.AddWithValue("@prefix", normalizedFolder + "%");
-                var deleted = cmd.ExecuteNonQuery();
-                _logger.Info($"[SmartIndex] Supprimé {deleted} items de '{Path.GetFileName(normalizedFolder)}'");
+                // Amélioration #2 : connexion persistante
+                lock (_dbLock)
+                {
+                    using var cmd = _persistentConnection.CreateCommand();
+                    cmd.CommandText = "DELETE FROM Items WHERE Path LIKE @prefix";
+                    cmd.Parameters.AddWithValue("@prefix", normalizedFolder + "%");
+                    var deleted = cmd.ExecuteNonQuery();
+                    _logger.Info($"[SmartIndex] Supprimé {deleted} items de '{Path.GetFileName(normalizedFolder)}'");
+                }
             }
             catch (Exception ex)
             {
@@ -750,8 +777,12 @@ public sealed partial class IndexingService : IDisposable
         CancelIndexing();
         _indexLock.Dispose();
         _cache.Clear();
-        // Note: _fingerprintService est disposé par le conteneur DI
         
+        // Amélioration #2 : fermer la connexion persistante
+        try { _persistentConnection.Close(); _persistentConnection.Dispose(); }
+        catch { /* Ignore en shutdown */ }
+        
+        // Note: _fingerprintService est disposé par le conteneur DI
         GC.SuppressFinalize(this);
     }
 }

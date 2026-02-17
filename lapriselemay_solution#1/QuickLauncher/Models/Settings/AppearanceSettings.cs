@@ -14,13 +14,21 @@ public sealed class AppearanceSettings
     public string AutoThemeLightStart { get; set; } = "07:00";
     public string AutoThemeDarkStart { get; set; } = "19:00";
     
-    // Rétro-compatibilité (ancien format, même valeurs)
-    public string LightThemeStartTime { get; set; } = "07:00";
-    public string DarkThemeStartTime { get; set; } = "19:00";
+    // Rétro-compatibilité : redirige vers AutoThemeLightStart/AutoThemeDarkStart
+    public string LightThemeStartTime
+    {
+        get => AutoThemeLightStart;
+        set => AutoThemeLightStart = value;
+    }
+    public string DarkThemeStartTime
+    {
+        get => AutoThemeDarkStart;
+        set => AutoThemeDarkStart = value;
+    }
     
     // === Fenêtre ===
     public double WindowOpacity { get; set; } = 1.0;
-    public string WindowPosition { get; set; } = "Center";
+    public string WindowPosition { get; set; } = "Remember";
     public double? LastWindowLeft { get; set; }
     public double? LastWindowTop { get; set; }
     public bool ShowInTaskbar { get; set; }

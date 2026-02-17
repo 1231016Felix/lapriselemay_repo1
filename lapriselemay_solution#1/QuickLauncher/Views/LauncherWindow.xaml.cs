@@ -32,6 +32,12 @@ public partial class LauncherWindow : Window
     // Flag pour désactiver le stagger des items pendant l'animation d'ouverture
     private bool _isShowAnimating;
     
+    // === Drag & Drop state ===
+    private System.Windows.Point _dragStartPoint;
+    private bool _isDragging;
+    private int _dragFromIndex = -1;
+    private Border? _dropIndicator;
+    
     // Easing functions gelées pour réutilisation (évite la recréation)
     private static readonly IEasingFunction EaseOut;
     private static readonly IEasingFunction EaseIn;
@@ -877,14 +883,11 @@ public partial class LauncherWindow : Window
     
     private void SaveWindowPosition()
     {
-        if (_settings.Appearance.WindowPosition == "Remember")
+        _settingsProvider.Update(s =>
         {
-            _settingsProvider.Update(s =>
-            {
-                s.Appearance.LastWindowLeft = Left;
-                s.Appearance.LastWindowTop = Top;
-            });
-        }
+            s.Appearance.LastWindowLeft = Left;
+            s.Appearance.LastWindowTop = Top;
+        });
     }
     
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
@@ -909,6 +912,10 @@ public partial class LauncherWindow : Window
     
     private void ResultsList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        // Ne pas lancer si on revient d'un drag & drop
+        if (_isDragging)
+            return;
+        
         // Lancement en clic simple si activé
         if (_settings.SingleClickLaunch && ResultsList.SelectedItem != null)
         {
@@ -939,33 +946,29 @@ public partial class LauncherWindow : Window
         // Marge de sécurité en bas pour ne jamais coller à la barre des tâches
         const double bottomMargin = 10;
         
-        switch (_settings.Appearance.WindowPosition)
+        if (_settings.Appearance.LastWindowLeft.HasValue && _settings.Appearance.LastWindowTop.HasValue)
         {
-            case "Remember" when _settings.Appearance.LastWindowLeft.HasValue && _settings.Appearance.LastWindowTop.HasValue:
-                var left = _settings.Appearance.LastWindowLeft.Value;
-                var top = _settings.Appearance.LastWindowTop.Value;
-                
-                if (left >= workArea.Left && left + windowWidth <= workArea.Right &&
-                    top >= workArea.Top && top + windowHeight <= workArea.Bottom)
-                {
-                    Left = left;
-                    Top = top;
-                }
-                else
-                {
-                    goto default;
-                }
-                break;
-                
-            case "Top":
-                Left = workArea.Left + (workArea.Width - windowWidth) / 2;
-                Top = workArea.Top + 60;
-                break;
-                
-            default:
+            var left = _settings.Appearance.LastWindowLeft.Value;
+            var top = _settings.Appearance.LastWindowTop.Value;
+            
+            if (left >= workArea.Left && left + windowWidth <= workArea.Right &&
+                top >= workArea.Top && top + windowHeight <= workArea.Bottom)
+            {
+                Left = left;
+                Top = top;
+            }
+            else
+            {
+                // Position sauvegardée hors écran (changement de moniteur, etc.) → centrer
                 Left = workArea.Left + (workArea.Width - windowWidth) / 2;
                 Top = workArea.Top + workArea.Height / 4;
-                break;
+            }
+        }
+        else
+        {
+            // Première ouverture, aucune position sauvegardée → centrer
+            Left = workArea.Left + (workArea.Width - windowWidth) / 2;
+            Top = workArea.Top + workArea.Height / 4;
         }
         
         // Limiter MaxHeight dynamiquement pour ne jamais dépasser la zone de travail.
@@ -974,6 +977,209 @@ public partial class LauncherWindow : Window
         var availableHeight = workArea.Bottom - Top - bottomMargin;
         MaxHeight = Math.Max(200, availableHeight);
     }
+
+    #region Drag & Drop (réordonnement des épingles)
+
+    private void ResultsList_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _dragStartPoint = e.GetPosition(ResultsList);
+        _isDragging = false;
+    }
+
+    private void ResultsList_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || _isDragging)
+            return;
+
+        // Vérifier qu'on est dans la vue épingles (pas de recherche active)
+        if (!string.IsNullOrWhiteSpace(_viewModel.SearchText))
+            return;
+
+        var pos = e.GetPosition(ResultsList);
+        var diff = pos - _dragStartPoint;
+
+        // Seuil de déplacement minimum pour éviter les faux drags
+        if (Math.Abs(diff.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(diff.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
+        // Trouver l'item sous le curseur au point de départ
+        var item = GetListBoxItemAtPoint(_dragStartPoint);
+        if (item == null) return;
+
+        var index = ResultsList.ItemContainerGenerator.IndexFromContainer(item);
+        if (index < 0 || !_viewModel.IsResultPinned(index))
+            return;
+
+        // Démarrer le drag
+        _isDragging = true;
+        _dragFromIndex = index;
+        item.Opacity = 0.4;
+
+        var data = new System.Windows.DataObject("PinnedItemIndex", index);
+        System.Windows.DragDrop.DoDragDrop(ResultsList, data, System.Windows.DragDropEffects.Move);
+
+        // Nettoyage après le drop (ou annulation)
+        item.Opacity = 1;
+        _isDragging = false;
+        _dragFromIndex = -1;
+        HideDropIndicator();
+    }
+
+    private void ResultsList_DragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent("PinnedItemIndex"))
+        {
+            e.Effects = System.Windows.DragDropEffects.None;
+            e.Handled = true;
+            return;
+        }
+
+        var pos = e.GetPosition(ResultsList);
+        var targetIndex = GetDropTargetIndex(pos);
+
+        if (targetIndex < 0 || targetIndex > _viewModel.PinnedItemCount)
+        {
+            e.Effects = System.Windows.DragDropEffects.None;
+            HideDropIndicator();
+        }
+        else
+        {
+            e.Effects = System.Windows.DragDropEffects.Move;
+            ShowDropIndicator(targetIndex);
+        }
+
+        e.Handled = true;
+    }
+
+    private void ResultsList_DragLeave(object sender, System.Windows.DragEventArgs e)
+    {
+        HideDropIndicator();
+    }
+
+    private void ResultsList_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        HideDropIndicator();
+
+        if (!e.Data.GetDataPresent("PinnedItemIndex"))
+            return;
+
+        var fromIndex = (int)e.Data.GetData("PinnedItemIndex");
+        var pos = e.GetPosition(ResultsList);
+        var toIndex = GetDropTargetIndex(pos);
+
+        if (toIndex < 0 || toIndex > _viewModel.PinnedItemCount)
+            return;
+
+        // Ajuster l'index cible si on déplace vers le bas
+        if (toIndex > fromIndex)
+            toIndex--;
+
+        if (fromIndex != toIndex && toIndex >= 0 && toIndex < _viewModel.PinnedItemCount)
+        {
+            _viewModel.ReorderPinnedItem(fromIndex, toIndex);
+        }
+    }
+
+    /// <summary>
+    /// Trouve le ListBoxItem sous un point donné dans le ResultsList.
+    /// </summary>
+    private ListBoxItem? GetListBoxItemAtPoint(System.Windows.Point point)
+    {
+        var hitResult = VisualTreeHelper.HitTest(ResultsList, point);
+        if (hitResult?.VisualHit == null) return null;
+
+        DependencyObject? current = hitResult.VisualHit;
+        while (current != null && current is not ListBoxItem)
+            current = VisualTreeHelper.GetParent(current);
+
+        return current as ListBoxItem;
+    }
+
+    /// <summary>
+    /// Calcule l'index de destination du drop en fonction de la position de la souris.
+    /// Retourne l'index *entre* les items (0 = avant le premier, N = après le dernier épinglé).
+    /// </summary>
+    private int GetDropTargetIndex(System.Windows.Point posInListBox)
+    {
+        var pinnedCount = _viewModel.PinnedItemCount;
+        if (pinnedCount == 0) return -1;
+
+        for (var i = 0; i < pinnedCount; i++)
+        {
+            var container = ResultsList.ItemContainerGenerator.ContainerFromIndex(i) as ListBoxItem;
+            if (container == null) continue;
+
+            var itemPos = container.TranslatePoint(new System.Windows.Point(0, 0), ResultsList);
+            var itemMid = itemPos.Y + container.ActualHeight / 2;
+
+            if (posInListBox.Y < itemMid)
+                return i;
+        }
+
+        return pinnedCount;
+    }
+
+    /// <summary>
+    /// Affiche un indicateur visuel (ligne horizontale) à la position de drop.
+    /// </summary>
+    private void ShowDropIndicator(int insertIndex)
+    {
+        if (_dropIndicator == null)
+        {
+            _dropIndicator = new Border
+            {
+                Height = 2,
+                CornerRadius = new CornerRadius(1),
+                IsHitTestVisible = false,
+                HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch
+            };
+            _dropIndicator.SetResourceReference(Border.BackgroundProperty, "AccentBrush");
+        }
+
+        if (!DropIndicatorCanvas.Children.Contains(_dropIndicator))
+            DropIndicatorCanvas.Children.Add(_dropIndicator);
+
+        // Calculer la position Y de l'indicateur
+        double targetY = 0;
+        var pinnedCount = _viewModel.PinnedItemCount;
+
+        if (insertIndex < pinnedCount)
+        {
+            var container = ResultsList.ItemContainerGenerator.ContainerFromIndex(insertIndex) as ListBoxItem;
+            if (container != null)
+            {
+                var pos = container.TranslatePoint(new System.Windows.Point(0, 0), DropIndicatorCanvas);
+                targetY = pos.Y;
+            }
+        }
+        else if (pinnedCount > 0)
+        {
+            // Après le dernier épinglé
+            var lastContainer = ResultsList.ItemContainerGenerator.ContainerFromIndex(pinnedCount - 1) as ListBoxItem;
+            if (lastContainer != null)
+            {
+                var pos = lastContainer.TranslatePoint(new System.Windows.Point(0, lastContainer.ActualHeight), DropIndicatorCanvas);
+                targetY = pos.Y;
+            }
+        }
+
+        Canvas.SetTop(_dropIndicator, targetY - 1);
+        Canvas.SetLeft(_dropIndicator, 8);
+        _dropIndicator.Width = ResultsList.ActualWidth - 16;
+        _dropIndicator.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Masque l'indicateur de drop.
+    /// </summary>
+    private void HideDropIndicator()
+    {
+        if (_dropIndicator != null)
+            _dropIndicator.Visibility = Visibility.Collapsed;
+    }
+
+    #endregion
 
     #region Context Menu Handlers
 

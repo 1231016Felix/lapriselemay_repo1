@@ -308,12 +308,16 @@
             <!-- Zone principale: Résultats -->
             <Grid Grid.Row="1">
                 <!-- Liste des résultats -->
+                <!-- Indicateur de drop pour le drag & drop des épingles -->
+                <Canvas x:Name="DropIndicatorCanvas" IsHitTestVisible="False" Panel.ZIndex="100"/>
+                
                 <ListBox x:Name="ResultsList"
                          ItemsSource="{Binding Results}"
                          SelectedIndex="{Binding SelectedIndex, Mode=TwoWay}"
                          AlternationCount="15"
                          Background="Transparent"
                          BorderThickness="0"
+                         AllowDrop="True"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                          VirtualizingPanel.IsVirtualizing="True"
                          VirtualizingPanel.VirtualizationMode="Recycling"
@@ -322,7 +326,12 @@
                          VirtualizingPanel.CacheLengthUnit="Page"
                          ScrollViewer.CanContentScroll="True"
                          MouseDoubleClick="ResultsList_MouseDoubleClick"
+                         PreviewMouseLeftButtonDown="ResultsList_PreviewMouseLeftButtonDown"
+                         PreviewMouseMove="ResultsList_PreviewMouseMove"
                          PreviewMouseLeftButtonUp="ResultsList_PreviewMouseLeftButtonUp"
+                         DragOver="ResultsList_DragOver"
+                         DragLeave="ResultsList_DragLeave"
+                         Drop="ResultsList_Drop"
                          Visibility="{Binding HasResults, Converter={StaticResource BoolToVis}}"
                          ScrollViewer.IsDeferredScrollingEnabled="False">
                     

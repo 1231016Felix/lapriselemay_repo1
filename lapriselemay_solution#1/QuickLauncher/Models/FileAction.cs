@@ -176,13 +176,7 @@ public static class FileActionProvider
     
     private static IEnumerable<FileAction> GetStoreAppActions()
     {
-        yield return new FileAction
-        {
-            Name = "Copier le nom",
-            Icon = "📋",
-            Description = "Copier le nom de l'application",
-            ActionType = FileActionType.CopyName
-        };
+        return [];
     }
     
     private static IEnumerable<FileAction> GetFileActions()

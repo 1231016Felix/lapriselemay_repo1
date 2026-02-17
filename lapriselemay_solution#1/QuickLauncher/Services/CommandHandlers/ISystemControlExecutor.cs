@@ -3,6 +3,19 @@ using QuickLauncher.Models;
 namespace QuickLauncher.Services.CommandHandlers;
 
 /// <summary>
+/// Actions applicatives que le ViewModel doit exécuter.
+/// </summary>
+public enum AppAction
+{
+    OpenSettings,
+    Quit,
+    Reindex,
+    ShowHistory,
+    ClearHistory,
+    ShowHelp
+}
+
+/// <summary>
 /// Résultat de l'exécution d'une commande de contrôle système.
 /// </summary>
 public sealed class SystemControlExecutionResult
@@ -21,6 +34,9 @@ public sealed class SystemControlExecutionResult
     
     /// <summary>Résultats à afficher dans la liste (null = pas de changement).</summary>
     public List<SearchResult>? ResultsToShow { get; init; }
+    
+    /// <summary>Si non-null, une action applicative doit être exécutée par le ViewModel.</summary>
+    public AppAction? AppAction { get; init; }
     
     /// <summary>Si true, la commande a été gérée par cet exécuteur.</summary>
     public bool Handled { get; init; }

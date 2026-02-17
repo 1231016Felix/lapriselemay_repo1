@@ -43,7 +43,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="Resources\**\*" />
+    <Resource Include="Resources\**\*" Exclude="Resources\**\*.xaml" />
   </ItemGroup>
 
 </Project>

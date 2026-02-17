@@ -68,6 +68,14 @@ public sealed class SystemControlExecutor : ISystemControlExecutor
             SystemControlType.DiskInfo => ExecuteDiskInfo(),
             SystemControlType.ProcessKill => ExecuteProcess(arg),
             
+            // Commandes applicatives
+            SystemControlType.AppSettings => new() { Handled = true, ShouldHide = true, AppAction = AppAction.OpenSettings },
+            SystemControlType.AppQuit => new() { Handled = true, AppAction = AppAction.Quit },
+            SystemControlType.AppReindex => new() { Handled = true, ShouldHide = true, AppAction = AppAction.Reindex },
+            SystemControlType.AppHistory => new() { Handled = true, AppAction = AppAction.ShowHistory },
+            SystemControlType.AppClearHistory => new() { Handled = true, ShouldHide = true, AppAction = AppAction.ClearHistory },
+            SystemControlType.AppHelp => new() { Handled = true, AppAction = AppAction.ShowHelp },
+            
             _ => ExecuteNormalizedCommand(command)
         };
     }

@@ -30,8 +30,10 @@ public static class SystemControlService
             
             return true;
         }
-        catch
+        catch (Exception ex)
         {
+            // Amélioration #6 : logger au lieu d'avaler
+            Debug.WriteLine($"[SystemControl] SetVolume erreur: {ex.Message}");
             return false;
         }
     }

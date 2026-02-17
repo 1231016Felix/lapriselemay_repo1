@@ -64,7 +64,13 @@ public partial class App : Application
             var indexingService = Services.GetRequiredService<IndexingService>();
             
             _logger.Info("Démarrage indexation intelligente...");
-            _ = indexingService.SmartStartIndexingAsync();
+            var fileWatcherService = Services.GetRequiredService<FileWatcherService>();
+            _ = indexingService.SmartStartIndexingAsync().ContinueWith(_ =>
+            {
+                // Démarrer le FileWatcher après l'indexation, même si elle a échoué
+                try { fileWatcherService.Start(); }
+                catch (Exception ex) { _logger.Warning($"Erreur démarrage FileWatcher: {ex.Message}"); }
+            }, TaskScheduler.FromCurrentSynchronizationContext());
             
             _logger.Info("Restauration des widgets de notes et minuteries...");
             var noteWidgetService = Services.GetRequiredService<NoteWidgetService>();

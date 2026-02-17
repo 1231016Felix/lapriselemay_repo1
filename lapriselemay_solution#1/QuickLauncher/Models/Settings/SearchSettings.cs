@@ -90,6 +90,24 @@ public sealed class SearchSettings
         PinnedItems[index + 1].Order = index + 1;
     }
     
+    /// <summary>
+    /// Déplace un item épinglé d'une position à une autre (drag & drop).
+    /// </summary>
+    public void ReorderPinnedItem(int fromIndex, int toIndex)
+    {
+        if (fromIndex < 0 || fromIndex >= PinnedItems.Count) return;
+        if (toIndex < 0 || toIndex >= PinnedItems.Count) return;
+        if (fromIndex == toIndex) return;
+        
+        var item = PinnedItems[fromIndex];
+        PinnedItems.RemoveAt(fromIndex);
+        PinnedItems.Insert(toIndex, item);
+        
+        // Recalculer tous les ordres
+        for (var i = 0; i < PinnedItems.Count; i++)
+            PinnedItems[i].Order = i;
+    }
+    
     public void AddToSearchHistory(HistoryItem item)
     {
         if (!EnableSearchHistory || item == null || string.IsNullOrWhiteSpace(item.Path)) return;

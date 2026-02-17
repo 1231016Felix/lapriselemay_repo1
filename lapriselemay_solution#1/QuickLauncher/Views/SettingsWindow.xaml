@@ -101,30 +101,141 @@
             <Setter Property="Margin" Value="0,8,0,0"/>
         </Style>
         
-        <!-- Style dark pour les ComboBox (dropdown + items) -->
+        <!-- ToggleButton utilisé à l'intérieur du ComboBox (flèche + fond) -->
+        <ControlTemplate x:Key="DarkComboBoxToggleButton" TargetType="ToggleButton">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition/>
+                    <ColumnDefinition Width="20"/>
+                </Grid.ColumnDefinitions>
+                <Border x:Name="Border" Grid.ColumnSpan="2" Background="#1E1E1E" BorderBrush="#555" BorderThickness="1" CornerRadius="3"/>
+                <Border Grid.Column="0" Background="Transparent" Margin="1"/>
+                <Path x:Name="Arrow" Grid.Column="1" Fill="#AAA" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 0 0 L 4 4 L 8 0 Z"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Border" Property="BorderBrush" Value="#0078D4"/>
+                    <Setter TargetName="Arrow" Property="Fill" Value="White"/>
+                </Trigger>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter TargetName="Border" Property="Background" Value="#2A2A2A"/>
+                    <Setter TargetName="Border" Property="BorderBrush" Value="#0078D4"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <!-- Style dark complet pour les ComboBox -->
         <Style TargetType="ComboBox">
-            <Setter Property="Background" Value="#1E1E1E"/>
             <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#1E1E1E"/>
             <Setter Property="BorderBrush" Value="#555"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton x:Name="ToggleButton"
+                                          Template="{StaticResource DarkComboBoxToggleButton}"
+                                          Focusable="False"
+                                          IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          ClickMode="Press"/>
+                            <ContentPresenter x:Name="ContentSite"
+                                              IsHitTestVisible="False"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              Margin="8,4,24,4"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="White"/>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                            <TextBox x:Name="PART_EditableTextBox"
+                                     Style="{x:Null}"
+                                     IsReadOnly="{TemplateBinding IsReadOnly}"
+                                     Visibility="Hidden"
+                                     Background="Transparent"
+                                     Foreground="White"
+                                     CaretBrush="White"
+                                     HorizontalAlignment="Left"
+                                     VerticalAlignment="Center"
+                                     Margin="8,4,24,4"
+                                     Focusable="True"/>
+                            <Popup x:Name="Popup"
+                                   Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   PopupAnimation="Slide">
+                                <Grid x:Name="DropDown"
+                                      SnapsToDevicePixels="True"
+                                      MinWidth="{TemplateBinding ActualWidth}"
+                                      MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                                    <Border x:Name="DropDownBorder"
+                                            Background="#2A2A2A"
+                                            BorderBrush="#555"
+                                            BorderThickness="1"
+                                            CornerRadius="0,0,3,3"/>
+                                    <ScrollViewer Margin="1" SnapsToDevicePixels="True">
+                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEditable" Value="True">
+                                <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="ContentSite" Property="Visibility" Value="Hidden"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
+
+        <!-- Style dark pour les items du dropdown -->
         <Style TargetType="ComboBoxItem">
             <Setter Property="Background" Value="#2A2A2A"/>
             <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Padding" Value="6,4"/>
-            <Style.Triggers>
-                <Trigger Property="IsHighlighted" Value="True">
-                    <Setter Property="Background" Value="#0078D4"/>
-                    <Setter Property="Foreground" Value="White"/>
-                </Trigger>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#3E3E3E"/>
-                    <Setter Property="Foreground" Value="White"/>
-                </Trigger>
-            </Style.Triggers>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter VerticalAlignment="Center">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="White"/>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#0078D4"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3E3E3E"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
-        
+
         <!-- Override des couleurs système pour le popup des ComboBox -->
         <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#2A2A2A"/>
         <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#0078D4"/>
@@ -182,12 +293,6 @@
                                 <TextBlock x:Name="MaxResultsValue" Text="8" Foreground="#0078D4" FontWeight="Bold" VerticalAlignment="Center" Width="25"/>
                             </StackPanel>
                             <Slider x:Name="MaxResultsSlider" Minimum="3" Maximum="15" Value="8" Width="250" HorizontalAlignment="Left" ValueChanged="MaxResultsSlider_ValueChanged"/>
-                            
-                            <ComboBox x:Name="WindowPositionCombo" Width="220" HorizontalAlignment="Left" Margin="0,10,0,0" SelectionChanged="WindowPositionCombo_SelectionChanged">
-                                <ComboBoxItem Content="📍 Centré sur l'écran" Tag="Center"/>
-                                <ComboBoxItem Content="📍 En haut de l'écran" Tag="Top"/>
-                                <ComboBoxItem Content="📍 Mémoriser position" Tag="Remember"/>
-                            </ComboBox>
                             
                             <!-- Historique -->
                             <TextBlock Text="Historique" Style="{StaticResource SectionLabel}"/>
@@ -537,33 +642,6 @@
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
                             </ListBox>
-                            
-                            <!-- Commandes intégrées -->
-                            <TextBlock Text="Commandes intégrées" Style="{StaticResource SectionLabel}"/>
-                            <Border Style="{StaticResource SettingsCard}">
-                                <StackPanel>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":settings" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Paramètres" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":reload" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Réindexer" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":history" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Historique" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":help" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Aide" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":quit" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Quitter" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                </StackPanel>
-                            </Border>
                             
                             <!-- Intégrations web -->
                             <TextBlock Text="Intégrations web" Style="{StaticResource SectionLabel}"/>

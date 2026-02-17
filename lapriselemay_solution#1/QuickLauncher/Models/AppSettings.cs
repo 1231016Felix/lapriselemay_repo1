@@ -175,7 +175,7 @@ public sealed class AppSettings
         settings.Appearance.ThemeMode = legacy.ThemeMode;
         settings.Appearance.AccentColor = legacy.AccentColor ?? Constants.Colors.DefaultAccent;
         settings.Appearance.WindowOpacity = legacy.WindowOpacity;
-        settings.Appearance.WindowPosition = legacy.WindowPosition ?? "Center";
+        settings.Appearance.WindowPosition = "Remember";
         settings.Appearance.LastWindowLeft = legacy.LastWindowLeft;
         settings.Appearance.LastWindowTop = legacy.LastWindowTop;
         settings.Appearance.ShowInTaskbar = legacy.ShowInTaskbar;
@@ -333,7 +333,20 @@ public sealed class AppSettings
         new() { Type = SystemControlType.ProcessKill, Name = "Tuer processus", Prefix = "process", Icon = "💀", Category = "Système",
                 Description = "Tuer un processus par nom (ex: :process kill notepad)", RequiresArgument = true, ArgumentHint = "kill <nom>" },
         new() { Type = SystemControlType.DiskInfo, Name = "Espace disque", Prefix = "disk", Icon = "💾", Category = "Système",
-                Description = "Afficher l'espace disque disponible" }
+                Description = "Afficher l'espace disque disponible" },
+        // Application
+        new() { Type = SystemControlType.AppSettings, Name = "Paramètres", Prefix = "settings", Icon = "⚙️", Category = "Application",
+                Description = "Ouvrir les paramètres de QuickLauncher" },
+        new() { Type = SystemControlType.AppQuit, Name = "Quitter", Prefix = "quit", Icon = "🚪", Category = "Application",
+                Description = "Fermer QuickLauncher" },
+        new() { Type = SystemControlType.AppReindex, Name = "Réindexer", Prefix = "reload", Icon = "🔄", Category = "Application",
+                Description = "Reconstruire l'index des fichiers" },
+        new() { Type = SystemControlType.AppHistory, Name = "Historique", Prefix = "history", Icon = "📜", Category = "Application",
+                Description = "Afficher l'historique de recherche" },
+        new() { Type = SystemControlType.AppClearHistory, Name = "Effacer historique", Prefix = "clear", Icon = "🗑️", Category = "Application",
+                Description = "Effacer l'historique de recherche" },
+        new() { Type = SystemControlType.AppHelp, Name = "Aide", Prefix = "help", Icon = "❓", Category = "Application",
+                Description = "Afficher les commandes disponibles" }
     ];
 }
 
@@ -464,7 +477,10 @@ public enum SystemControlType
     SystemSearch = 20, Timer = 21, Timers = 22, Note = 23, Notes = 24,
     OpenStartupFolder = 25, OpenHostsFile = 26,
     Weather = 27, Translate = 28, AiChat = 29,
-    ProcessKill = 30, DiskInfo = 31
+    ProcessKill = 30, DiskInfo = 31,
+    // Commandes application
+    AppSettings = 32, AppQuit = 33, AppReindex = 34,
+    AppHistory = 35, AppClearHistory = 36, AppHelp = 37
 }
 
 public sealed class SystemControlCommand

@@ -86,7 +86,6 @@ public partial class SettingsWindow : Window
         SingleClickLaunchCheck.IsChecked = _settings.SingleClickLaunch;
         MaxResultsSlider.Value = _settings.Search.MaxResults;
         MaxResultsValue.Text = _settings.Search.MaxResults.ToString();
-        SelectComboByTag(WindowPositionCombo, _settings.Appearance.WindowPosition);
         
         // Historique
         EnableSearchHistoryCheck.IsChecked = _settings.Search.EnableSearchHistory;
@@ -498,9 +497,9 @@ public partial class SettingsWindow : Window
         if (!_isLoading)
         {
             if (LightStartCombo.SelectedItem is ComboBoxItem { Tag: string lightStart })
-                _settings.Appearance.LightThemeStartTime = lightStart;
+                _settings.Appearance.AutoThemeLightStart = lightStart;
             if (DarkStartCombo.SelectedItem is ComboBoxItem { Tag: string darkStart })
-                _settings.Appearance.DarkThemeStartTime = darkStart;
+                _settings.Appearance.AutoThemeDarkStart = darkStart;
             
             // Réappliquer le thème si en mode Auto
             if (_settings.Appearance.Theme == "Auto")
@@ -710,15 +709,6 @@ public partial class SettingsWindow : Window
         UpdateAnimationSpeedPanelVisibility();
         UpdateStartupRegistry();
         AutoSave();
-    }
-    
-    private void WindowPositionCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (!_isLoading && WindowPositionCombo.SelectedItem is ComboBoxItem { Tag: string pos })
-        {
-            _settings.Appearance.WindowPosition = pos;
-            AutoSave();
-        }
     }
 
     // === Gestionnaires d'événements - Intégrations web ===
