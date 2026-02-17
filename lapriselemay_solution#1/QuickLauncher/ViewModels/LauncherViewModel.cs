@@ -23,6 +23,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private readonly CommandRouter _commandRouter;
     private readonly ISystemControlExecutor _systemControlExecutor;
     private readonly SearchService _searchService;
+    private readonly IIconLoader _iconLoader;
     private readonly SystemControlSuggestionBuilder _suggestionBuilder = new();
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _debounceCts;
@@ -95,7 +96,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public LauncherViewModel(IndexingService indexingService, ISettingsProvider settingsProvider,
         AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
         NotesService notesService, CommandRouter commandRouter, ISystemControlExecutor systemControlExecutor,
-        SearchService searchService, FileWatcherService? fileWatcherService = null)
+        SearchService searchService, IIconLoader iconLoader, FileWatcherService? fileWatcherService = null)
     {
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
@@ -106,6 +107,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         _commandRouter = commandRouter ?? throw new ArgumentNullException(nameof(commandRouter));
         _systemControlExecutor = systemControlExecutor ?? throw new ArgumentNullException(nameof(systemControlExecutor));
         _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
+        _iconLoader = iconLoader ?? throw new ArgumentNullException(nameof(iconLoader));
         
         // Initialiser les propriétés d'apparence depuis les settings
         ShowCategoryBadges = _settings.Appearance.ShowCategoryBadges;
@@ -325,6 +327,10 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         foreach (var result in newResults)
             Results.Add(result);
         FinalizeResults();
+        
+        // Charger les icônes natives en arrière-plan
+        if (newResults.Count > 0)
+            _ = _iconLoader.LoadIconsAsync(newResults, _searchCts?.Token ?? CancellationToken.None);
     }
     
 
@@ -423,6 +429,8 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     
     private void ShowRecentHistory()
     {
+        Results.Clear();
+        
         // Afficher d'abord les items épinglés
         foreach (var pinned in _settings.Search.PinnedItems.OrderBy(p => p.Order))
         {
@@ -440,6 +448,10 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         }
         
         FinalizeResults();
+        
+        // Charger les icônes natives en arrière-plan
+        if (Results.Count > 0)
+            _ = _iconLoader.LoadIconsAsync(Results.ToList(), _searchCts?.Token ?? CancellationToken.None);
     }
     
     /// <summary>
@@ -534,6 +546,10 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             foreach (var r in result.Results)
                 Results.Add(r);
             FinalizeResults();
+            
+            // Charger les icônes natives en arrière-plan
+            if (result.Results.Count > 0)
+                _ = _iconLoader.LoadIconsAsync(result.Results, token);
         }
         catch (OperationCanceledException)
         {
