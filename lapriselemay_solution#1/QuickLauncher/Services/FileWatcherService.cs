@@ -1,7 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using System.IO;
 using QuickLauncher.Models;
-using Shared.Logging;
 
 using Timer = System.Threading.Timer;
 

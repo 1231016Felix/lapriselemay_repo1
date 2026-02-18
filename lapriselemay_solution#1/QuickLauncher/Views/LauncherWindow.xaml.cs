@@ -914,6 +914,12 @@ public partial class LauncherWindow : Window
     {
         if (!_settings.SingleClickLaunch)
         {
+            // Les commandes système (CTRL/SYS) sont déjà exécutées au clic simple,
+            // ne pas réexécuter au double-clic
+            if (ResultsList.SelectedItem is SearchResult result 
+                && result.Type is ResultType.SystemControl or ResultType.SystemCommand)
+                return;
+            
             _viewModel.ExecuteCommand.Execute(null);
         }
     }
@@ -924,15 +930,27 @@ public partial class LauncherWindow : Window
         if (_isDragging)
             return;
         
-        // Lancement en clic simple si activé
-        if (_settings.SingleClickLaunch && ResultsList.SelectedItem != null)
+        if (ResultsList.SelectedItem == null)
+            return;
+        
+        // Vérifier qu'on a bien cliqué sur un item (pas sur le scrollbar)
+        var container = ItemsControl.ContainerFromElement(ResultsList, (DependencyObject)e.OriginalSource) as ListBoxItem;
+        if (container == null)
+            return;
+        
+        // Les commandes système (CTRL/SYS) s'exécutent toujours en clic simple
+        // car ce sont des actions, pas des fichiers à ouvrir
+        if (ResultsList.SelectedItem is SearchResult result 
+            && result.Type is ResultType.SystemControl or ResultType.SystemCommand)
         {
-            // Vérifier qu'on a bien cliqué sur un item (pas sur le scrollbar)
-            var item = ItemsControl.ContainerFromElement(ResultsList, (DependencyObject)e.OriginalSource) as ListBoxItem;
-            if (item != null)
-            {
-                _viewModel.ExecuteCommand.Execute(null);
-            }
+            _viewModel.ExecuteCommand.Execute(null);
+            return;
+        }
+        
+        // Lancement en clic simple pour les autres types si activé dans les paramètres
+        if (_settings.SingleClickLaunch)
+        {
+            _viewModel.ExecuteCommand.Execute(null);
         }
     }
     

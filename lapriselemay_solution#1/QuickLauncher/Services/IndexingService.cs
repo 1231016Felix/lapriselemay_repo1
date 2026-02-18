@@ -4,7 +4,6 @@ using System.IO;
 using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using QuickLauncher.Models;
-using Shared.Logging;
 
 namespace QuickLauncher.Services;
 
@@ -800,4 +799,3 @@ public sealed partial class IndexingService : IDisposable
     }
 }
 
-// Les interfaces ILogger et FileLogger sont maintenant dans Shared.Logging

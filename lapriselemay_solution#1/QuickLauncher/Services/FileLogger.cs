@@ -1,7 +1,8 @@
 using System.Collections.Concurrent;
+using System.IO;
 using System.Text;
 
-namespace Shared.Logging;
+namespace QuickLauncher.Services;
 
 /// <summary>
 /// Logger qui écrit les messages dans un fichier dans le dossier AppData local.
@@ -15,20 +16,11 @@ public sealed class FileLogger : ILogger, IDisposable
     private readonly CancellationTokenSource _cts = new();
     private bool _disposed;
 
-    /// <summary>
-    /// Crée un FileLogger avec un nom de fichier basé sur la date.
-    /// </summary>
-    /// <param name="appName">Nom de l'application (utilisé pour le dossier)</param>
-    public FileLogger(string appName) 
+    public FileLogger(string appName)
         : this(appName, $"{appName}_{DateTime.Now:yyyy-MM-dd}.log")
     {
     }
 
-    /// <summary>
-    /// Crée un FileLogger avec un nom de fichier spécifique.
-    /// </summary>
-    /// <param name="appName">Nom de l'application (utilisé pour le dossier)</param>
-    /// <param name="logFileName">Nom du fichier de log</param>
     public FileLogger(string appName, string logFileName)
     {
         var logDir = Path.Combine(
@@ -79,7 +71,6 @@ public sealed class FileLogger : ILogger, IDisposable
         }
         catch (InvalidOperationException)
         {
-            // Queue complète ou fermée, on ignore silencieusement
         }
     }
 
@@ -99,11 +90,9 @@ public sealed class FileLogger : ILogger, IDisposable
         }
         catch (OperationCanceledException)
         {
-            // Arrêt normal
         }
         catch
         {
-            // Erreur d'écriture, on ignore silencieusement
         }
     }
 
@@ -121,7 +110,6 @@ public sealed class FileLogger : ILogger, IDisposable
         }
         catch
         {
-            // Timeout ou erreur, on continue le dispose
         }
         
         _cts.Dispose();

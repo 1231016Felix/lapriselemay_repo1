@@ -53,32 +53,85 @@ public class UniversalSearchService : IUniversalSearchService
         if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
             return [];
 
+        List<SearchResult>? results = null;
+
         if (EverythingApi.IsAvailable())
         {
             try
             {
-                return await Task.Run(() => SearchWithEverything(query, MaxResultsLimit), cancellationToken);
+                results = await Task.Run(() => SearchWithEverything(query, MaxResultsLimit), cancellationToken);
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"[UniversalSearch] Everything failed: {ex.Message}");
             }
         }
-        if (WindowsSearchService.IsAvailable())
+        if (results == null || results.Count == 0)
         {
-            try
+            if (WindowsSearchService.IsAvailable())
             {
-                var results = await WindowsSearchService.SearchAsync(query, searchScope, cancellationToken);
-                if (results.Count > 0)
-                    return results;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[UniversalSearch] Windows Search failed: {ex.Message}");
+                try
+                {
+                    results = await WindowsSearchService.SearchAsync(query, searchScope, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[UniversalSearch] Windows Search failed: {ex.Message}");
+                }
             }
         }
 
-        return await SearchDirectWithCacheAsync(query, searchScope, cancellationToken);
+        if (results == null || results.Count == 0)
+            results = await SearchDirectWithCacheAsync(query, searchScope, cancellationToken);
+
+        return DeduplicateResults(results);
+    }
+
+    /// <summary>
+    /// Déduplique les résultats de recherche par nom normalisé.
+    /// Pour les raccourcis .lnk, on résout la cible pour éviter d'afficher
+    /// le même programme plusieurs fois (ex: Ollama.lnk dans Start Menu, StartUp, Programs\Ollama).
+    /// Conserve le résultat ayant le meilleur score, puis le plus récent.
+    /// </summary>
+    private static List<SearchResult> DeduplicateResults(List<SearchResult> results)
+    {
+        if (results.Count <= 1)
+            return results;
+
+        return results
+            .GroupBy(r => GetDeduplicationKey(r), StringComparer.OrdinalIgnoreCase)
+            .Select(g => g
+                .OrderByDescending(r => r.Score)
+                .ThenByDescending(r => r.Type == ResultType.Application ? 1 : 0)
+                .ThenBy(r => r.Path.Length) // Préférer le chemin le plus court (plus canonique)
+                .First())
+            .ToList();
+    }
+
+    /// <summary>
+    /// Génère une clé de déduplication pour un résultat.
+    /// Pour les .lnk, on utilise le chemin cible (résolu) afin de regrouper
+    /// les raccourcis pointant vers le même exécutable.
+    /// Pour les autres fichiers, on utilise le nom + extension comme clé.
+    /// </summary>
+    private static string GetDeduplicationKey(SearchResult result)
+    {
+        var path = result.Path;
+
+        // Pour les raccourcis .lnk, résoudre la cible
+        if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var info = ShortcutHelper.ResolveShortcut(path);
+                if (info != null && !string.IsNullOrEmpty(info.TargetPath))
+                    return Path.GetFileName(info.TargetPath).ToLowerInvariant();
+            }
+            catch { /* Fallback au nom */ }
+        }
+
+        // Pour les fichiers normaux, clé = nom du fichier (avec extension)
+        return Path.GetFileName(path).ToLowerInvariant();
     }
 
     /// <inheritdoc/>

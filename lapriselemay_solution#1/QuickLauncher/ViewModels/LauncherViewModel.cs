@@ -700,7 +700,13 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         {
             case ResultType.SystemCommand:
             case ResultType.SystemControl:
-                ExecuteSystemControl(item.Path);
+                // Les items SystemControl issus de l'index (ms-settings:, control|, .msc, etc.)
+                // doivent être lancés directement via LaunchService, pas via l'executor de commandes.
+                // Seules les commandes préfixées par ':' sont gérées par ExecuteSystemControl.
+                if (!string.IsNullOrEmpty(item.Path) && !item.Path.StartsWith(':'))
+                    LaunchItem(item);
+                else
+                    ExecuteSystemControl(item.Path);
                 break;
                 
             case ResultType.Note:

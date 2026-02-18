@@ -10,7 +10,6 @@ using QuickLauncher.Services;
 using QuickLauncher.Views;
 using QuickLauncher.Services.CommandHandlers;
 using QuickLauncher.ViewModels;
-using Shared.Logging;
 
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;

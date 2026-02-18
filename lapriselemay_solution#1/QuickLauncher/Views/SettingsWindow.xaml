@@ -921,7 +921,387 @@
             </TabItem>
             
             <!-- ═══════════════════════════════════════════════════════════ -->
-            <!-- ONGLET 4: À PROPOS (Guide + Stats + Infos) -->
+            <!-- ONGLET 4: GUIDE (Commandes + Fonctionnalités) -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <TabItem Header="📖 Guide">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20" PreviewMouseWheel="TabScrollViewer_PreviewMouseWheel">
+                    <StackPanel>
+                        <!-- En-tête -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+                            <TextBlock Text="📖" FontSize="28" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="Guide complet" FontSize="22" FontWeight="Bold" Foreground="White"/>
+                                <TextBlock Text="Toutes les commandes et fonctionnalités de QuickLauncher" Foreground="#888" FontSize="11"/>
+                            </StackPanel>
+                        </StackPanel>
+                        
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="20"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <!-- ══════ COLONNE GAUCHE ══════ -->
+                            <StackPanel Grid.Column="0">
+                                
+                                <!-- RECHERCHE -->
+                                <TextBlock Text="🔍 Recherche" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,0,0,8"/>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Tapez n'importe quoi dans la barre pour rechercher des applications, fichiers, dossiers, favoris navigateurs et plus encore. La recherche est floue (fuzzy) et tolère les fautes de frappe." Foreground="#CCC" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Recherche directe" Foreground="#0078D4" FontSize="11" FontWeight="SemiBold"/>
+                                            <TextBlock Grid.Column="1" Text="Tapez le nom d'une app, fichier ou dossier" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                        <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Recherche par chemin" Foreground="#0078D4" FontSize="11" FontWeight="SemiBold"/>
+                                            <TextBlock Grid.Column="1" Text="Tapez des fragments du chemin (ex: doc rapport)" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                        <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Initiales" Foreground="#0078D4" FontSize="11" FontWeight="SemiBold"/>
+                                            <TextBlock Grid.Column="1" Text="Tapez les initiales (ex: vs → Visual Studio)" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                        <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Suggestions fantômes" Foreground="#0078D4" FontSize="11" FontWeight="SemiBold"/>
+                                            <TextBlock Grid.Column="1" Text="Texte grisé dans la barre → Tab ou → pour accepter" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                                
+                                <!-- RACCOURCIS CLAVIER -->
+                                <TextBlock Text="⌨️ Raccourcis clavier" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,10,0,8"/>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Navigation" Foreground="#0078D4" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Alt+Espace" Foreground="White" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Ouvrir/fermer QuickLauncher (configurable)" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Échap" Foreground="White" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Fermer la fenêtre" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="↑ ↓" Foreground="White" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Naviguer dans les résultats" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Tab / →" Foreground="White" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Accepter la suggestion fantôme" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <TextBlock Text="Actions" Foreground="#0078D4" FontSize="11" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Entrée" Foreground="White" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Lancer l'élément sélectionné" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Ctrl+Entrée" Foreground="White" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Exécuter en tant qu'administrateur" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Clic droit" Foreground="White" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Menu contextuel (actions fichier, épingler, alias...)" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Double clic" Foreground="White" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Lancer (ou simple clic si activé)" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                                
+                                <!-- CALCULATRICE -->
+                                <TextBlock Text="🧮 Calculatrice intégrée" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,10,0,8"/>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Tapez une expression mathématique directement dans la barre de recherche. Le résultat s'affiche instantanément. Appuyez Entrée pour le copier." Foreground="#CCC" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="2+2*3" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="→ 8 (opérations de base)" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="sqrt(144)" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="→ 12 (racine carrée)" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="2^10" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="→ 1024 (puissance)" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="sin(pi/2)" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="→ 1 (trigonométrie + constantes)" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <TextBlock Text="Fonctions: sqrt, sin, cos, tan, log, ln, abs, ceil, floor, round" Foreground="#666" FontSize="10" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                        <TextBlock Text="Constantes: pi, e" Foreground="#666" FontSize="10" Margin="0,2,0,0"/>
+                                        <TextBlock Text="Opérateurs: + − × / ^ % avec parenthèses" Foreground="#666" FontSize="10" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                
+                                <!-- RECHERCHE WEB -->
+                                <TextBlock Text="🌐 Recherche web" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,10,0,8"/>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Tapez un préfixe suivi d'un espace puis votre recherche pour lancer une recherche web directement dans votre navigateur." Foreground="#CCC" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Border Background="#0078D4" CornerRadius="3" Padding="6,2" HorizontalAlignment="Left">
+                                                <TextBlock Text="g" FontWeight="Bold" Foreground="White" FontSize="11"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="1" Text="Google — ex: g recette pizza" Foreground="#888" FontSize="11" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Border Background="#0078D4" CornerRadius="3" Padding="6,2" HorizontalAlignment="Left">
+                                                <TextBlock Text="yt" FontWeight="Bold" Foreground="White" FontSize="11"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="1" Text="YouTube — ex: yt tutoriel WPF" Foreground="#888" FontSize="11" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <Grid Margin="0,4"><Grid.ColumnDefinitions><ColumnDefinition Width="70"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Border Background="#0078D4" CornerRadius="3" Padding="6,2" HorizontalAlignment="Left">
+                                                <TextBlock Text="w" FontWeight="Bold" Foreground="White" FontSize="11"/>
+                                            </Border>
+                                            <TextBlock Grid.Column="1" Text="Wikipedia — ex: w Montréal" Foreground="#888" FontSize="11" VerticalAlignment="Center"/>
+                                        </Grid>
+                                        <TextBlock Text="💡 Voir la liste complète dans l'onglet Commandes." Foreground="#666" FontSize="10" FontStyle="Italic" Margin="0,6,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                                
+                                <!-- ÉPINGLES ET ALIAS -->
+                                <TextBlock Text="⭐ Épingles et alias" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,10,0,8"/>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Épingles" Foreground="#0078D4" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Clic droit sur un résultat → Épingler. Les éléments épinglés apparaissent quand la barre de recherche est vide, pour un accès instantané." Foreground="#CCC" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Alias" Foreground="#0078D4" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Clic droit → Créer un alias pour assigner un raccourci texte à n'importe quelle application. Tapez l'alias pour retrouver l'app instantanément." Foreground="#CCC" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Exemple: alias 'code' → Visual Studio Code" Foreground="#666" FontSize="10" FontStyle="Italic"/>
+                                    </StackPanel>
+                                </Border>
+                                
+                                <!-- ACTIONS FICHIER -->
+                                <TextBlock Text="📄 Actions sur les fichiers" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,10,0,8"/>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Cliquez droit sur un fichier ou dossier dans les résultats pour accéder au menu contextuel:" Foreground="#CCC" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Ouvrir l'emplacement" Foreground="White" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Ouvre le dossier parent" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Copier le chemin" Foreground="White" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Copie le chemin complet" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Copier le nom" Foreground="White" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Copie le nom du fichier" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Renommer" Foreground="White" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Renommer le fichier" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Supprimer" Foreground="White" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Envoyer à la corbeille" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Exécuter en admin" Foreground="White" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Lancer avec élévation de droits" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="140"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Épingler / Désépingler" Foreground="White" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Ajouter ou retirer des favoris" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                            
+                            <!-- ══════ COLONNE DROITE ══════ -->
+                            <StackPanel Grid.Column="2">
+                                
+                                <!-- COMMANDES SYSTÈME -->
+                                <TextBlock Text="⚡ Commandes système (:commande)" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,0,0,8"/>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Tapez ':' suivi du nom de la commande dans la barre de recherche. Les commandes activables/désactivables sont configurables dans l'onglet Commandes." Foreground="#CCC" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                        
+                                        <!-- Productivité -->
+                                        <TextBlock Text="Productivité" Foreground="#4CAF50" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":timer 5m café" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Créer une minuterie (5m, 30s, 1h30m)" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":note texte" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Créer une note sticky sur le bureau" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":find terme" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Recherche fichiers sur tout le système" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":screenshot" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Capture d'écran (snip, primary)" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                        
+                                        <!-- Intégrations web -->
+                                        <TextBlock Text="Intégrations web" Foreground="#2196F3" FontSize="11" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":weather" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Météo (ville par défaut ou spécifiée)" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":translate hello" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Traduction auto ou ciblée (fr, en>fr)" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":ai question" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Question IA (ChatGPT, Gemini, Ollama)" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                        
+                                        <!-- Multimédia -->
+                                        <TextBlock Text="Multimédia" Foreground="#FF9800" FontSize="11" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":volume 75" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Volume (0-100, up, down, mute)" Foreground="#888" FontSize="11" TextWrapping="Wrap"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":mute" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Basculer le mode muet" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":brightness 50" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Luminosité écran (0-100)" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        
+                                        <!-- Réseau -->
+                                        <TextBlock Text="Réseau" Foreground="#9C27B0" FontSize="11" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":wifi on/off" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Activer/désactiver le WiFi" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":flushdns" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Vider le cache DNS" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        
+                                        <!-- Session -->
+                                        <TextBlock Text="Session" Foreground="#F44336" FontSize="11" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":lock" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Verrouiller la session" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":sleep / :hibernate" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Veille / Hibernation" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":shutdown / :restart" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Éteindre / Redémarrer le PC" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":logoff" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Déconnecter la session" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                                
+                                <!-- COMMANDES SYSTÈME (suite) -->
+                                <TextBlock Text="🛠️ Outils système" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,10,0,8"/>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <StackPanel>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":taskmgr" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Gestionnaire des tâches" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":winsettings" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Paramètres Windows" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":control" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Panneau de configuration" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":emptybin" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Vider la corbeille" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":emptytemp" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Nettoyer le dossier Temp" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":cmd / :powershell" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Terminal admin (CMD ou PS)" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":restartexplorer" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Redémarrer l'Explorateur" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":startup" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Dossier de démarrage Windows" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":hosts" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Éditer le fichier hosts (admin)" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":process kill nom" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Tuer un processus par nom" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":disk" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Espace disque disponible" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                                
+                                <!-- COMMANDES APPLICATION -->
+                                <TextBlock Text="🚀 Commandes application" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,10,0,8"/>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <StackPanel>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":settings" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Ouvrir ces paramètres" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":reload" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Reconstruire l'index de recherche" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":history" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Voir l'historique de recherche" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":clear" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Effacer l'historique de recherche" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":help" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Afficher les commandes disponibles" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":quit" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="Fermer QuickLauncher" Foreground="#888" FontSize="11"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                                
+                                <!-- WIDGETS -->
+                                <TextBlock Text="📌 Widgets bureau" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,10,0,8"/>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Les notes et minuteries créées avec :note et :timer génèrent des widgets flottants sur le bureau. Ils sont déplaçables et persistent entre les sessions." Foreground="#CCC" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                                        <TextBlock Text="📝 Notes — clic droit pour supprimer, glisser pour déplacer" Foreground="#888" FontSize="11" Margin="0,2"/>
+                                        <TextBlock Text="⏱️ Timers — notification sonore à la fin, clic pour fermer" Foreground="#888" FontSize="11" Margin="0,2"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- ONGLET 5: À PROPOS (Guide + Stats + Infos) -->
             <!-- ═══════════════════════════════════════════════════════════ -->
             <TabItem Header="ℹ️ À propos">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20" PreviewMouseWheel="TabScrollViewer_PreviewMouseWheel">

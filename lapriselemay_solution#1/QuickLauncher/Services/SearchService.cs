@@ -83,6 +83,16 @@ public sealed class SearchService
         return scored
             .OrderByDescending(x => x.Score)
             .ThenByDescending(x => x.Item.UseCount)
+            // Déduplication : garder le meilleur résultat par (nom normalisé, catégorie de type).
+            // Évite les doublons Application/.lnk + StoreApp + SystemControl pour le même programme.
+            // Les noms sont normalisés pour ignorer les emojis en tête (ex: "🧹 Nettoyage" = "Nettoyage").
+            // Note : on réordonne dans chaque groupe car PLINQ ne garantit pas l'ordre intra-groupe.
+            .GroupBy(x => (Name: NormalizeNameForDedup(x.Item.Name), Category: GetDeduplicationCategory(x.Item.Type)))
+            .Select(g => g
+                .OrderByDescending(x => x.Item.Type == ResultType.SystemControl ? 1 : 0)
+                .ThenByDescending(x => x.Score)
+                .ThenByDescending(x => x.Item.UseCount)
+                .First())
             .Take(settings.Search.MaxResults)
             .Select(x =>
             {
@@ -90,6 +100,35 @@ public sealed class SearchService
                 return x.Item;
             })
             .ToList();
+    }
+
+    /// <summary>
+    /// Retourne une catégorie de type pour la déduplication des résultats.
+    /// Application, StoreApp et SystemControl sont fusionnés car un même programme peut apparaître
+    /// via shell:AppsFolder (StoreApp), un raccourci .lnk (Application) ET WindowsSettingsProvider (SystemControl).
+    /// Exemple : "Nettoyage de disque" existe en StoreApp ET en SystemControl (cleanmgr).
+    /// </summary>
+    private static ResultType GetDeduplicationCategory(ResultType type) => type switch
+    {
+        ResultType.StoreApp => ResultType.Application,
+        ResultType.SystemControl => ResultType.Application,
+        _ => type
+    };
+
+    /// <summary>
+    /// Normalise un nom pour la déduplication en supprimant les emojis/symboles en tête.
+    /// Permet de regrouper "🧹 Nettoyage de disque" (SystemControl) et "Nettoyage de disque" (StoreApp).
+    /// </summary>
+    private static string NormalizeNameForDedup(string name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return string.Empty;
+
+        var start = 0;
+        while (start < name.Length && !char.IsLetterOrDigit(name[start]))
+            start++;
+
+        return name[start..].ToLowerInvariant();
     }
 
     private int CalculateScore(string query, SearchResult item)

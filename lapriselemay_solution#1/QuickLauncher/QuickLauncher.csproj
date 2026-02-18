@@ -37,10 +37,6 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Référence au projet de logging partagé -->
-    <ProjectReference Include="..\Shared\Shared.Logging\Shared.Logging.csproj" />
-  </ItemGroup>
 
   <ItemGroup>
     <Resource Include="Resources\**\*" Exclude="Resources\**\*.xaml" />
