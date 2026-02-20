@@ -14,7 +14,18 @@ public static class LaunchService
             {
                 case ResultType.Application:
                 case ResultType.File:
-                    LaunchApplication(item.Path);
+                    // Les apps issues de shell:AppsFolder sans chemin fichier
+                    // (ex: AppUserModelId comme "Microsoft.VisualStudio.Installer")
+                    // doivent être lancées via shell:AppsFolder
+                    if (item.Type == ResultType.Application && !IsFileSystemPath(item.Path))
+                    {
+                        if (!StoreAppService.LaunchApp(item.Path))
+                            LaunchApplication(item.Path);
+                    }
+                    else
+                    {
+                        LaunchApplication(item.Path);
+                    }
                     break;
                 
                 case ResultType.StoreApp:
@@ -40,6 +51,7 @@ public static class LaunchService
                     break;
                     
                 case ResultType.SystemControl:
+                case ResultType.AppControl:
                     LaunchSystemControl(item.Path);
                     break;
                     
@@ -150,6 +162,12 @@ public static class LaunchService
         // ms-settings: URIs, .msc, mstsc, etc. → lancement direct
         StartProcess(path);
     }
+
+    /// <summary>
+    /// Vérifie si un chemin ressemble à un chemin fichier Windows (ex: C:\...)
+    /// </summary>
+    private static bool IsFileSystemPath(string path)
+        => path.Length >= 3 && char.IsLetter(path[0]) && path[1] == ':' && (path[2] == '\\' || path[2] == '/');
 
     private static void StartProcess(string fileName, string? arguments = null, string? workingDirectory = null)
     {

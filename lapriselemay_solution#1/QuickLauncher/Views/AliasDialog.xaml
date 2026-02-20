@@ -8,7 +8,7 @@
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
         Width="450"
-        Height="220"
+        Height="260"
         ResizeMode="NoResize">
     
     <Border Background="#1E1E1E" 
@@ -68,7 +68,10 @@
                      Foreground="#808080"
                      BorderBrush="#3E3E3E"
                      BorderThickness="1"
-                     IsReadOnly="True"/>
+                     IsReadOnly="True"
+                     IsTabStop="False"
+                     Focusable="False"
+                     TextWrapping="NoWrap"/>
             
             <StackPanel Grid.Row="5" 
                         Orientation="Horizontal" 

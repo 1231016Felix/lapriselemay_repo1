@@ -643,6 +643,22 @@ public partial class SettingsWindow : Window
         }
     }
     
+    private void ResetFolders_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            "Réinitialiser les dossiers indexés aux valeurs par défaut ?",
+            "Réinitialiser",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        
+        if (result == MessageBoxResult.Yes)
+        {
+            _settings.Search.ResetIndexedFolders();
+            RefreshFoldersList();
+            AutoSave();
+        }
+    }
+    
     private void RefreshFoldersList()
     {
         IndexedFoldersList.ItemsSource = null;
@@ -1036,15 +1052,23 @@ public partial class SettingsWindow : Window
         try
         {
             SystemCommandsList.ItemsSource = null;
+            AppCommandsList.ItemsSource = null;
             
             if (_settings.SystemCommands != null && _settings.SystemCommands.Count > 0)
             {
-                // Trier par catégorie puis par nom (sans groupement WPF)
-                var sortedCommands = _settings.SystemCommands
+                // Séparer commandes système et commandes application
+                var systemCommands = _settings.SystemCommands
+                    .Where(c => !c.IsAppCommand)
                     .OrderBy(c => c.Category)
                     .ThenBy(c => c.Name)
                     .ToList();
-                SystemCommandsList.ItemsSource = sortedCommands;
+                SystemCommandsList.ItemsSource = systemCommands;
+                
+                var appCommands = _settings.SystemCommands
+                    .Where(c => c.IsAppCommand)
+                    .OrderBy(c => c.Name)
+                    .ToList();
+                AppCommandsList.ItemsSource = appCommands;
             }
         }
         catch (Exception ex)
@@ -1089,6 +1113,7 @@ public partial class SettingsWindow : Window
             _selectedSystemCommand = cmd;
             CommandPrefixBox.Text = cmd.Prefix;
             CommandIconBox.Text = cmd.Icon;
+            CommandPrefixLabel.Text = cmd.IsAppCommand ? "::" : ":";
             EditCommandName.Text = cmd.Name;
             EditCommandDescription.Text = cmd.Description;
             CommandEditPanel.Visibility = Visibility.Visible;
@@ -1383,21 +1408,21 @@ public partial class SettingsWindow : Window
     
     /// <summary>
     /// Force le scroll du ScrollViewer principal même quand la souris est sur un élément enfant,
-    /// sauf si l'événement vient du ScrollViewer imbriqué des commandes système.
+    /// sauf si l'événement vient d'un ScrollViewer imbriqué (commandes système ou application).
     /// </summary>
     private void TabScrollViewer_PreviewMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
     {
         if (sender is not ScrollViewer scrollViewer) return;
         
-        // Vérifier si l'événement vient du ScrollViewer imbriqué des commandes système
+        // Vérifier si l'événement vient d'un ScrollViewer imbriqué (commandes système ou application)
         var source = e.OriginalSource as DependencyObject;
         while (source != null && source != scrollViewer)
         {
-            if (source == SystemCommandsScrollViewer)
+            if (source == SystemCommandsScrollViewer || source == AppCommandsScrollViewer)
             {
-                // Le scroller des commandes gère son propre scroll
+                // Le scroller imbriqué gère son propre scroll
                 // Sauf s'il est déjà en haut/bas et ne peut plus scroller
-                var sv = SystemCommandsScrollViewer;
+                var sv = (ScrollViewer)source;
                 if ((e.Delta > 0 && sv.VerticalOffset > 0) ||
                     (e.Delta < 0 && sv.VerticalOffset < sv.ScrollableHeight))
                     return;

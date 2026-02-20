@@ -20,6 +20,7 @@ public enum ResultType
     SystemCommand,
     SearchHistory,
     SystemControl,
+    AppControl,  // Contrôles application (::settings, ::quit, etc.)
     Bookmark,  // Favoris des navigateurs (Chrome, Edge, Firefox)
     Note       // Notes rapides de l'utilisateur
 }
@@ -99,6 +100,7 @@ public sealed class SearchResult : INotifyPropertyChanged
         ResultType.SystemCommand => "⚙️",
         ResultType.SearchHistory => "🕐",
         ResultType.SystemControl => "🎛️",
+        ResultType.AppControl => "🔧",
         ResultType.Bookmark => "⭐",
         ResultType.Note => "📝",
         _ => "📌"

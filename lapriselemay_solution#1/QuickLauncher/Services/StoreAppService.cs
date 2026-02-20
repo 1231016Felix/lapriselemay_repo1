@@ -275,8 +275,9 @@ public static class StoreAppService
             if (string.IsNullOrEmpty(displayName) || string.IsNullOrEmpty(appUserModelId))
                 return null;
 
-            // Toutes les apps de AppsFolder doivent être lancées via shell:AppsFolder
-            // qu'elles soient UWP (avec !) ou Win32 avec AppUserModelId
+            // Seules les apps avec '!' dans l'AppUserModelId sont de vraies apps UWP/Store
+            // Ex: "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App" → StoreApp
+            // Ex: "C:\Program Files\...\app.exe" ou "Microsoft.VisualStudio.Installer" → Application
             var isUwpApp = appUserModelId.Contains('!');
 
             return new SearchResult
@@ -284,7 +285,7 @@ public static class StoreAppService
                 Name = displayName,
                 Path = appUserModelId,
                 Description = isUwpApp ? "Microsoft Store" : "Application",
-                Type = ResultType.StoreApp  // Toujours StoreApp pour utiliser le bon lanceur
+                Type = isUwpApp ? ResultType.StoreApp : ResultType.Application
             };
         }
         catch

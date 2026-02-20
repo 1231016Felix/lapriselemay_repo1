@@ -119,6 +119,15 @@ public sealed class SearchSettings
     
     public void ClearSearchHistory() => SearchHistory.Clear();
     
+    /// <summary>
+    /// Réinitialise la liste des dossiers indexés aux valeurs par défaut.
+    /// </summary>
+    public void ResetIndexedFolders()
+    {
+        IndexedFolders.Clear();
+        IndexedFolders.AddRange(GetDefaultIndexedFolders());
+    }
+    
     private static List<string> GetDefaultIndexedFolders() =>
     [
         Environment.GetFolderPath(Environment.SpecialFolder.StartMenu),

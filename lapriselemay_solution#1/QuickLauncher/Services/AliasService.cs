@@ -120,6 +120,20 @@ public sealed class AliasService : IDisposable
     }
 
     /// <summary>
+    /// Retourne le premier alias associé à un chemin cible, ou null.
+    /// </summary>
+    public AliasEntry? GetAliasByTargetPath(string targetPath)
+    {
+        if (string.IsNullOrWhiteSpace(targetPath)) return null;
+
+        lock (_lock)
+        {
+            return _aliases.Values.FirstOrDefault(a => 
+                string.Equals(a.TargetPath, targetPath, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>
     /// Retourne tous les alias
     /// </summary>
     public List<AliasEntry> GetAllAliases()

@@ -86,6 +86,8 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public event EventHandler<string>? ShowNotification;
     public event EventHandler? RequestCaretAtEnd;
     public event EventHandler<string?>? RequestScreenCapture;
+    public event EventHandler<(string Name, string Path)>? RequestCreateAlias;
+
 
     /// <summary>
     /// Accès rapide aux paramètres actuels (lecture seule, toujours à jour).
@@ -179,8 +181,8 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         {
             // Ne pas prévisualiser certains types
             if (result.Type is ResultType.WebSearch or ResultType.Calculator 
-                or ResultType.SystemCommand or ResultType.SystemControl 
-                or ResultType.SearchHistory)
+                or ResultType.SystemCommand or ResultType.SystemControl
+                or ResultType.AppControl or ResultType.SearchHistory)
             {
                 CurrentPreview = null;
                 return;
@@ -199,7 +201,8 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     {
         AvailableActions.Clear();
         var isPinned = _settings.Search.IsPinned(result.Path);
-        var actions = FileActionProvider.GetActionsForResult(result, isPinned);
+        var hasAlias = _aliasService.GetAliasByTargetPath(result.Path) != null;
+        var actions = FileActionProvider.GetActionsForResult(result, isPinned, hasAlias);
         foreach (var action in actions)
             AvailableActions.Add(action);
         
@@ -337,15 +340,28 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Vérifie si la requête correspond à une commande de contrôle système.
+    /// Distingue le préfixe ":" (commandes système) de "::" (commandes application).
     /// </summary>
     private bool IsSystemControlCommand(string query)
     {
-        // Obtenir les préfixes actifs depuis les paramètres
+        if (!query.StartsWith(':'))
+            return false;
+        
         var enabledCommands = _settings.SystemCommands.Where(c => c.IsEnabled).ToList();
+        
+        // Déterminer la portée du préfixe :
+        // ":"  seul (1 car) → afficher tout (l'utilisateur n'a pas encore choisi : vs ::)
+        // "::" → uniquement les commandes application
+        // ":x" (x != ':') → uniquement les commandes système
+        var isDoubleColon = query.StartsWith("::");
+        var isSingleColonOnly = query.Length >= 2 && query[1] != ':';
         
         foreach (var cmd in enabledCommands)
         {
-            var prefix = $":{cmd.Prefix}";
+            if (isSingleColonOnly && cmd.IsAppCommand) continue;
+            if (isDoubleColon && !cmd.IsAppCommand) continue;
+            
+            var prefix = cmd.FullPrefix;
             if (query.StartsWith(prefix) || prefix.StartsWith(query))
                 return true;
         }
@@ -356,10 +372,20 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Ajoute les suggestions de commandes de contrôle système basées sur les paramètres.
+    /// Filtre selon la portée du préfixe : ":" (système) vs "::" (application).
     /// </summary>
     private void AddSystemControlSuggestions(string query)
     {
         var enabledCommands = _settings.SystemCommands.Where(c => c.IsEnabled).ToList();
+        
+        // Filtrer selon la portée :: vs :
+        var isDoubleColon = query.StartsWith("::");
+        var isSingleColonOnly = query.Length >= 2 && query[1] != ':';
+        
+        if (isSingleColonOnly)
+            enabledCommands = enabledCommands.Where(c => !c.IsAppCommand).ToList();
+        else if (isDoubleColon)
+            enabledCommands = enabledCommands.Where(c => c.IsAppCommand).ToList();
         
         // Déterminer si la requête contient un argument (ex: ":sc snip" → arg = "snip")
         var parts = query.Split(' ', 2);
@@ -391,20 +417,34 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                     Results.Add(s);
                 typesFromBuilder.Add(matchedCmd.Type);
             }
+            
+            // Ajouter les sous-commandes pour screenshot (snip) même quand le préfixe est exact
+            if (matchedCmd.Type == SystemControlType.Screenshot)
+            {
+                var snipName = $":{matchedCmd.Prefix} snip";
+                Results.Add(new SearchResult
+                {
+                    Name = snipName,
+                    Description = "Sélectionner une zone à capturer (Outil Capture d'écran)",
+                    Type = ResultType.SystemControl,
+                    DisplayIcon = "✂️",
+                    Path = snipName
+                });
+            }
         }
         
         // Ajouter les suggestions de préfixe partiel (pour les commandes dont le préfixe
-        // commence par la saisie, ex: ":s" → ":sc", ":settings", ":sleep", ...)
+        // commence par la saisie, ex: ":s" → ":sleep", ":screenshot", "::s" → "::settings", ...)
         foreach (var cmd in enabledCommands)
         {
             // Ne pas dupliquer la commande déjà traitée par le builder
             if (typesFromBuilder.Contains(cmd.Type))
                 continue;
             
-            var prefix = $":{cmd.Prefix}";
+            var prefix = cmd.FullPrefix;
             var displayName = cmd.RequiresArgument 
-                ? $":{cmd.Prefix} {cmd.ArgumentHint}" 
-                : $":{cmd.Prefix}";
+                ? $"{cmd.FullPrefix} {cmd.ArgumentHint}" 
+                : cmd.FullPrefix;
             
             if (prefix.StartsWith(query) || displayName.Contains(query, StringComparison.OrdinalIgnoreCase))
             {
@@ -412,7 +452,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                 {
                     Name = displayName,
                     Description = cmd.Description,
-                    Type = ResultType.SystemControl,
+                    Type = cmd.IsAppCommand ? ResultType.AppControl : ResultType.SystemControl,
                     DisplayIcon = cmd.Icon,
                     Path = prefix
                 });
@@ -420,7 +460,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                 // Ajouter les sous-commandes pour screenshot (snip doit apparaître même avec préfixe partiel)
                 if (cmd.Type == SystemControlType.Screenshot && !query.Contains(" "))
                 {
-                    var snipName = $":{cmd.Prefix} snip";
+                    var snipName = $"{cmd.FullPrefix} snip";
                     Results.Add(new SearchResult
                     {
                         Name = snipName,
@@ -624,20 +664,48 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             return;
         }
         
-        // 1. Commandes système (ex: ":w" → ":weather", ":t" → ":timer")
+        // 1. Commandes système/application (ex: ":w" → ":weather", "::s" → "::settings")
         if (query.StartsWith(':') && query.Length >= 2)
         {
-            var cmdQuery = query[1..]; // sans le ":"
-            var bestCmd = _settings.SystemCommands
-                .Where(c => c.IsEnabled && c.Prefix.StartsWith(cmdQuery, StringComparison.OrdinalIgnoreCase)
-                            && c.Prefix.Length > cmdQuery.Length)
-                .OrderBy(c => c.Prefix.Length) // préférer la commande la plus courte
-                .FirstOrDefault();
-            
-            if (bestCmd != null)
+            // Distinguer :: (commandes application) de : (commandes système)
+            if (query.StartsWith("::"))
             {
-                GhostSuggestionText = $":{bestCmd.Prefix}";
-                return;
+                // Préfixe "::" → ne suggérer que les commandes application
+                var appQuery = query[2..]; // sans le "::"
+                if (appQuery.Length == 0)
+                {
+                    GhostSuggestionText = string.Empty;
+                    return;
+                }
+                var bestAppCmd = _settings.SystemCommands
+                    .Where(c => c.IsEnabled && c.IsAppCommand
+                                && c.Prefix.StartsWith(appQuery, StringComparison.OrdinalIgnoreCase)
+                                && c.Prefix.Length > appQuery.Length)
+                    .OrderBy(c => c.Prefix.Length)
+                    .FirstOrDefault();
+                
+                if (bestAppCmd != null)
+                {
+                    GhostSuggestionText = $"::{bestAppCmd.Prefix}";
+                    return;
+                }
+            }
+            else
+            {
+                // Préfixe ":" → ne suggérer que les commandes système (pas application)
+                var cmdQuery = query[1..]; // sans le ":"
+                var bestCmd = _settings.SystemCommands
+                    .Where(c => c.IsEnabled && !c.IsAppCommand
+                                && c.Prefix.StartsWith(cmdQuery, StringComparison.OrdinalIgnoreCase)
+                                && c.Prefix.Length > cmdQuery.Length)
+                    .OrderBy(c => c.Prefix.Length)
+                    .FirstOrDefault();
+                
+                if (bestCmd != null)
+                {
+                    GhostSuggestionText = $":{bestCmd.Prefix}";
+                    return;
+                }
             }
         }
         
@@ -657,7 +725,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             .Where(r => r.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase)
                         && r.Name.Length > query.Length
                         && r.Type is not (ResultType.Calculator or ResultType.WebSearch
-                            or ResultType.SystemControl or ResultType.SystemCommand))
+                            or ResultType.SystemControl or ResultType.AppControl or ResultType.SystemCommand))
             .OrderByDescending(r => r.UseCount)
             .ThenByDescending(r => r.Score)
             .FirstOrDefault();
@@ -700,6 +768,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         {
             case ResultType.SystemCommand:
             case ResultType.SystemControl:
+            case ResultType.AppControl:
                 // Les items SystemControl issus de l'index (ms-settings:, control|, .msc, etc.)
                 // doivent être lancés directement via LaunchService, pas via l'executor de commandes.
                 // Seules les commandes préfixées par ':' sont gérées par ExecuteSystemControl.
@@ -740,6 +809,33 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     }
     
     /// <summary>
+    /// Enregistre un alias via l'AliasService.
+    /// </summary>
+    public void SaveAlias(string alias, string targetPath)
+    {
+        _aliasService.SetAlias(alias, targetPath);
+        ShowNotification?.Invoke(this, $"⌨️ Alias '{alias}' créé");
+    }
+    
+    /// <summary>
+    /// Supprime l'alias associé à un chemin cible.
+    /// </summary>
+    public void DeleteAlias(string targetPath)
+    {
+        var entry = _aliasService.GetAliasByTargetPath(targetPath);
+        if (entry != null)
+        {
+            _aliasService.RemoveAlias(entry.Alias);
+            ShowNotification?.Invoke(this, $"⌨️ Alias '{entry.Alias}' supprimé");
+        }
+    }
+    
+    /// <summary>
+    /// Vérifie si un chemin cible possède un alias.
+    /// </summary>
+    public bool HasAlias(string targetPath) => _aliasService.GetAliasByTargetPath(targetPath) != null;
+    
+    /// <summary>
     /// Exécute une action spécifique sur un résultat.
     /// </summary>
     public void ExecuteActionOnResult(FileAction action, SearchResult result)
@@ -755,6 +851,22 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         if (action.ActionType == FileActionType.Rename)
         {
             RequestRename?.Invoke(this, result.Path);
+            return;
+        }
+        
+        // Cas spécial pour CreateAlias
+        if (action.ActionType == FileActionType.CreateAlias)
+        {
+            RequestCreateAlias?.Invoke(this, (result.Name, result.Path));
+            return;
+        }
+        
+        // Cas spécial pour DeleteAlias
+        if (action.ActionType == FileActionType.DeleteAlias)
+        {
+            DeleteAlias(result.Path);
+            UpdateAvailableActions(result);
+            ShowActionsPanel = false;
             return;
         }
         
@@ -971,7 +1083,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         
         if (matchedCmd == null) return;
         
-        var fullQuery = $":{matchedCmd.Prefix}" + (arg != null ? $" {arg}" : "");
+        var fullQuery = matchedCmd.FullPrefix + (arg != null ? $" {arg}" : "");
         var handler = _commandRouter.FindHandler(fullQuery);
         if (handler != null)
             _ = DispatchCommandAsync(handler, fullQuery, _searchGeneration, _searchCts?.Token ?? CancellationToken.None);
@@ -1019,16 +1131,16 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         foreach (var cmd in _settings.SystemCommands.Where(c => c.IsEnabled))
         {
             var displayName = cmd.RequiresArgument 
-                ? $":{cmd.Prefix} {cmd.ArgumentHint}" 
-                : $":{cmd.Prefix}";
+                ? $"{cmd.FullPrefix} {cmd.ArgumentHint}" 
+                : cmd.FullPrefix;
             
             Results.Add(new SearchResult 
             { 
                 Name = displayName, 
                 Description = cmd.Description, 
-                Type = ResultType.SystemControl, 
+                Type = cmd.IsAppCommand ? ResultType.AppControl : ResultType.SystemControl, 
                 DisplayIcon = cmd.Icon,
-                Path = $":{cmd.Prefix}"
+                Path = cmd.FullPrefix
             });
         }
         

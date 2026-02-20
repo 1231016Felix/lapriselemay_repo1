@@ -89,7 +89,7 @@ public sealed class SearchService
             // Note : on réordonne dans chaque groupe car PLINQ ne garantit pas l'ordre intra-groupe.
             .GroupBy(x => (Name: NormalizeNameForDedup(x.Item.Name), Category: GetDeduplicationCategory(x.Item.Type)))
             .Select(g => g
-                .OrderByDescending(x => x.Item.Type == ResultType.SystemControl ? 1 : 0)
+                .OrderByDescending(x => x.Item.Type is ResultType.SystemControl or ResultType.AppControl ? 1 : 0)
                 .ThenByDescending(x => x.Score)
                 .ThenByDescending(x => x.Item.UseCount)
                 .First())
@@ -112,6 +112,7 @@ public sealed class SearchService
     {
         ResultType.StoreApp => ResultType.Application,
         ResultType.SystemControl => ResultType.Application,
+        ResultType.AppControl => ResultType.Application,
         _ => type
     };
 

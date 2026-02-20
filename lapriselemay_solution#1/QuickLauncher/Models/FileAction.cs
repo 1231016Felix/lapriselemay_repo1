@@ -66,7 +66,11 @@ public enum FileActionType
     
     // Actions épingles
     Pin,
-    Unpin
+    Unpin,
+    
+    // Actions alias
+    CreateAlias,
+    DeleteAlias
 }
 
 /// <summary>
@@ -79,13 +83,13 @@ public static class FileActionProvider
     /// </summary>
     public static List<FileAction> GetActionsForResult(SearchResult result)
     {
-        return GetActionsForResult(result, isPinned: false);
+        return GetActionsForResult(result, isPinned: false, hasAlias: false);
     }
     
     /// <summary>
     /// Retourne les actions disponibles pour un type de résultat avec état d'épinglage.
     /// </summary>
-    public static List<FileAction> GetActionsForResult(SearchResult result, bool isPinned)
+    public static List<FileAction> GetActionsForResult(SearchResult result, bool isPinned, bool hasAlias = false)
     {
         var actions = new List<FileAction>();
         
@@ -138,6 +142,9 @@ public static class FileActionProvider
         if (result.Type is not (ResultType.WebSearch or ResultType.Calculator 
             or ResultType.SystemCommand or ResultType.SystemControl or ResultType.SearchHistory))
         {
+            // Action alias
+            actions.AddRange(GetAliasActions(hasAlias));
+            
             actions.AddRange(GetPinActions(isPinned));
         }
         
@@ -410,6 +417,30 @@ public static class FileActionProvider
         };
     }
     
+    private static IEnumerable<FileAction> GetAliasActions(bool hasAlias)
+    {
+        if (hasAlias)
+        {
+            yield return new FileAction
+            {
+                Name = "Supprimer l'alias",
+                Icon = "⌨️",
+                Description = "Retirer le raccourci texte de cet élément",
+                ActionType = FileActionType.DeleteAlias
+            };
+        }
+        else
+        {
+            yield return new FileAction
+            {
+                Name = "Créer un alias",
+                Icon = "⌨️",
+                Description = "Assigner un raccourci texte à cet élément",
+                ActionType = FileActionType.CreateAlias
+            };
+        }
+    }
+    
     private static IEnumerable<FileAction> GetPinActions(bool isPinned)
     {
         if (isPinned)
@@ -469,6 +500,8 @@ public static class FileActionExecutor
                 FileActionType.Rename => false, // Géré par l'UI
                 FileActionType.Pin => false,    // Géré par le ViewModel
                 FileActionType.Unpin => false,  // Géré par le ViewModel
+                FileActionType.CreateAlias => false,  // Géré par l'UI
+                FileActionType.DeleteAlias => false,  // Géré par le ViewModel
                 _ => false
             };
         }

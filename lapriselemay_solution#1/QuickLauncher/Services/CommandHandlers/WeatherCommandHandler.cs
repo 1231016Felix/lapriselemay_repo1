@@ -23,15 +23,15 @@ public sealed class WeatherCommandHandler : ICommandHandler
         var settings = _settingsProvider.Current;
         var cmd = settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.Weather);
         if (cmd is not { IsEnabled: true }) return false;
-        return query.StartsWith($":{cmd.Prefix}");
+        return query.StartsWith(cmd.FullPrefix);
     }
 
     public async Task<CommandResult> ExecuteAsync(string query, CancellationToken token)
     {
         var settings = _settingsProvider.Current;
         var cmd = settings.SystemCommands.First(c => c.Type == SystemControlType.Weather);
-        var weatherArg = query.Length > cmd.Prefix.Length + 2
-            ? query[(cmd.Prefix.Length + 2)..].Trim()
+        var weatherArg = query.Length > cmd.FullPrefix.Length + 1
+            ? query[(cmd.FullPrefix.Length + 1)..].Trim()
             : null;
 
         var targetCity = string.IsNullOrWhiteSpace(weatherArg) ? settings.Integrations.WeatherCity : weatherArg;

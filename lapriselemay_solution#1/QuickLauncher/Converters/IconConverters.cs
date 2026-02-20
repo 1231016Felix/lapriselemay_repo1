@@ -85,8 +85,8 @@ public class ResultTypeToMenuVisibilityConverter : IValueConverter
             
             return menuItem switch
             {
-                "RunAsAdmin" => type is ResultType.Application or ResultType.Script 
-                    ? Visibility.Visible 
+                "RunAsAdmin" => type is ResultType.Application or ResultType.Script
+                    ? Visibility.Visible
                     : Visibility.Collapsed,
                 "OpenWith" => type is ResultType.File 
                     ? Visibility.Visible 
@@ -209,7 +209,8 @@ public class ResultTypeToBadgeTextConverter : IValueConverter
                 ResultType.Calculator => "CALC",
                 ResultType.SystemCommand => "SYS",
                 ResultType.SearchHistory => "HIST",
-                ResultType.SystemControl => "CTRL",
+                ResultType.SystemControl => "CTRL SYS",
+                ResultType.AppControl => "CTRL APP",
                 ResultType.Bookmark => "FAV",
                 ResultType.Note => "NOTE",
                 _ => "?"
@@ -243,6 +244,7 @@ public class ResultTypeToBadgeColorConverter : IValueConverter
         { ResultType.SystemCommand, System.Windows.Media.Color.FromRgb(0x68, 0x21, 0x7A) }, // Violet
         { ResultType.SearchHistory, System.Windows.Media.Color.FromRgb(0x66, 0x66, 0x66) }, // Gris foncé
         { ResultType.SystemControl, System.Windows.Media.Color.FromRgb(0xFF, 0x8C, 0x00) }, // Orange
+        { ResultType.AppControl, System.Windows.Media.Color.FromRgb(0x00, 0x96, 0x88) },    // Teal
         { ResultType.Bookmark, System.Windows.Media.Color.FromRgb(0xFF, 0xC8, 0x00) },      // Jaune doré
         { ResultType.Note, System.Windows.Media.Color.FromRgb(0xE3, 0x00, 0x8C) }           // Rose
     };

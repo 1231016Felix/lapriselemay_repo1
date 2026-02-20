@@ -38,6 +38,9 @@ public partial class LauncherWindow : Window
     private int _dragFromIndex = -1;
     private Border? _dropIndicator;
     
+    // Flag pour empêcher le HideWindow pendant l'affichage d'un dialogue modal
+    private bool _isDialogOpen;
+    
     // Easing functions gelées pour réutilisation (évite la recréation)
     private static readonly IEasingFunction EaseOut;
     private static readonly IEasingFunction EaseIn;
@@ -127,6 +130,7 @@ public partial class LauncherWindow : Window
         _viewModel.ShowNotification += OnShowNotification;
         _viewModel.RequestCaretAtEnd += (_, _) => Dispatcher.BeginInvoke(() => SearchBox.CaretIndex = SearchBox.Text.Length);
         _viewModel.RequestScreenCapture += OnRequestScreenCapture;
+        _viewModel.RequestCreateAlias += OnRequestCreateAlias;
         
         _viewModel.PropertyChanged += (_, e) =>
         {
@@ -135,6 +139,13 @@ public partial class LauncherWindow : Window
                 ClearButton.Visibility = string.IsNullOrEmpty(_viewModel.SearchText) 
                     ? Visibility.Collapsed 
                     : Visibility.Visible;
+                
+                // Activer le mode multiligne quand on écrit une note
+                var noteCmd = _settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.Note);
+                var notePrefix = noteCmd != null ? $":{noteCmd.Prefix} " : ":note ";
+                var isNoteMode = _viewModel.SearchText.StartsWith(notePrefix, StringComparison.OrdinalIgnoreCase);
+                SearchBox.TextWrapping = isNoteMode ? TextWrapping.Wrap : TextWrapping.NoWrap;
+                SearchBox.AcceptsReturn = false; // Géré manuellement via Shift+Enter
             }
         };
         
@@ -149,21 +160,47 @@ public partial class LauncherWindow : Window
     
     private void OnRequestRename(object? sender, string path)
     {
-        var name = System.IO.Path.GetFileName(path);
-        var dialog = new RenameDialog(name) { Owner = this };
-        
-        if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.NewName))
+        _isDialogOpen = true;
+        try
         {
-            var success = FileActionsService.Rename(path, dialog.NewName);
-            if (success)
+            var name = System.IO.Path.GetFileName(path);
+            var dialog = new RenameDialog(name) { Owner = this };
+            
+            if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.NewName))
             {
-                RequestReindex?.Invoke(this, EventArgs.Empty);
+                var success = FileActionsService.Rename(path, dialog.NewName);
+                if (success)
+                {
+                    RequestReindex?.Invoke(this, EventArgs.Empty);
+                }
+                else
+                {
+                    MessageBox.Show("Impossible de renommer le fichier.", "Erreur", 
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
-            else
+        }
+        finally
+        {
+            _isDialogOpen = false;
+        }
+    }
+    
+    private void OnRequestCreateAlias(object? sender, (string Name, string Path) args)
+    {
+        _isDialogOpen = true;
+        try
+        {
+            var dialog = new AliasDialog(args.Name, args.Path) { Owner = this };
+            
+            if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.Alias))
             {
-                MessageBox.Show("Impossible de renommer le fichier.", "Erreur", 
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                _viewModel.SaveAlias(dialog.Alias, args.Path);
             }
+        }
+        finally
+        {
+            _isDialogOpen = false;
         }
     }
     
@@ -652,6 +689,23 @@ public partial class LauncherWindow : Window
     
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Shift+Enter : insérer un saut de ligne dans les notes
+        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Shift)
+        {
+            var noteCmd = _settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.Note);
+            var notePrefix = noteCmd != null ? $":{noteCmd.Prefix} " : ":note ";
+            
+            if (_viewModel.SearchText.StartsWith(notePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                var caretIndex = SearchBox.CaretIndex;
+                var text = SearchBox.Text;
+                SearchBox.Text = text.Insert(caretIndex, "\n");
+                SearchBox.CaretIndex = caretIndex + 1;
+                e.Handled = true;
+                return;
+            }
+        }
+        
         // Raccourcis Alt+1 à Alt+9 pour lancer un résultat par index
         // En WPF, quand Alt est enfoncé, e.Key == Key.System et la vraie touche est dans e.SystemKey
         if (Keyboard.Modifiers == ModifierKeys.Alt && e.Key == Key.System)
@@ -835,32 +889,40 @@ public partial class LauncherWindow : Window
     
     private void ConfirmAndDelete(SearchResult item)
     {
-        var result = MessageBox.Show(
-            $"Voulez-vous vraiment supprimer '{item.Name}' ?\n\nLe fichier sera envoyé à la corbeille.",
-            "Confirmer la suppression",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
-        
-        if (result == MessageBoxResult.Yes)
+        _isDialogOpen = true;
+        try
         {
-            var success = FileActionsService.DeleteToRecycleBin(item.Path);
-            if (success)
+            var result = MessageBox.Show(
+                $"Voulez-vous vraiment supprimer '{item.Name}' ?\n\nLe fichier sera envoyé à la corbeille.",
+                "Confirmer la suppression",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            
+            if (result == MessageBoxResult.Yes)
             {
-                RequestReindex?.Invoke(this, EventArgs.Empty);
-                HideWindow();
+                var success = FileActionsService.DeleteToRecycleBin(item.Path);
+                if (success)
+                {
+                    RequestReindex?.Invoke(this, EventArgs.Empty);
+                    HideWindow();
+                }
+                else
+                {
+                    MessageBox.Show("Impossible de supprimer le fichier.", "Erreur", 
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
-            else
-            {
-                MessageBox.Show("Impossible de supprimer le fichier.", "Erreur", 
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+        }
+        finally
+        {
+            _isDialogOpen = false;
         }
     }
     
     private void Window_Deactivated(object sender, EventArgs e)
     {
-        // Pendant un hide animé, Deactivated peut fire → on ignore
-        if (_isAnimatingHide) return;
+        // Pendant un hide animé ou un dialogue modal, on ignore
+        if (_isAnimatingHide || _isDialogOpen) return;
         HideWindow();
     }
     
@@ -917,7 +979,7 @@ public partial class LauncherWindow : Window
             // Les commandes système (CTRL/SYS) sont déjà exécutées au clic simple,
             // ne pas réexécuter au double-clic
             if (ResultsList.SelectedItem is SearchResult result 
-                && result.Type is ResultType.SystemControl or ResultType.SystemCommand)
+                && result.Type is ResultType.SystemControl or ResultType.AppControl or ResultType.SystemCommand)
                 return;
             
             _viewModel.ExecuteCommand.Execute(null);
@@ -941,7 +1003,7 @@ public partial class LauncherWindow : Window
         // Les commandes système (CTRL/SYS) s'exécutent toujours en clic simple
         // car ce sont des actions, pas des fichiers à ouvrir
         if (ResultsList.SelectedItem is SearchResult result 
-            && result.Type is ResultType.SystemControl or ResultType.SystemCommand)
+            && result.Type is ResultType.SystemControl or ResultType.AppControl or ResultType.SystemCommand)
         {
             _viewModel.ExecuteCommand.Execute(null);
             return;
@@ -1257,7 +1319,8 @@ public partial class LauncherWindow : Window
         
         // Obtenir les actions disponibles pour ce résultat
         var isPinned = _settings.Search.IsPinned(result.Path);
-        var actions = FileActionProvider.GetActionsForResult(result, isPinned);
+        var hasAlias = _viewModel.HasAlias(result.Path);
+        var actions = FileActionProvider.GetActionsForResult(result, isPinned, hasAlias);
         
         // Créer le style pour les items
         var menuItemStyle = (Style)FindResource("DarkMenuItemStyle");
@@ -1320,8 +1383,8 @@ public partial class LauncherWindow : Window
             FileActionType.Compress or FileActionType.SendByEmail => 4,
             // Groupe 5: Modification
             FileActionType.Rename or FileActionType.Delete or FileActionType.Properties => 5,
-            // Groupe 6: Épingles
-            FileActionType.Pin or FileActionType.Unpin => 6,
+            // Groupe 6: Épingles & Alias
+            FileActionType.CreateAlias or FileActionType.DeleteAlias or FileActionType.Pin or FileActionType.Unpin => 6,
             _ => 0
         };
     }
@@ -1335,6 +1398,20 @@ public partial class LauncherWindow : Window
         if (action.ActionType == FileActionType.Rename)
         {
             OnRequestRename(this, result.Path);
+            return;
+        }
+        
+        // Cas spécial pour CreateAlias
+        if (action.ActionType == FileActionType.CreateAlias)
+        {
+            OnRequestCreateAlias(this, (result.Name, result.Path));
+            return;
+        }
+        
+        // Cas spécial pour DeleteAlias
+        if (action.ActionType == FileActionType.DeleteAlias)
+        {
+            _viewModel.DeleteAlias(result.Path);
             return;
         }
         

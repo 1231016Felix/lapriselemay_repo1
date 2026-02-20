@@ -1,9 +1,11 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using NAudio.CoreAudioApi;
+using Windows.Devices.Radios;
 
 namespace QuickLauncher.Services;
 
@@ -175,27 +177,22 @@ public static class SystemControlService
     #region WiFi Control
 
     /// <summary>
-    /// Active ou désactive le WiFi.
+    /// Active ou désactive le WiFi via l'API WinRT Radio (pas besoin de droits admin).
     /// </summary>
     public static bool SetWifi(bool enabled)
     {
         try
         {
-            var action = enabled ? "enable" : "disable";
-            var process = new Process
+            return Task.Run(async () =>
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "netsh",
-                    Arguments = $"interface set interface \"Wi-Fi\" {action}",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    Verb = "runas"
-                }
-            };
-            process.Start();
-            process.WaitForExit(5000);
-            return process.ExitCode == 0;
+                var radios = await Radio.GetRadiosAsync();
+                var wifiRadio = radios.FirstOrDefault(r => r.Kind == RadioKind.WiFi);
+                if (wifiRadio == null) return false;
+                
+                var targetState = enabled ? RadioState.On : RadioState.Off;
+                var result = await wifiRadio.SetStateAsync(targetState);
+                return result == RadioAccessStatus.Allowed;
+            }).GetAwaiter().GetResult();
         }
         catch
         {
@@ -213,29 +210,18 @@ public static class SystemControlService
     }
 
     /// <summary>
-    /// Vérifie si le WiFi est activé.
+    /// Vérifie si le WiFi est activé via l'API WinRT Radio.
     /// </summary>
     public static bool IsWifiEnabled()
     {
         try
         {
-            var process = new Process
+            return Task.Run(async () =>
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "netsh",
-                    Arguments = "interface show interface \"Wi-Fi\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true
-                }
-            };
-            process.Start();
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(2000);
-            
-            return output.Contains("Connected") || output.Contains("Connecté") || 
-                   (output.Contains("Enabled") || output.Contains("Activé"));
+                var radios = await Radio.GetRadiosAsync();
+                var wifiRadio = radios.FirstOrDefault(r => r.Kind == RadioKind.WiFi);
+                return wifiRadio?.State == RadioState.On;
+            }).GetAwaiter().GetResult();
         }
         catch
         {
@@ -1026,13 +1012,13 @@ public static class SystemControlService
         {
             "on" or "enable" => SetWifi(true) 
                 ? new SystemCommandResult(true, "WiFi activé") 
-                : new SystemCommandResult(false, "Échec (droits admin requis?)"),
+                : new SystemCommandResult(false, "Échec — radio WiFi introuvable ou accès refusé"),
             "off" or "disable" => SetWifi(false) 
                 ? new SystemCommandResult(true, "WiFi désactivé") 
-                : new SystemCommandResult(false, "Échec (droits admin requis?)"),
+                : new SystemCommandResult(false, "Échec — radio WiFi introuvable ou accès refusé"),
             "toggle" or null => ToggleWifi() 
-                ? new SystemCommandResult(true, "WiFi basculé") 
-                : new SystemCommandResult(false, "Échec (droits admin requis?)"),
+                ? new SystemCommandResult(true, IsWifiEnabled() ? "WiFi activé" : "WiFi désactivé") 
+                : new SystemCommandResult(false, "Échec — radio WiFi introuvable ou accès refusé"),
             "status" => new SystemCommandResult(true, IsWifiEnabled() ? "WiFi: Activé" : "WiFi: Désactivé"),
             _ => new SystemCommandResult(false, "Argument invalide. Utilisez on, off, toggle ou status")
         };
