@@ -20,6 +20,13 @@ public sealed class IntegrationSettings
     public string AiModel { get; set; } = "gpt-4o-mini";
     public string AiSystemPrompt { get; set; } = "Tu es un assistant concis intégré dans un lanceur d'applications. Réponds de manière courte et directe (2-3 phrases max). Pas de markdown. Langue: français.";
     
+    /// <summary>
+    /// Délai en secondes après la dernière touche tapée avant d'envoyer la requête IA.
+    /// Permet à l'utilisateur de finir sa question sans réponse prématurée.
+    /// Plage : 1-4 secondes, défaut : 3.
+    /// </summary>
+    public int AiDebounceSeconds { get; set; } = Constants.AiDebounceSecondsDefault;
+    
     // === Widgets de notes ===
     public List<NoteWidgetInfo> NoteWidgets { get; set; } = [];
     

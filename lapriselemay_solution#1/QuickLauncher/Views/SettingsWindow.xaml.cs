@@ -171,6 +171,8 @@ public partial class SettingsWindow : Window
         AiApiKeyBox.Password = _settings.Integrations.AiApiKey;
         AiModelBox.Text = _settings.Integrations.AiModel;
         AiSystemPromptBox.Text = _settings.Integrations.AiSystemPrompt;
+        AiDebounceSlider.Value = Math.Clamp(_settings.Integrations.AiDebounceSeconds, Constants.AiDebounceSecondsMin, Constants.AiDebounceSecondsMax);
+        AiDebounceValue.Text = $"{(int)AiDebounceSlider.Value}s";
         UpdateAiFieldsState();
         
         // À propos
@@ -915,6 +917,15 @@ public partial class SettingsWindow : Window
             _settings.Integrations.AiSystemPrompt = AiSystemPromptBox.Text;
             AutoSave();
         }
+    }
+    
+    private void AiDebounceSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_isLoading || AiDebounceValue == null) return;
+        var seconds = (int)e.NewValue;
+        AiDebounceValue.Text = $"{seconds}s";
+        _settings.Integrations.AiDebounceSeconds = seconds;
+        AutoSave();
     }
     
     private async void AiTestBtn_Click(object sender, RoutedEventArgs e)

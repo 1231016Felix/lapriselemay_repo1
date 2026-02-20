@@ -143,13 +143,30 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     
     /// <summary>
     /// Debounce async : attend un court délai avant de lancer la recherche.
-    /// Plus propre que System.Timers.Timer + Dispatcher.Invoke (pas de marshalling cross-thread).
+    /// Utilise un délai allongé pour les commandes IA afin de laisser
+    /// l'utilisateur finir sa question avant d'envoyer la requête.
     /// </summary>
     private async Task DebounceSearchAsync(string text, CancellationToken token)
     {
         try
         {
-            await Task.Delay(Constants.SearchDebounceMs, token);
+            var delayMs = Constants.SearchDebounceMs;
+            
+            // Délai allongé pour les commandes IA (configurable 1-4s)
+            if (IsAiQuery(text))
+            {
+                var seconds = Math.Clamp(
+                    _settings.Integrations.AiDebounceSeconds,
+                    Constants.AiDebounceSecondsMin,
+                    Constants.AiDebounceSecondsMax);
+                delayMs = seconds * 1000;
+                
+                // Afficher un indicateur d'attente immédiat pour que l'utilisateur
+                // sache que le mode IA est actif et attend la fin de la saisie
+                ShowAiWaitingIndicator(text);
+            }
+            
+            await Task.Delay(delayMs, token);
             // Vérifier que le texte n'a pas changé pendant le debounce
             if (!token.IsCancellationRequested && text == SearchText)
                 UpdateResultsInternal();
@@ -158,6 +175,42 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         {
             // Debounce annulé par une nouvelle frappe, c'est normal
         }
+    }
+    
+    /// <summary>
+    /// Vérifie si la requête correspond à une commande IA avec un argument.
+    /// Ex: ":ai qu'est-ce qu'une API?" → true, ":ai" seul → false.
+    /// </summary>
+    private bool IsAiQuery(string text)
+    {
+        var cmd = _settings.SystemCommands.FirstOrDefault(c => c.Type == SystemControlType.AiChat);
+        if (cmd is not { IsEnabled: true }) return false;
+        var prefix = $":{cmd.Prefix} ";
+        return text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) && text.Length > prefix.Length + 1;
+    }
+    
+    /// <summary>
+    /// Affiche un indicateur visuel pendant le délai d'attente IA.
+    /// L'utilisateur voit qu'il est en mode IA et que le système
+    /// attend la fin de sa saisie avant d'envoyer la requête.
+    /// </summary>
+    private void ShowAiWaitingIndicator(string text)
+    {
+        var delaySeconds = Math.Clamp(
+            _settings.Integrations.AiDebounceSeconds,
+            Constants.AiDebounceSecondsMin,
+            Constants.AiDebounceSecondsMax);
+        
+        Results.Clear();
+        Results.Add(new SearchResult
+        {
+            Name = "🤖 En attente de la fin de la saisie...",
+            Description = $"La requête sera envoyée {delaySeconds}s après la dernière touche",
+            Type = ResultType.SystemControl,
+            DisplayIcon = "✍️",
+            IsInfoBlock = true
+        });
+        FinalizeResults();
     }
     
     partial void OnSelectedIndexChanged(int value)

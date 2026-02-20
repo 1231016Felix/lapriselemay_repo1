@@ -31,6 +31,11 @@ public static class Constants
     public const int IndexingBatchSize = 100;
     public const int SearchDebounceMs = 50;
     
+    // AI Debounce
+    public const int AiDebounceSecondsDefault = 3;
+    public const int AiDebounceSecondsMin = 1;
+    public const int AiDebounceSecondsMax = 4;
+    
     // Scores de recherche
     public static class SearchScores
     {
