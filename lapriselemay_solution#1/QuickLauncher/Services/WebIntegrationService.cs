@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http;
 using System.Text.Json;
@@ -404,6 +404,7 @@ public sealed class WebIntegrationService : IDisposable
         _disposed = true;
         _httpClient.Dispose();
     }
+
 }
 
 #region Result Models

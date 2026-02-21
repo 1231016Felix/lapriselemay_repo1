@@ -824,6 +824,7 @@ public partial class SettingsWindow : Window
             AutoSave();
         }
     }
+    
 
     // === Gestionnaires d'événements - Assistant IA ===
     

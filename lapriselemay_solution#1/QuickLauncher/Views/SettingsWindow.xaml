@@ -1378,6 +1378,81 @@
                                         <TextBlock Text="⏱️ Timers — notification sonore à la fin, clic pour fermer" Foreground="#888" FontSize="11" Margin="0,2"/>
                                     </StackPanel>
                                 </Border>
+                                
+                                <!-- CODES DE LANGUES -->
+                                <TextBlock Text="🔤 Codes de langues" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,10,0,8"/>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="20"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="fr" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Français" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="en" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Anglais" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="es" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Espagnol" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="de" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Allemand" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="it" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Italien" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="pt" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Portugais" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="nl" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Néerlandais" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="ru" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Russe" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="zh" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Chinois" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="ja" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Japonais" Foreground="#888" FontSize="11"/></Grid>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="ko" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Coréen" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="ar" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Arabe" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="hi" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Hindi" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="pl" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Polonais" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="tr" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Turc" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="sv" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Suédois" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="el" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Grec" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="ro" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Roumain" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="cs" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Tchèque" Foreground="#888" FontSize="11"/></Grid>
+                                            <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <TextBlock Text="hu" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Hongrois" Foreground="#888" FontSize="11"/></Grid>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                                
+                                <!-- COMMANDE :AI -->
+                                <TextBlock Text="🤖 Commande :ai" Style="{StaticResource SectionLabel}" FontSize="14" Margin="0,10,0,8"/>
+                                <Border Style="{StaticResource SettingsCard}">
+                                    <StackPanel>
+                                        <TextBlock Text="Exemples:" Foreground="#AAA" FontSize="11" Margin="0,0,0,6"/>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":ai qu'est-ce qu'une API REST?" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="  Question simple" Foreground="#888" FontSize="11"/></Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":ai convertir 72°F en celsius" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="  Calcul" Foreground="#888" FontSize="11"/></Grid>
+                                        <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <TextBlock Text=":ai regex email python" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
+                                            <TextBlock Grid.Column="1" Text="  Code" Foreground="#888" FontSize="11"/></Grid>
+                                        <TextBlock Text="Appuyez Entrée sur le résultat pour copier la réponse." Foreground="#666" FontSize="10" Margin="0,8,0,0"/>
+                                        <TextBlock Text="Configuration: onglet Commandes → Intégrations web" Foreground="#666" FontSize="10" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Grid>
                     </StackPanel>
@@ -1406,24 +1481,6 @@
                                 </StackPanel>
                             </StackPanel>
                             
-                            <TextBlock Text="Raccourcis clavier" Style="{StaticResource SectionLabel}" Margin="0,0,0,8"/>
-                            <Border Style="{StaticResource SettingsCard}">
-                                <StackPanel>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text="Entrée" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Lancer l'élément" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text="Ctrl+Entrée" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Exécuter en admin" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="100"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text="Échap" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Fermer" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                </StackPanel>
-                            </Border>
-                            
                             <TextBlock Text="Astuces" Style="{StaticResource SectionLabel}"/>
                             <Border Background="#2D3D2D" CornerRadius="6" Padding="12" BorderBrush="#4CAF50" BorderThickness="1">
                                 <StackPanel>
@@ -1435,113 +1492,11 @@
                                 </StackPanel>
                             </Border>
                             
-                            <TextBlock Text="🌤️ Commande :weather" Style="{StaticResource SectionLabel}"/>
-                            <Border Style="{StaticResource SettingsCard}">
+                            <TextBlock Text="Zone dangereuse" Style="{StaticResource SectionLabel}"/>
+                            <Border Background="#3D2020" CornerRadius="6" Padding="12" BorderBrush="#E81123" BorderThickness="1">
                                 <StackPanel>
-                                    <TextBlock Text="Affiche la météo en temps réel." Foreground="#AAA" FontSize="11" Margin="0,0,0,6"/>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="160"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":weather" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Météo de la ville par défaut" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="160"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":weather Paris" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Météo d'une autre ville" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <TextBlock Text="💡 La ville par défaut se configure dans l'onglet Commandes." Foreground="#666" FontSize="10" FontStyle="Italic" Margin="0,6,0,0"/>
-                                </StackPanel>
-                            </Border>
-                            
-                            <TextBlock Text="🌐 Commande :translate" Style="{StaticResource SectionLabel}"/>
-                            <Border Style="{StaticResource SettingsCard}">
-                                <StackPanel>
-                                    <TextBlock Text="Traduit du texte entre plusieurs langues." Foreground="#AAA" FontSize="11" Margin="0,0,0,6"/>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":translate hello" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Détecte la langue → traduit" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":translate fr hello" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Traduit vers le français" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="170"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":translate en>fr hello" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="Anglais → Français" Foreground="#888" FontSize="11"/>
-                                    </Grid>
-                                    <TextBlock Text="💡 Entrée pour copier le résultat. Codes longs aussi acceptés (eng, french, allemand...)." Foreground="#666" FontSize="10" FontStyle="Italic" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                                </StackPanel>
-                            </Border>
-                            
-                            <TextBlock Text="Codes de langues" Style="{StaticResource SectionLabel}"/>
-                            <Border Style="{StaticResource SettingsCard}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="20"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0">
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="fr" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Français" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="en" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Anglais" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="es" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Espagnol" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="de" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Allemand" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="it" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Italien" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="pt" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Portugais" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="nl" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Néerlandais" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="ru" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Russe" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="zh" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Chinois" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="ja" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Japonais" Foreground="#888" FontSize="11"/></Grid>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="2">
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="ko" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Coréen" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="ar" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Arabe" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="hi" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Hindi" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="pl" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Polonais" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="tr" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Turc" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="sv" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Suédois" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="el" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Grec" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="ro" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Roumain" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="cs" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Tchèque" Foreground="#888" FontSize="11"/></Grid>
-                                        <Grid Margin="0,1"><Grid.ColumnDefinitions><ColumnDefinition Width="30"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBlock Text="hu" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/><TextBlock Grid.Column="1" Text="Hongrois" Foreground="#888" FontSize="11"/></Grid>
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-                            
-                            <!-- Aide :ai -->
-                            <TextBlock Text="🤖 Commande :ai" Style="{StaticResource SectionLabel}"/>
-                            <Border Style="{StaticResource SettingsCard}">
-                                <StackPanel>
-                                    <TextBlock Text="Exemples:" Foreground="#AAA" FontSize="11" Margin="0,0,0,6"/>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":ai qu'est-ce qu'une API REST?" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="  Question simple" Foreground="#888" FontSize="11"/></Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":ai convertir 72°F en celsius" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="  Calcul" Foreground="#888" FontSize="11"/></Grid>
-                                    <Grid Margin="0,2"><Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text=":ai regex email python" Foreground="#0078D4" FontFamily="Consolas" FontSize="11"/>
-                                        <TextBlock Grid.Column="1" Text="  Code" Foreground="#888" FontSize="11"/></Grid>
-                                    <TextBlock Text="Appuyez Entrée sur le résultat pour copier la réponse." Foreground="#666" FontSize="10" Margin="0,8,0,0"/>
-                                    <TextBlock Text="Configuration: onglet Commandes → Intégrations web" Foreground="#666" FontSize="10" Margin="0,2,0,0"/>
+                                    <TextBlock Text="Réinitialiser tous les paramètres aux valeurs par défaut." Foreground="#888" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,10"/>
+                                    <Button Content="🗑️ Réinitialiser" Click="ResetSettings_Click" Background="#E81123" Foreground="White" Padding="10,6" BorderThickness="0" HorizontalAlignment="Left" Cursor="Hand"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -1558,14 +1513,6 @@
                                 <StackPanel>
                                     <TextBlock x:Name="DataPathText" Text="" Foreground="#888" TextWrapping="Wrap" FontFamily="Consolas" FontSize="10"/>
                                     <Button Content="📂 Ouvrir le dossier" Click="OpenDataFolder_Click" Style="{StaticResource ActionButton}" Margin="0,10,0,0" HorizontalAlignment="Left"/>
-                                </StackPanel>
-                            </Border>
-                            
-                            <TextBlock Text="Zone dangereuse" Style="{StaticResource SectionLabel}"/>
-                            <Border Background="#3D2020" CornerRadius="6" Padding="12" BorderBrush="#E81123" BorderThickness="1">
-                                <StackPanel>
-                                    <TextBlock Text="Réinitialiser tous les paramètres aux valeurs par défaut." Foreground="#888" TextWrapping="Wrap" FontSize="11" Margin="0,0,0,10"/>
-                                    <Button Content="🗑️ Réinitialiser" Click="ResetSettings_Click" Background="#E81123" Foreground="White" Padding="10,6" BorderThickness="0" HorizontalAlignment="Left" Cursor="Hand"/>
                                 </StackPanel>
                             </Border>
                         </StackPanel>

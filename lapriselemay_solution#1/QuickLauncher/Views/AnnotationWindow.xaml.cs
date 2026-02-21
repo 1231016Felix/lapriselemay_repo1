@@ -25,7 +25,7 @@ namespace QuickLauncher.Views;
 
 public partial class AnnotationWindow : Window
 {
-    private enum AnnotationTool { Pen, Highlight, Rectangle, Arrow, Text, Eraser }
+    private enum AnnotationTool { None, Select, Pen, Highlight, Rectangle, Arrow, Text }
 
     // ═══ État ═══
     private AnnotationTool _currentTool = AnnotationTool.Pen;
@@ -39,6 +39,13 @@ public partial class AnnotationWindow : Window
     private Point _shapeStart;
     private System.Windows.Shapes.Shape? _previewShape;
 
+    // ═══ Sélection / Déplacement ═══
+    private UIElement? _selectedElement;
+    private bool _isDragging;
+    private Point _dragStart;
+    private double _dragOrigLeft, _dragOrigTop;
+    private System.Windows.Shapes.Rectangle? _selectionRect;
+
     // ═══ Undo/Redo ═══
     private interface IAnnotationAction { void Undo(); void Redo(); }
 
@@ -48,16 +55,22 @@ public partial class AnnotationWindow : Window
         public void Redo() => canvas.Strokes.Add(strokes);
     }
 
-    private class StrokeEraseAction(InkCanvas canvas, StrokeCollection strokes) : IAnnotationAction
-    {
-        public void Undo() => canvas.Strokes.Add(strokes);
-        public void Redo() => canvas.Strokes.Remove(strokes);
-    }
-
     private class ShapeAction(Canvas canvas, UIElement element) : IAnnotationAction
     {
         public void Undo() => canvas.Children.Remove(element);
         public void Redo() => canvas.Children.Add(element);
+    }
+
+    private class ShapeRemoveAction(Canvas canvas, UIElement element) : IAnnotationAction
+    {
+        public void Undo() => canvas.Children.Add(element);
+        public void Redo() => canvas.Children.Remove(element);
+    }
+
+    private class ShapeMoveAction(UIElement element, double oldLeft, double oldTop, double newLeft, double newTop) : IAnnotationAction
+    {
+        public void Undo() { Canvas.SetLeft(element, oldLeft); Canvas.SetTop(element, oldTop); }
+        public void Redo() { Canvas.SetLeft(element, newLeft); Canvas.SetTop(element, newTop); }
     }
 
     private readonly List<IAnnotationAction> _undoStack = [];
@@ -91,10 +104,22 @@ public partial class AnnotationWindow : Window
     }
 
     // ═══ Outils ═══
+    private void ToolButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is RadioButton rb && rb.IsChecked == true)
+        {
+            rb.IsChecked = false;
+            _currentTool = AnnotationTool.None;
+            UpdateInkCanvasSettings();
+            e.Handled = true;
+        }
+    }
+
     private void Tool_Changed(object sender, RoutedEventArgs e)
     {
         if (sender is not RadioButton rb || rb.Tag is not string tag) return;
         _currentTool = Enum.Parse<AnnotationTool>(tag);
+        if (_currentTool != AnnotationTool.Select) ClearSelection();
         UpdateInkCanvasSettings();
     }
 
@@ -104,6 +129,21 @@ public partial class AnnotationWindow : Window
         
         switch (_currentTool)
         {
+            case AnnotationTool.None:
+                DrawingCanvas.EditingMode = InkCanvasEditingMode.None;
+                DrawingCanvas.IsHitTestVisible = false;
+                ShapeCanvas.IsHitTestVisible = false;
+                DrawingCanvas.Cursor = Cursors.Arrow;
+                ClearSelection();
+                break;
+
+            case AnnotationTool.Select:
+                DrawingCanvas.EditingMode = InkCanvasEditingMode.None;
+                DrawingCanvas.IsHitTestVisible = false;
+                ShapeCanvas.IsHitTestVisible = true;
+                ShapeCanvas.Cursor = Cursors.Arrow;
+                break;
+
             case AnnotationTool.Pen:
                 DrawingCanvas.EditingMode = InkCanvasEditingMode.Ink;
                 DrawingCanvas.IsHitTestVisible = true;
@@ -131,13 +171,6 @@ public partial class AnnotationWindow : Window
                     FitToCurve = false,
                     IsHighlighter = true
                 };
-                DrawingCanvas.Cursor = Cursors.Hand;
-                break;
-
-            case AnnotationTool.Eraser:
-                DrawingCanvas.EditingMode = InkCanvasEditingMode.EraseByStroke;
-                DrawingCanvas.IsHitTestVisible = true;
-                ShapeCanvas.IsHitTestVisible = false;
                 DrawingCanvas.Cursor = Cursors.Hand;
                 break;
 
@@ -188,15 +221,15 @@ public partial class AnnotationWindow : Window
         _redoStack.Clear();
     }
 
-    private void DrawingCanvas_StrokeErased(object sender, RoutedEventArgs e)
-    {
-        // Quand des strokes sont effacés, on ne peut pas facilement les tracker individuellement
-        // On simplifie en ne supportant pas l'undo d'effacement de strokes
-    }
-
     // ═══ Dessin de formes (Rectangle, Flèche) ═══
     private void ShapeCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
+        if (_currentTool == AnnotationTool.Select)
+        {
+            HandleSelectMouseDown(e);
+            return;
+        }
+
         if (_currentTool == AnnotationTool.Text)
         {
             PlaceTextBox(e.GetPosition(ShapeCanvas));
@@ -236,6 +269,17 @@ public partial class AnnotationWindow : Window
 
     private void ShapeCanvas_MouseMove(object sender, MouseEventArgs e)
     {
+        if (_currentTool == AnnotationTool.Select && _isDragging && _selectedElement != null)
+        {
+            var selectPos = e.GetPosition(ShapeCanvas);
+            var dx = selectPos.X - _dragStart.X;
+            var dy = selectPos.Y - _dragStart.Y;
+            Canvas.SetLeft(_selectedElement, _dragOrigLeft + dx);
+            Canvas.SetTop(_selectedElement, _dragOrigTop + dy);
+            UpdateSelectionRect();
+            return;
+        }
+
         if (!_isDrawingShape || _previewShape == null) return;
         var pos = e.GetPosition(ShapeCanvas);
 
@@ -257,6 +301,21 @@ public partial class AnnotationWindow : Window
 
     private void ShapeCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
+        if (_currentTool == AnnotationTool.Select && _isDragging && _selectedElement != null)
+        {
+            _isDragging = false;
+            ShapeCanvas.ReleaseMouseCapture();
+            var newLeft = Canvas.GetLeft(_selectedElement);
+            var newTop = Canvas.GetTop(_selectedElement);
+            if (Math.Abs(newLeft - _dragOrigLeft) > 1 || Math.Abs(newTop - _dragOrigTop) > 1)
+            {
+                var action = new ShapeMoveAction(_selectedElement, _dragOrigLeft, _dragOrigTop, newLeft, newTop);
+                _undoStack.Add(action);
+                _redoStack.Clear();
+            }
+            return;
+        }
+
         if (!_isDrawingShape || _previewShape == null) return;
         _isDrawingShape = false;
         ShapeCanvas.ReleaseMouseCapture();
@@ -383,6 +442,102 @@ public partial class AnnotationWindow : Window
         };
     }
 
+    // ═══ Sélection / Déplacement ═══
+    private void HandleSelectMouseDown(MouseButtonEventArgs e)
+    {
+        var pos = e.GetPosition(ShapeCanvas);
+        var hit = ShapeCanvas.InputHitTest(pos) as DependencyObject;
+
+        // Remonter l'arbre visuel pour trouver l'élément direct du canvas
+        UIElement? target = null;
+        while (hit != null && hit != ShapeCanvas)
+        {
+            if (hit is UIElement uie && ShapeCanvas.Children.Contains(uie))
+            {
+                target = uie;
+                break;
+            }
+            hit = System.Windows.Media.VisualTreeHelper.GetParent(hit);
+        }
+
+        if (target != null && target != _selectionRect)
+        {
+            SelectElement(target);
+            _isDragging = true;
+            _dragStart = pos;
+            _dragOrigLeft = double.IsNaN(Canvas.GetLeft(target)) ? 0 : Canvas.GetLeft(target);
+            _dragOrigTop = double.IsNaN(Canvas.GetTop(target)) ? 0 : Canvas.GetTop(target);
+            ShapeCanvas.CaptureMouse();
+        }
+        else
+        {
+            ClearSelection();
+        }
+    }
+
+    private void SelectElement(UIElement element)
+    {
+        ClearSelection();
+        _selectedElement = element;
+
+        // Créer un rectangle de sélection visuel
+        _selectionRect = new System.Windows.Shapes.Rectangle
+        {
+            Stroke = new SolidColorBrush(Color.FromRgb(0x00, 0x7A, 0xFF)),
+            StrokeThickness = 1.5,
+            StrokeDashArray = [4, 2],
+            Fill = System.Windows.Media.Brushes.Transparent,
+            IsHitTestVisible = false
+        };
+        ShapeCanvas.Children.Add(_selectionRect);
+        UpdateSelectionRect();
+    }
+
+    private void ClearSelection()
+    {
+        if (_selectionRect != null)
+        {
+            ShapeCanvas.Children.Remove(_selectionRect);
+            _selectionRect = null;
+        }
+        _selectedElement = null;
+        _isDragging = false;
+    }
+
+    private void UpdateSelectionRect()
+    {
+        if (_selectionRect == null || _selectedElement == null) return;
+
+        // Mesurer les dimensions de l'élément
+        _selectedElement.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var desired = _selectedElement.DesiredSize;
+        if (_selectedElement is FrameworkElement fe)
+        {
+            desired = new System.Windows.Size(
+                fe.ActualWidth > 0 ? fe.ActualWidth : desired.Width,
+                fe.ActualHeight > 0 ? fe.ActualHeight : desired.Height);
+        }
+
+        var left = double.IsNaN(Canvas.GetLeft(_selectedElement)) ? 0 : Canvas.GetLeft(_selectedElement);
+        var top = double.IsNaN(Canvas.GetTop(_selectedElement)) ? 0 : Canvas.GetTop(_selectedElement);
+
+        Canvas.SetLeft(_selectionRect, left - 3);
+        Canvas.SetTop(_selectionRect, top - 3);
+        _selectionRect.Width = desired.Width + 6;
+        _selectionRect.Height = desired.Height + 6;
+    }
+
+    private void DeleteSelectedElement()
+    {
+        if (_selectedElement == null) return;
+        var element = _selectedElement;
+        ClearSelection();
+        ShapeCanvas.Children.Remove(element);
+        var action = new ShapeRemoveAction(ShapeCanvas, element);
+        _undoStack.Add(action);
+        _redoStack.Clear();
+    }
+
     // ═══ Undo / Redo ═══
     private void Undo_Click(object sender, RoutedEventArgs e) => PerformUndo();
     private void Redo_Click(object sender, RoutedEventArgs e) => PerformRedo();
@@ -489,6 +644,11 @@ public partial class AnnotationWindow : Window
             Close();
             e.Handled = true;
         }
+        else if (e.Key == Key.Delete && _selectedElement != null)
+        {
+            DeleteSelectedElement();
+            e.Handled = true;
+        }
         else if (Keyboard.Modifiers == ModifierKeys.Control)
         {
             switch (e.Key)
@@ -528,10 +688,10 @@ public partial class AnnotationWindow : Window
                 case MessageBoxResult.Yes:
                     e.Cancel = true;
                     SaveAnnotated();
-                    break;
+                    return;
                 case MessageBoxResult.Cancel:
                     e.Cancel = true;
-                    break;
+                    return;
             }
         }
 

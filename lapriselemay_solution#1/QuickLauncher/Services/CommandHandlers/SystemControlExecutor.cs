@@ -46,6 +46,13 @@ public sealed class SystemControlExecutor : ISystemControlExecutor
             return CopyToClipboard(text, "📋 Réponse IA copiée");
         }
         
+        // === Copier depuis :def ===
+        if (command.StartsWith(":def:copy:"))
+        {
+            var text = command[":def:copy:".Length..];
+            return CopyToClipboard(text, "📋 Définition copiée");
+        }
+        
         // === Commandes configurables ===
         var parts = command.TrimStart(':').Split(' ', 2);
         var cmdPrefix = parts[0];

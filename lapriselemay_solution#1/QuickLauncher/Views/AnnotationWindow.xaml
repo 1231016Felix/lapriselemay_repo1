@@ -100,18 +100,18 @@
         <Border Grid.Row="0" Background="#2D2D2D" Padding="8,6" BorderBrush="#3F3F3F" BorderThickness="0,0,0,1">
             <WrapPanel>
                 <!-- Outils de dessin -->
+                <RadioButton x:Name="BtnSelect" Content="🖱️ Sélection" Style="{StaticResource ToolButton}"
+                             Checked="Tool_Changed" PreviewMouseLeftButtonDown="ToolButton_PreviewMouseDown" Tag="Select"/>
                 <RadioButton x:Name="BtnPen" Content="✏️ Crayon" Style="{StaticResource ToolButton}"
-                             IsChecked="True" Checked="Tool_Changed" Tag="Pen"/>
+                             IsChecked="True" Checked="Tool_Changed" PreviewMouseLeftButtonDown="ToolButton_PreviewMouseDown" Tag="Pen"/>
                 <RadioButton x:Name="BtnHighlight" Content="🖍️ Surligneur" Style="{StaticResource ToolButton}"
-                             Checked="Tool_Changed" Tag="Highlight"/>
+                             Checked="Tool_Changed" PreviewMouseLeftButtonDown="ToolButton_PreviewMouseDown" Tag="Highlight"/>
                 <RadioButton x:Name="BtnRect" Content="▭ Rectangle" Style="{StaticResource ToolButton}"
-                             Checked="Tool_Changed" Tag="Rectangle"/>
+                             Checked="Tool_Changed" PreviewMouseLeftButtonDown="ToolButton_PreviewMouseDown" Tag="Rectangle"/>
                 <RadioButton x:Name="BtnArrow" Content="➜ Flèche" Style="{StaticResource ToolButton}"
-                             Checked="Tool_Changed" Tag="Arrow"/>
+                             Checked="Tool_Changed" PreviewMouseLeftButtonDown="ToolButton_PreviewMouseDown" Tag="Arrow"/>
                 <RadioButton x:Name="BtnText" Content="A Texte" Style="{StaticResource ToolButton}"
-                             Checked="Tool_Changed" Tag="Text"/>
-                <RadioButton x:Name="BtnEraser" Content="🧹 Gomme" Style="{StaticResource ToolButton}"
-                             Checked="Tool_Changed" Tag="Eraser"/>
+                             Checked="Tool_Changed" PreviewMouseLeftButtonDown="ToolButton_PreviewMouseDown" Tag="Text"/>
 
                 <Separator Style="{StaticResource ToolSeparator}"/>
 
@@ -173,8 +173,7 @@
                 <!-- InkCanvas pour crayon/surligneur/gomme -->
                 <InkCanvas x:Name="DrawingCanvas" Background="Transparent"
                            EditingMode="Ink" Cursor="Cross"
-                           StrokeCollected="DrawingCanvas_StrokeCollected"
-                           StrokeErased="DrawingCanvas_StrokeErased"/>
+                           StrokeCollected="DrawingCanvas_StrokeCollected"/>
 
                 <!-- Canvas pour formes (rectangles, flèches, texte) -->
                 <Canvas x:Name="ShapeCanvas" Background="Transparent" IsHitTestVisible="False"
