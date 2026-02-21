@@ -223,13 +223,18 @@ public sealed class AppSettings
     }
 
     /// <summary>
-    /// Ajoute les commandes système manquantes et met à jour les catégories (migration).
+    /// Ajoute les commandes système manquantes, purge les obsolètes et met à jour les catégories (migration).
     /// </summary>
     private void MigrateSystemCommands()
     {
         var defaultCommands = GetDefaultSystemCommands();
+        var defaultTypes = defaultCommands.Select(c => c.Type).ToHashSet();
         var existingTypes = SystemCommands.Select(c => c.Type).ToHashSet();
         
+        // Purger les commandes qui n'existent plus dans les défauts
+        SystemCommands.RemoveAll(c => !defaultTypes.Contains(c.Type));
+        
+        // Ajouter les nouvelles commandes manquantes
         foreach (var cmd in defaultCommands)
         {
             if (!existingTypes.Contains(cmd.Type))
