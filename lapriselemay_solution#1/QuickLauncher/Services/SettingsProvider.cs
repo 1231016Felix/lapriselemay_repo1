@@ -7,22 +7,23 @@ namespace QuickLauncher.Services;
 /// Implémentation de <see cref="ISettingsProvider"/> avec cache en mémoire.
 /// Remplace les appels dispersés à AppSettings.Load() qui lisaient le disque
 /// à chaque recherche (hot path critique pour la performance).
+/// 
+/// Contrat de threading :
+/// - <see cref="Current"/> retourne une référence atomique (volatile) et peut être lu depuis n'importe quel thread.
+/// - Les mutations de l'objet retourné (via ses propriétés) doivent se faire depuis le UI thread uniquement.
+/// - <see cref="Save"/>, <see cref="Reload"/> et <see cref="Update"/> doivent être appelés depuis le UI thread.
+/// - Les lectures concurrentes depuis des threads de recherche sont sûres tant qu'elles ne mutent pas l'objet.
 /// </summary>
 public sealed class SettingsProvider : ISettingsProvider
 {
-    private readonly object _lock = new();
-    private AppSettings _current;
+    /// <summary>
+    /// Référence volatile : les lectures/écritures de la référence sont atomiques et
+    /// visibles immédiatement par tous les threads sans lock.
+    /// Plus performant que lock pour le pattern read-mostly (hot path de recherche).
+    /// </summary>
+    private volatile AppSettings _current;
 
-    public AppSettings Current
-    {
-        get
-        {
-            lock (_lock)
-            {
-                return _current;
-            }
-        }
-    }
+    public AppSettings Current => _current;
 
     public event EventHandler<AppSettings>? SettingsChanged;
 
@@ -34,40 +35,22 @@ public sealed class SettingsProvider : ISettingsProvider
 
     public void Save()
     {
-        AppSettings snapshot;
-        lock (_lock)
-        {
-            _current.Save();
-            snapshot = _current;
-        }
-        
+        _current.Save();
         Debug.WriteLine("[SettingsProvider] Sauvegardé sur disque et notification envoyée");
-        SettingsChanged?.Invoke(this, snapshot);
+        SettingsChanged?.Invoke(this, _current);
     }
 
     public void Reload()
     {
-        AppSettings loaded;
-        lock (_lock)
-        {
-            _current = AppSettings.Load();
-            loaded = _current;
-        }
-        
+        _current = AppSettings.Load();
         Debug.WriteLine("[SettingsProvider] Rechargé depuis le disque");
-        SettingsChanged?.Invoke(this, loaded);
+        SettingsChanged?.Invoke(this, _current);
     }
 
     public void Update(Action<AppSettings> updateAction)
     {
-        AppSettings snapshot;
-        lock (_lock)
-        {
-            updateAction(_current);
-            _current.Save();
-            snapshot = _current;
-        }
-        
-        SettingsChanged?.Invoke(this, snapshot);
+        updateAction(_current);
+        _current.Save();
+        SettingsChanged?.Invoke(this, _current);
     }
 }

@@ -23,8 +23,10 @@ public sealed class AiChatService : IDisposable
         ["gemini"]  = new GeminiProvider(),
     };
 
-    // Cache simple pour éviter les appels répétés identiques
-    private (string Key, AiChatResult Result, DateTime CachedAt)? _cache;
+    // Cache multi-entrées pour éviter les appels répétés identiques.
+    // Capacité limitée à 10 entrées (les plus anciennes sont évincées).
+    private readonly Dictionary<string, (AiChatResult Result, DateTime CachedAt)> _cache = new();
+    private const int MaxCacheEntries = 10;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
 
     public AiChatService()
@@ -63,11 +65,10 @@ public sealed class AiChatService : IDisposable
 
         // Vérifier le cache
         var cacheKey = $"{question.ToLowerInvariant()}_{model}_{providerId}";
-        if (_cache.HasValue &&
-            _cache.Value.Key == cacheKey &&
-            DateTime.Now - _cache.Value.CachedAt < CacheDuration)
+        if (_cache.TryGetValue(cacheKey, out var cached) &&
+            DateTime.Now - cached.CachedAt < CacheDuration)
         {
-            return _cache.Value.Result;
+            return cached.Result;
         }
 
         try
@@ -101,8 +102,13 @@ public sealed class AiChatService : IDisposable
                 TokensUsed = parsed.TokensUsed
             };
 
-            // Mettre en cache
-            _cache = (cacheKey, result, DateTime.Now);
+            // Mettre en cache (évincer les entrées les plus anciennes si capacité atteinte)
+            if (_cache.Count >= MaxCacheEntries)
+            {
+                var oldest = _cache.MinBy(kv => kv.Value.CachedAt).Key;
+                _cache.Remove(oldest);
+            }
+            _cache[cacheKey] = (result, DateTime.Now);
             return result;
         }
         catch (TaskCanceledException)

@@ -55,7 +55,7 @@ public sealed partial class IndexingService : IDisposable
         _connectionString = $"Data Source={_dbPath};Mode=ReadWriteCreate;Cache=Shared";
         
         // Amélioration #2 : connexion persistante en mode WAL pour les opérations fréquentes
-        // (RecordUsage, AddOrUpdateItem, RemoveItem)
+        // (RecordUsage, AddOrUpdateItem, RemoveItem, InitializeDatabase)
         _persistentConnection = new SqliteConnection(_connectionString);
         _persistentConnection.Open();
         using (var pragmaCmd = _persistentConnection.CreateCommand())
@@ -64,24 +64,18 @@ public sealed partial class IndexingService : IDisposable
             pragmaCmd.ExecuteNonQuery();
         }
         
-        InitializeDatabase();
+        InitializeDatabase(_persistentConnection);
         LoadCacheFromDatabase();
         
         _logger.Info($"IndexingService initialisé avec {_cache.Count} éléments en cache");
     }
 
-    private void InitializeDatabase()
+    /// <summary>
+    /// Crée les tables et index si nécessants. Réutilise la connexion persistante
+    /// pour éviter une ouverture/fermeture superflue au démarrage.
+    /// </summary>
+    private static void InitializeDatabase(SqliteConnection conn)
     {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        
-        // Activer le mode WAL pour de meilleures performances
-        using (var pragmaCmd = conn.CreateCommand())
-        {
-            pragmaCmd.CommandText = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;";
-            pragmaCmd.ExecuteNonQuery();
-        }
-        
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             CREATE TABLE IF NOT EXISTS Items (
@@ -197,7 +191,7 @@ public sealed partial class IndexingService : IDisposable
             // peut apparaître via shell:AppsFolder (StoreApp) ET via un raccourci .lnk (Application).
             // Les items de catégories différentes avec le même nom sont conservés (ex: "Config" fichier + "Config" dossier).
             var deduplicated = items
-                .GroupBy(i => (Name: i.Name.ToLowerInvariant(), TypeCategory: GetDeduplicationCategory(i.Type)))
+                .GroupBy(i => (Name: i.Name.ToLowerInvariant(), TypeCategory: DeduplicationHelper.GetCategory(i.Type)))
                 .Select(g => g.OrderByDescending(i => i.Type == ResultType.StoreApp ? 1 : 0)
                               .ThenByDescending(i => i.UseCount)
                               .First())
@@ -393,17 +387,7 @@ public sealed partial class IndexingService : IDisposable
     // vers SearchService et CalculatorService (Amélioration #3 et #7).
     // Utiliser SearchService.Search() à la place.
     
-    /// <summary>
-    /// Retourne une catégorie de type pour la déduplication.
-    /// Application et StoreApp sont fusionnés car un même programme peut apparaître
-    /// via shell:AppsFolder (StoreApp) ET via un raccourci .lnk (Application).
-    /// </summary>
-    private static ResultType GetDeduplicationCategory(ResultType type) => type switch
-    {
-        ResultType.Application => ResultType.Application,
-        ResultType.StoreApp => ResultType.Application, // Même catégorie que Application
-        _ => type
-    };
+    // Déduplication centralisée dans DeduplicationHelper.
     
     public void RecordUsage(SearchResult item)
     {

@@ -230,8 +230,6 @@ public sealed class AppSettings
         var defaultCommands = GetDefaultSystemCommands();
         var existingTypes = SystemCommands.Select(c => c.Type).ToHashSet();
         
-        SystemCommands.RemoveAll(c => c.Type == SystemControlType.Notes || c.Type == SystemControlType.Timers);
-        
         foreach (var cmd in defaultCommands)
         {
             if (!existingTypes.Contains(cmd.Type))
@@ -353,6 +351,7 @@ public sealed class AppSettings
 // ══════════════════════════════════════════════════════════
 //  DTO LEGACY — utilisé uniquement pour la migration
 //  de l'ancien format JSON plat vers le nouveau.
+//  TODO: Supprimer une fois que tous les utilisateurs ont migré vers le format v2.
 // ══════════════════════════════════════════════════════════
 
 internal sealed class LegacyAppSettings
@@ -474,7 +473,8 @@ public enum SystemControlType
     FlushDns = 10, Logoff = 11, EmptyRecycleBin = 12, OpenTaskManager = 13,
     OpenWindowsSettings = 14, OpenControlPanel = 15, EmptyTemp = 16,
     OpenCmdAdmin = 17, OpenPowerShellAdmin = 18, RestartExplorer = 19,
-    SystemSearch = 20, Timer = 21, Timers = 22, Note = 23, Notes = 24,
+    SystemSearch = 20, Timer = 21, Note = 23,
+    // Timers (22) et Notes (24) supprimés — anciens sous-menus, purgés par migration.
     OpenStartupFolder = 25, OpenHostsFile = 26,
     Weather = 27, Translate = 28, AiChat = 29,
     ProcessKill = 30, DiskInfo = 31,

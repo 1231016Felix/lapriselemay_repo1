@@ -214,19 +214,16 @@ public sealed class FileWatcherService : IDisposable
 
         try
         {
-            var changes = new List<FileChangeEvent>();
-            var processedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // Dédupliquer en gardant le DERNIER changement pour chaque chemin.
+            // Ex: Created puis Deleted → seul Deleted est conservé (pas de fichier fantôme).
+            var latestByPath = new Dictionary<string, FileChangeEvent>(StringComparer.OrdinalIgnoreCase);
 
-            // Récupérer tous les changements en attente
             while (_changeQueue.TryDequeue(out var change))
             {
-                // Dédupliquer (garder le dernier changement pour chaque chemin)
-                if (!processedPaths.Contains(change.Path))
-                {
-                    processedPaths.Add(change.Path);
-                    changes.Add(change);
-                }
+                latestByPath[change.Path] = change;
             }
+
+            var changes = latestByPath.Values.ToList();
 
             if (changes.Count > 0)
             {

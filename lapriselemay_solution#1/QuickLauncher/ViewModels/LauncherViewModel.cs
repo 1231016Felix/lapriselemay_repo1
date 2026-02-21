@@ -75,7 +75,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _showShortcutHints;
     
-    public ObservableCollection<SearchResult> Results { get; } = [];
+    public BatchObservableCollection<SearchResult> Results { get; } = [];
     public ObservableCollection<FileAction> AvailableActions { get; } = [];
     
     public event EventHandler? RequestHide;
@@ -372,17 +372,12 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     }
     
     /// <summary>
-    /// Amélioration #3 : remplace le contenu de Results d'un coup pour éviter le flash visuel.
-    /// Minimise les notifications de changement de collection en faisant un diff minimal.
+    /// Remplace le contenu de Results en une seule notification CollectionChanged.Reset.
+    /// Élimine le flash UI causé par Clear() + N × Add() (N+1 notifications individuelles).
     /// </summary>
     private void SwapResults(List<SearchResult> newResults)
     {
-        // Stratégie simple et efficace : clear + bulk add
-        // (un RangeObservableCollection serait encore mieux, mais ceci élimine déjà le flash
-        //  car les résultats sont prêts avant le premier Clear)
-        Results.Clear();
-        foreach (var result in newResults)
-            Results.Add(result);
+        Results.ReplaceAll(newResults);
         FinalizeResults();
         
         // Charger les icônes natives en arrière-plan
@@ -657,9 +652,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             // Vérifier que cette recherche est toujours la plus récente
             if (token.IsCancellationRequested || generation != _searchGeneration) return;
             
-            Results.Clear();
-            foreach (var r in result.Results)
-                Results.Add(r);
+            Results.ReplaceAll(result.Results);
             FinalizeResults();
             
             // Charger les icônes natives en arrière-plan

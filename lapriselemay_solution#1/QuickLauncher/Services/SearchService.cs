@@ -87,7 +87,7 @@ public sealed class SearchService
             // Évite les doublons Application/.lnk + StoreApp + SystemControl pour le même programme.
             // Les noms sont normalisés pour ignorer les emojis en tête (ex: "🧹 Nettoyage" = "Nettoyage").
             // Note : on réordonne dans chaque groupe car PLINQ ne garantit pas l'ordre intra-groupe.
-            .GroupBy(x => (Name: NormalizeNameForDedup(x.Item.Name), Category: GetDeduplicationCategory(x.Item.Type)))
+            .GroupBy(x => (Name: NormalizeNameForDedup(x.Item.Name), Category: DeduplicationHelper.GetCategory(x.Item.Type)))
             .Select(g => g
                 .OrderByDescending(x => x.Item.Type is ResultType.SystemControl or ResultType.AppControl ? 1 : 0)
                 .ThenByDescending(x => x.Score)
@@ -102,19 +102,7 @@ public sealed class SearchService
             .ToList();
     }
 
-    /// <summary>
-    /// Retourne une catégorie de type pour la déduplication des résultats.
-    /// Application, StoreApp et SystemControl sont fusionnés car un même programme peut apparaître
-    /// via shell:AppsFolder (StoreApp), un raccourci .lnk (Application) ET WindowsSettingsProvider (SystemControl).
-    /// Exemple : "Nettoyage de disque" existe en StoreApp ET en SystemControl (cleanmgr).
-    /// </summary>
-    private static ResultType GetDeduplicationCategory(ResultType type) => type switch
-    {
-        ResultType.StoreApp => ResultType.Application,
-        ResultType.SystemControl => ResultType.Application,
-        ResultType.AppControl => ResultType.Application,
-        _ => type
-    };
+    // Déduplication centralisée dans DeduplicationHelper.
 
     /// <summary>
     /// Normalise un nom pour la déduplication en supprimant les emojis/symboles en tête.
