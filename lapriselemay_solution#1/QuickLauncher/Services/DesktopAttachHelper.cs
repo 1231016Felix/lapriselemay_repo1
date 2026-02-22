@@ -165,10 +165,10 @@ public static class DesktopAttachHelper
         if (classNameStr == "WorkerW" || classNameStr == "Progman")
             return true;
         
-        // Ignorer les fenêtres système du tray et de la barre des tâches
-        // Ces fenêtres ne devraient pas masquer les widgets
+        // Les fenêtres système du tray et de la barre des tâches sont « transparentes » :
+        // on conserve l'état actuel au lieu de forcer une transition.
         if (IsSystemTrayWindow(classNameStr))
-            return true;
+            return _isDesktopVisible;
         
         // Vérifier si la fenêtre au premier plan contient SHELLDLL_DefView
         var shellView = FindWindowEx(foreground, IntPtr.Zero, "SHELLDLL_DefView", null);
