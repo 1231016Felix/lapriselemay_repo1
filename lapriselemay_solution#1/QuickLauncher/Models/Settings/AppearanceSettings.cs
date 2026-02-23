@@ -46,4 +46,7 @@ public sealed class AppearanceSettings
     public int AnimationDurationMs { get; set; } = 140;
     public AnimationStyle AnimationStyle { get; set; } = AnimationStyle.FadeSlide;
     public int StaggerDelayMs { get; set; } = 30;
+    
+    /// <summary>Copie profonde pour le pattern clone-swap du SettingsProvider.</summary>
+    public AppearanceSettings Clone() => (AppearanceSettings)MemberwiseClone();
 }

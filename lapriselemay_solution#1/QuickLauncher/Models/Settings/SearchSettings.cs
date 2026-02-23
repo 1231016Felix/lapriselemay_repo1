@@ -24,6 +24,15 @@ public sealed class SearchSettings
     // === Scoring ===
     public ScoringWeights ScoringWeights { get; set; } = new();
     
+    // === Abréviations personnalisées ===
+    /// <summary>
+    /// Abréviations utilisateur pour la recherche (complètent les abréviations intégrées).
+    /// Clé = abréviation, Valeur = liste de noms cibles.
+    /// Ex: { "db" : ["DataGrip", "DBeaver"] }
+    /// Si une clé existe aussi dans les abréviations intégrées, la version utilisateur a priorité.
+    /// </summary>
+    public Dictionary<string, string[]> UserAbbreviations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    
     // === Dossiers et fichiers indexés ===
     public List<string> IndexedFolders { get; set; } = GetDefaultIndexedFolders();
     public List<string> FileExtensions { get; set; } = [..Constants.DefaultFileExtensions];
@@ -143,4 +152,23 @@ public sealed class SearchSettings
         new() { Prefix = "gh", Name = "GitHub", UrlTemplate = "https://github.com/search?q={query}" },
         new() { Prefix = "so", Name = "Stack Overflow", UrlTemplate = "https://stackoverflow.com/search?q={query}" }
     ];
+    
+    /// <summary>
+    /// Copie profonde pour le pattern clone-swap du SettingsProvider.
+    /// Duplique toutes les listes et l'objet ScoringWeights pour que
+    /// les threads de recherche travaillent sur un snapshot stable.
+    /// </summary>
+    public SearchSettings Clone()
+    {
+        var clone = (SearchSettings)MemberwiseClone();
+        clone.ScoringWeights = ScoringWeights.Clone();
+        clone.UserAbbreviations = new Dictionary<string, string[]>(UserAbbreviations, StringComparer.OrdinalIgnoreCase);
+        clone.SearchHistory = [..SearchHistory];
+        clone.IndexedFolders = [..IndexedFolders];
+        clone.FileExtensions = [..FileExtensions];
+        clone.PinnedItems = [..PinnedItems];
+        clone.Scripts = [..Scripts];
+        clone.SearchEngines = [..SearchEngines];
+        return clone;
+    }
 }

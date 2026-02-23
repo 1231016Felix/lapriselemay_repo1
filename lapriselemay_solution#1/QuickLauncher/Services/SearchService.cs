@@ -122,10 +122,14 @@ public sealed class SearchService
 
     private int CalculateScore(string query, SearchResult item)
     {
-        var weights = _settingsProvider.Current.Search.ScoringWeights;
+        var searchSettings = _settingsProvider.Current.Search;
+        var weights = searchSettings.ScoringWeights;
+        var userAbbreviations = searchSettings.UserAbbreviations;
 
         // Score principal sur le nom
-        var nameScore = SearchAlgorithms.CalculateFuzzyScore(query, item.Name, item.UseCount, item.LastUsed, weights);
+        var nameScore = SearchAlgorithms.CalculateFuzzyScore(
+            query, item.Name, item.UseCount, item.LastUsed, weights,
+            userAbbreviations.Count > 0 ? userAbbreviations : null);
 
         // Score additionnel sur le chemin complet (pour les requêtes multi-mots)
         if (weights.EnablePathFuzzyMatch && !string.IsNullOrEmpty(item.Path))

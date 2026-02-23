@@ -4,22 +4,29 @@ using QuickLauncher.Models;
 namespace QuickLauncher.Services;
 
 /// <summary>
-/// Implémentation de <see cref="ISettingsProvider"/> avec cache en mémoire.
+/// Implémentation de <see cref="ISettingsProvider"/> avec cache en mémoire
+/// et pattern clone-swap pour la thread safety.
+/// 
 /// Remplace les appels dispersés à AppSettings.Load() qui lisaient le disque
 /// à chaque recherche (hot path critique pour la performance).
 /// 
-/// Contrat de threading :
-/// - <see cref="Current"/> retourne une référence atomique (volatile) et peut être lu depuis n'importe quel thread.
-/// - Les mutations de l'objet retourné (via ses propriétés) doivent se faire depuis le UI thread uniquement.
-/// - <see cref="Save"/>, <see cref="Reload"/> et <see cref="Update"/> doivent être appelés depuis le UI thread.
-/// - Les lectures concurrentes depuis des threads de recherche sont sûres tant qu'elles ne mutent pas l'objet.
+/// <b>Contrat de threading :</b>
+/// <list type="bullet">
+///   <item><see cref="Current"/> retourne une référence atomique (volatile) et peut être
+///         lu depuis n'importe quel thread. L'objet retourné est un snapshot stable :
+///         il ne sera jamais muté après publication.</item>
+///   <item><see cref="Update"/> clone l'objet courant, applique la mutation sur le clone,
+///         puis swap la référence atomiquement. Les threads de recherche en cours
+///         continuent de lire l'ancien snapshot sans interférence.</item>
+///   <item><see cref="Save"/>, <see cref="Reload"/> doivent être appelés depuis le UI thread.</item>
+/// </list>
 /// </summary>
 public sealed class SettingsProvider : ISettingsProvider
 {
     /// <summary>
     /// Référence volatile : les lectures/écritures de la référence sont atomiques et
     /// visibles immédiatement par tous les threads sans lock.
-    /// Plus performant que lock pour le pattern read-mostly (hot path de recherche).
+    /// L'objet pointé n'est jamais muté après publication (clone-swap).
     /// </summary>
     private volatile AppSettings _current;
 
@@ -47,10 +54,22 @@ public sealed class SettingsProvider : ISettingsProvider
         SettingsChanged?.Invoke(this, _current);
     }
 
+    /// <summary>
+    /// Applique une modification aux paramètres via le pattern clone-swap :
+    /// 1. Clone l'objet courant (copie profonde)
+    /// 2. Applique la mutation sur le clone
+    /// 3. Sauvegarde le clone sur disque
+    /// 4. Swap la référence volatile (publication atomique)
+    /// 
+    /// Les threads de recherche qui tenaient une référence à l'ancien objet
+    /// continuent de le lire sans risque de données incohérentes.
+    /// </summary>
     public void Update(Action<AppSettings> updateAction)
     {
-        updateAction(_current);
-        _current.Save();
-        SettingsChanged?.Invoke(this, _current);
+        var clone = _current.Clone();
+        updateAction(clone);
+        clone.Save();
+        _current = clone;
+        SettingsChanged?.Invoke(this, clone);
     }
 }

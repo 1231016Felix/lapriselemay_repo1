@@ -9,6 +9,19 @@ namespace QuickLauncher.Services;
 
 /// <summary>
 /// Service d'indexation optimisé avec support du parallélisme et annulation.
+/// 
+/// <b>Stratégie d'accès SQLite (deux chemins) :</b>
+/// <list type="bullet">
+///   <item><c>_persistentConnection</c> + <c>_dbLock</c> : opérations CRUD rapides
+///         (<see cref="RecordUsage"/>, <see cref="AddOrUpdateItem"/>, <see cref="RemoveItem"/>,
+///          <see cref="RemoveItemsByFolder"/>, <see cref="LoadCacheFromDatabase"/>).
+///         Synchrone, verrouillé pour éviter les accès concurrents sur la même connexion.</item>
+///   <item>Connexions éphémères : opérations bulk longues
+///         (<see cref="SaveToDatabaseAsync"/>, purge dans <see cref="RefreshVolatileSourcesAsync"/>).
+///         Exécutées en async sur un thread pool. Une connexion séparée évite de bloquer
+///         le CRUD pendant les réindexations qui peuvent durer plusieurs secondes.
+///         Le mode WAL de SQLite permet la concurrence lecture/écriture entre connexions.</item>
+/// </list>
 /// </summary>
 public sealed partial class IndexingService : IDisposable
 {
@@ -98,25 +111,25 @@ public sealed partial class IndexingService : IDisposable
     {
         _cache.Clear();
         
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT Path, Name, Description, Type, LastUsed, UseCount FROM Items";
-        
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        lock (_dbLock)
         {
-            var item = new SearchResult
+            using var cmd = _persistentConnection.CreateCommand();
+            cmd.CommandText = "SELECT Path, Name, Description, Type, LastUsed, UseCount FROM Items";
+            
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
             {
-                Path = reader.GetString(0),
-                Name = reader.GetString(1),
-                Description = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
-                Type = (ResultType)reader.GetInt32(3),
-                LastUsed = reader.IsDBNull(4) ? DateTime.MinValue : DateTime.Parse(reader.GetString(4)),
-                UseCount = reader.GetInt32(5)
-            };
-            _cache[item.Path] = item;
+                var item = new SearchResult
+                {
+                    Path = reader.GetString(0),
+                    Name = reader.GetString(1),
+                    Description = reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                    Type = (ResultType)reader.GetInt32(3),
+                    LastUsed = reader.IsDBNull(4) ? DateTime.MinValue : DateTime.Parse(reader.GetString(4)),
+                    UseCount = reader.GetInt32(5)
+                };
+                _cache[item.Path] = item;
+            }
         }
     }
 
@@ -309,6 +322,11 @@ public sealed partial class IndexingService : IDisposable
         }
     }
     
+    /// <summary>
+    /// Persiste les items indexés en base.
+    /// Utilise une connexion éphémère pour ne pas bloquer le CRUD persistant
+    /// pendant cette longue transaction (potentiellement des milliers d'INSERTs).
+    /// </summary>
     private async Task SaveToDatabaseAsync(List<SearchResult> items, CancellationToken token)
     {
         await using var conn = new SqliteConnection(_connectionString);
@@ -366,12 +384,13 @@ public sealed partial class IndexingService : IDisposable
     {
         CancelIndexing();
         
-        await using var conn = new SqliteConnection(_connectionString);
-        await conn.OpenAsync(cancellationToken);
-        
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM Items";
-        await cmd.ExecuteNonQueryAsync(cancellationToken);
+        // Vider la table via la connexion persistante (opération rapide)
+        lock (_dbLock)
+        {
+            using var cmd = _persistentConnection.CreateCommand();
+            cmd.CommandText = "DELETE FROM Items";
+            cmd.ExecuteNonQuery();
+        }
         
         _cache.Clear();
         

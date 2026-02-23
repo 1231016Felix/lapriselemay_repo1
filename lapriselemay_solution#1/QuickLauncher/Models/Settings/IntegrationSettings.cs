@@ -35,4 +35,14 @@ public sealed class IntegrationSettings
     
     // === Notes rapides ===
     public List<NoteItem> Notes { get; set; } = [];
+    
+    /// <summary>Copie profonde pour le pattern clone-swap du SettingsProvider.</summary>
+    public IntegrationSettings Clone()
+    {
+        var clone = (IntegrationSettings)MemberwiseClone();
+        clone.NoteWidgets = [..NoteWidgets];
+        clone.TimerWidgets = [..TimerWidgets];
+        clone.Notes = [..Notes];
+        return clone;
+    }
 }

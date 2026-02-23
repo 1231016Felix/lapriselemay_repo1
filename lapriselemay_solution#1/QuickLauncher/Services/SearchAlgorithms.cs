@@ -266,7 +266,8 @@ public static class SearchAlgorithms
     /// Ordre: Exact → StartsWith → Contains → Initiales → Sous-séquence → Fuzzy per-word → Fuzzy global
     /// Le fuzzy per-word est le cœur de la tolérance aux typos.
     /// </summary>
-    public static int CalculateFuzzyScore(string query, string target, int useCount, DateTime? lastUsed, ScoringWeights weights)
+    public static int CalculateFuzzyScore(string query, string target, int useCount, DateTime? lastUsed,
+        ScoringWeights weights, Dictionary<string, string[]>? userAbbreviations = null)
     {
         if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(target))
             return 0;
@@ -280,20 +281,34 @@ public static class SearchAlgorithms
 
         int score = 0;
         
-        // 0. Abréviations communes (priorité haute)
-        if (CommonAbbreviations.TryGetValue(queryLower, out var possibleTargets))
+        // 0. Abréviations : user d'abord (priorité), puis built-in
+        var matchedAbbreviation = false;
+        if (userAbbreviations != null && userAbbreviations.TryGetValue(queryLower, out var userTargets))
         {
-            foreach (var possibleTarget in possibleTargets)
+            foreach (var possibleTarget in userTargets)
+            {
+                if (targetLower.Contains(possibleTarget, StringComparison.OrdinalIgnoreCase))
+                {
+                    score = weights.ExactMatch - 100;
+                    matchedAbbreviation = true;
+                    break;
+                }
+            }
+        }
+        if (!matchedAbbreviation && CommonAbbreviations.TryGetValue(queryLower, out var builtinTargets))
+        {
+            foreach (var possibleTarget in builtinTargets)
             {
                 if (targetLower.Contains(possibleTarget))
                 {
                     score = weights.ExactMatch - 100;
+                    matchedAbbreviation = true;
                     break;
                 }
             }
         }
         
-        if (score > 0)
+        if (matchedAbbreviation)
             return ApplyBonuses(score, useCount, lastUsed, weights);
 
         // 1. Correspondance exacte

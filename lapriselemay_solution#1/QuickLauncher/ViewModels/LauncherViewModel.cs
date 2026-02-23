@@ -24,6 +24,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private readonly ISystemControlExecutor _systemControlExecutor;
     private readonly SearchService _searchService;
     private readonly IIconLoader _iconLoader;
+    private readonly GhostSuggestionService _ghostSuggestionService;
     private readonly SystemControlSuggestionBuilder _suggestionBuilder = new();
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _debounceCts;
@@ -98,7 +99,8 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public LauncherViewModel(IndexingService indexingService, ISettingsProvider settingsProvider,
         AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
         NotesService notesService, CommandRouter commandRouter, ISystemControlExecutor systemControlExecutor,
-        SearchService searchService, IIconLoader iconLoader, FileWatcherService? fileWatcherService = null)
+        SearchService searchService, IIconLoader iconLoader, GhostSuggestionService ghostSuggestionService,
+        FileWatcherService? fileWatcherService = null)
     {
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
@@ -110,6 +112,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         _systemControlExecutor = systemControlExecutor ?? throw new ArgumentNullException(nameof(systemControlExecutor));
         _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
         _iconLoader = iconLoader ?? throw new ArgumentNullException(nameof(iconLoader));
+        _ghostSuggestionService = ghostSuggestionService ?? throw new ArgumentNullException(nameof(ghostSuggestionService));
         
         // Initialiser les propriétés d'apparence depuis les settings
         ShowCategoryBadges = _settings.Appearance.ShowCategoryBadges;
@@ -689,102 +692,11 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     }
     
     /// <summary>
-    /// Met à jour la suggestion fantôme (ghost text) basée sur le premier résultat
-    /// dont le nom commence par le texte saisi. Priorise les items les plus utilisés.
+    /// Met à jour la suggestion fantôme via le GhostSuggestionService.
     /// </summary>
     private void UpdateGhostSuggestion()
     {
-        if (!_settings.Appearance.ShowGhostSuggestions || string.IsNullOrWhiteSpace(SearchText) || !HasResults)
-        {
-            GhostSuggestionText = string.Empty;
-            return;
-        }
-        
-        var query = SearchText.Trim();
-        
-        // Ne pas suggérer pour les commandes avec arguments (ex: ":note mon texte")
-        // ni pour les préfixes de recherche web (ex: "g query")
-        if (query.Contains(' '))
-        {
-            GhostSuggestionText = string.Empty;
-            return;
-        }
-        
-        // 1. Commandes système/application (ex: ":w" → ":weather", "::s" → "::settings")
-        if (query.StartsWith(':') && query.Length >= 2)
-        {
-            // Distinguer :: (commandes application) de : (commandes système)
-            if (query.StartsWith("::"))
-            {
-                // Préfixe "::" → ne suggérer que les commandes application
-                var appQuery = query[2..]; // sans le "::"
-                if (appQuery.Length == 0)
-                {
-                    GhostSuggestionText = string.Empty;
-                    return;
-                }
-                var bestAppCmd = _settings.SystemCommands
-                    .Where(c => c.IsEnabled && c.IsAppCommand
-                                && c.Prefix.StartsWith(appQuery, StringComparison.OrdinalIgnoreCase)
-                                && c.Prefix.Length > appQuery.Length)
-                    .OrderBy(c => c.Prefix.Length)
-                    .FirstOrDefault();
-                
-                if (bestAppCmd != null)
-                {
-                    GhostSuggestionText = $"::{bestAppCmd.Prefix}";
-                    return;
-                }
-            }
-            else
-            {
-                // Préfixe ":" → ne suggérer que les commandes système (pas application)
-                var cmdQuery = query[1..]; // sans le ":"
-                var bestCmd = _settings.SystemCommands
-                    .Where(c => c.IsEnabled && !c.IsAppCommand
-                                && c.Prefix.StartsWith(cmdQuery, StringComparison.OrdinalIgnoreCase)
-                                && c.Prefix.Length > cmdQuery.Length)
-                    .OrderBy(c => c.Prefix.Length)
-                    .FirstOrDefault();
-                
-                if (bestCmd != null)
-                {
-                    GhostSuggestionText = $":{bestCmd.Prefix}";
-                    return;
-                }
-            }
-        }
-        
-        // 2. Préfixes de recherche web (ex: "g" → "g ", "yt" → "yt ")
-        var matchingEngine = _settings.Search.SearchEngines
-            .FirstOrDefault(e => e.Prefix.StartsWith(query, StringComparison.OrdinalIgnoreCase)
-                                 && e.Prefix.Length >= query.Length);
-        if (matchingEngine != null && matchingEngine.Prefix.Length == query.Length)
-        {
-            // Le préfixe est complet, suggérer l'espace
-            GhostSuggestionText = $"{matchingEngine.Prefix} ";
-            return;
-        }
-        
-        // 3. Résultats de recherche (applications, fichiers, historique)
-        var bestMatch = Results
-            .Where(r => r.Name.StartsWith(query, StringComparison.OrdinalIgnoreCase)
-                        && r.Name.Length > query.Length
-                        && r.Type is not (ResultType.Calculator or ResultType.WebSearch
-                            or ResultType.SystemControl or ResultType.AppControl or ResultType.SystemCommand))
-            .OrderByDescending(r => r.UseCount)
-            .ThenByDescending(r => r.Score)
-            .FirstOrDefault();
-        
-        if (bestMatch != null)
-        {
-            // Conserver la casse de l'utilisateur + complétion du résultat
-            GhostSuggestionText = query + bestMatch.Name[query.Length..];
-        }
-        else
-        {
-            GhostSuggestionText = string.Empty;
-        }
+        GhostSuggestionText = _ghostSuggestionService.GetSuggestion(SearchText, Results);
     }
 
     /// <summary>

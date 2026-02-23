@@ -7,6 +7,9 @@ namespace QuickLauncher.Services;
 /// <summary>
 /// Logger qui écrit les messages dans un fichier dans le dossier AppData local.
 /// Thread-safe avec écriture asynchrone en arrière-plan.
+/// 
+/// Rotation automatique : au démarrage, supprime les fichiers de log
+/// de plus de <see cref="MaxLogAgeDays"/> jours pour éviter l'accumulation sur disque.
 /// </summary>
 public sealed class FileLogger : ILogger, IDisposable
 {
@@ -15,6 +18,9 @@ public sealed class FileLogger : ILogger, IDisposable
     private readonly Task _writerTask;
     private readonly CancellationTokenSource _cts = new();
     private bool _disposed;
+    
+    /// <summary>Durée de rétention des fichiers de log en jours.</summary>
+    private const int MaxLogAgeDays = 7;
 
     public FileLogger(string appName)
         : this(appName, $"{appName}_{DateTime.Now:yyyy-MM-dd}.log")
@@ -31,7 +37,48 @@ public sealed class FileLogger : ILogger, IDisposable
         Directory.CreateDirectory(logDir);
         _logFilePath = Path.Combine(logDir, logFileName);
         
+        // Nettoyage des vieux logs au démarrage (fire-and-forget, ne bloque pas l'init)
+        _ = Task.Run(() => PurgeOldLogs(logDir));
+        
         _writerTask = Task.Run(ProcessLogQueueAsync);
+    }
+    
+    /// <summary>
+    /// Supprime les fichiers .log de plus de <see cref="MaxLogAgeDays"/> jours.
+    /// Exécuté en arrière-plan au démarrage pour ne pas ralentir l'initialisation.
+    /// </summary>
+    private static void PurgeOldLogs(string logDir)
+    {
+        try
+        {
+            var cutoff = DateTime.Now.AddDays(-MaxLogAgeDays);
+            var logFiles = Directory.GetFiles(logDir, "*.log");
+            var deletedCount = 0;
+            
+            foreach (var file in logFiles)
+            {
+                try
+                {
+                    var lastWrite = File.GetLastWriteTime(file);
+                    if (lastWrite < cutoff)
+                    {
+                        File.Delete(file);
+                        deletedCount++;
+                    }
+                }
+                catch
+                {
+                    // Fichier verrouillé ou permission refusée — ignorer
+                }
+            }
+            
+            if (deletedCount > 0)
+                System.Diagnostics.Debug.WriteLine($"[FileLogger] Purgé {deletedCount} fichier(s) de log de plus de {MaxLogAgeDays} jours");
+        }
+        catch
+        {
+            // Le nettoyage ne doit jamais faire crasher l'app
+        }
     }
 
     public void Debug(string message) => Log("DEBUG", message);

@@ -137,6 +137,9 @@ public partial class App : Application
         // Chargement d'icônes (Amélioration #1/#5)
         services.AddSingleton<IIconLoader, IconLoaderService>();
         
+        // Suggestion fantôme (ghost text / autocomplétion)
+        services.AddSingleton<GhostSuggestionService>();
+        
         // Intégrations web (météo, traduction)
         services.AddSingleton<WebIntegrationService>();
         

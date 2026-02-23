@@ -32,8 +32,8 @@ public interface ISettingsProvider
     void Reload();
     
     /// <summary>
-    /// Applique une modification aux paramètres et sauvegarde.
-    /// Thread-safe grâce au lock interne.
+    /// Applique une modification aux paramètres via clone-swap et sauvegarde.
+    /// Thread-safe : les lecteurs concurrents continuent de voir un snapshot stable.
     /// </summary>
     /// <param name="updateAction">Action de modification sur les paramètres.</param>
     void Update(Action<AppSettings> updateAction);
