@@ -597,5 +597,27 @@
             </Border>
         </Grid>
         </Border>
+        
+        <!-- Toast notification overlay (Point #10) -->
+        <Border x:Name="ToastBorder"
+                Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource AccentBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="14,10"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,30"
+                Opacity="0"
+                IsHitTestVisible="False"
+                Panel.ZIndex="200">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="8" ShadowDepth="2" Opacity="0.3" Color="Black"/>
+            </Border.Effect>
+            <TextBlock x:Name="ToastText"
+                       FontSize="13"
+                       Foreground="{DynamicResource TextPrimaryBrush}"
+                       TextAlignment="Center"/>
+        </Border>
     </Grid>
 </Window>

@@ -74,14 +74,24 @@ public enum FileActionType
 }
 
 /// <summary>
+/// Abstraction pour le fournisseur d'actions sur les résultats de recherche.
+/// Permet l'injection de dépendances et la testabilité (Point #6).
+/// </summary>
+public interface IFileActionProvider
+{
+    List<FileAction> GetActionsForResult(SearchResult result);
+    List<FileAction> GetActionsForResult(SearchResult result, bool isPinned, bool hasAlias = false);
+}
+
+/// <summary>
 /// Fournit les actions disponibles selon le type de résultat.
 /// </summary>
-public static class FileActionProvider
+public class FileActionProvider : IFileActionProvider
 {
     /// <summary>
     /// Retourne les actions disponibles pour un type de résultat.
     /// </summary>
-    public static List<FileAction> GetActionsForResult(SearchResult result)
+    public List<FileAction> GetActionsForResult(SearchResult result)
     {
         return GetActionsForResult(result, isPinned: false, hasAlias: false);
     }
@@ -89,7 +99,7 @@ public static class FileActionProvider
     /// <summary>
     /// Retourne les actions disponibles pour un type de résultat avec état d'épinglage.
     /// </summary>
-    public static List<FileAction> GetActionsForResult(SearchResult result, bool isPinned, bool hasAlias = false)
+    public List<FileAction> GetActionsForResult(SearchResult result, bool isPinned, bool hasAlias = false)
     {
         var actions = new List<FileAction>();
         

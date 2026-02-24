@@ -25,7 +25,11 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private readonly SearchService _searchService;
     private readonly IIconLoader _iconLoader;
     private readonly GhostSuggestionService _ghostSuggestionService;
-    private readonly SystemControlSuggestionBuilder _suggestionBuilder = new();
+    private readonly PinnedItemsManager _pinnedItemsManager;
+    private readonly ResultActionService _resultActionService;
+    private readonly ILaunchService _launchService;
+    private readonly IFileActionProvider _fileActionProvider;
+    private readonly SystemControlSuggestionService _systemControlService;
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _debounceCts;
     private bool _disposed;
@@ -88,6 +92,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     public event EventHandler? RequestCaretAtEnd;
     public event EventHandler<string?>? RequestScreenCapture;
     public event EventHandler<(string Name, string Path)>? RequestCreateAlias;
+    public event EventHandler<SearchResult>? RequestDeleteConfirmation;
 
 
     /// <summary>
@@ -100,6 +105,9 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
         NotesService notesService, CommandRouter commandRouter, ISystemControlExecutor systemControlExecutor,
         SearchService searchService, IIconLoader iconLoader, GhostSuggestionService ghostSuggestionService,
+        PinnedItemsManager pinnedItemsManager, ResultActionService resultActionService,
+        ILaunchService launchService, IFileActionProvider fileActionProvider,
+        SystemControlSuggestionService systemControlService,
         FileWatcherService? fileWatcherService = null)
     {
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
@@ -113,6 +121,11 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
         _iconLoader = iconLoader ?? throw new ArgumentNullException(nameof(iconLoader));
         _ghostSuggestionService = ghostSuggestionService ?? throw new ArgumentNullException(nameof(ghostSuggestionService));
+        _pinnedItemsManager = pinnedItemsManager ?? throw new ArgumentNullException(nameof(pinnedItemsManager));
+        _resultActionService = resultActionService ?? throw new ArgumentNullException(nameof(resultActionService));
+        _launchService = launchService ?? throw new ArgumentNullException(nameof(launchService));
+        _fileActionProvider = fileActionProvider ?? throw new ArgumentNullException(nameof(fileActionProvider));
+        _systemControlService = systemControlService ?? throw new ArgumentNullException(nameof(systemControlService));
         
         // Initialiser les propriétés d'apparence depuis les settings
         ShowCategoryBadges = _settings.Appearance.ShowCategoryBadges;
@@ -256,9 +269,9 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private void UpdateAvailableActions(SearchResult result)
     {
         AvailableActions.Clear();
-        var isPinned = _settings.Search.IsPinned(result.Path);
-        var hasAlias = _aliasService.GetAliasByTargetPath(result.Path) != null;
-        var actions = FileActionProvider.GetActionsForResult(result, isPinned, hasAlias);
+        var isPinned = _pinnedItemsManager.IsPinned(result.Path);
+        var hasAlias = _resultActionService.HasAlias(result.Path);
+        var actions = _fileActionProvider.GetActionsForResult(result, isPinned, hasAlias);
         foreach (var action in actions)
             AvailableActions.Add(action);
         
@@ -346,10 +359,10 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         }
         
         // Vérifier les commandes de contrôle système (inclut les commandes applicatives)
-        if (IsSystemControlCommand(queryLower))
+        if (_systemControlService.IsSystemControlCommand(queryLower))
         {
-            Results.Clear();
-            AddSystemControlSuggestions(queryLower);
+            var controlResults = _systemControlService.BuildSuggestions(queryLower);
+            Results.ReplaceAll(controlResults);
             FinalizeResults();
             return;
         }
@@ -388,176 +401,20 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             _ = _iconLoader.LoadIconsAsync(newResults, _searchCts?.Token ?? CancellationToken.None);
     }
     
-
-    /// <summary>
-    /// Vérifie si la requête correspond à une commande de contrôle système.
-    /// Distingue le préfixe ":" (commandes système) de "::" (commandes application).
-    /// </summary>
-    private bool IsSystemControlCommand(string query)
-    {
-        if (!query.StartsWith(':'))
-            return false;
-        
-        var enabledCommands = _settings.SystemCommands.Where(c => c.IsEnabled).ToList();
-        
-        // Déterminer la portée du préfixe :
-        // ":"  seul (1 car) → afficher tout (l'utilisateur n'a pas encore choisi : vs ::)
-        // "::" → uniquement les commandes application
-        // ":x" (x != ':') → uniquement les commandes système
-        var isDoubleColon = query.StartsWith("::");
-        var isSingleColonOnly = query.Length >= 2 && query[1] != ':';
-        
-        foreach (var cmd in enabledCommands)
-        {
-            if (isSingleColonOnly && cmd.IsAppCommand) continue;
-            if (isDoubleColon && !cmd.IsAppCommand) continue;
-            
-            var prefix = cmd.FullPrefix;
-            if (query.StartsWith(prefix) || prefix.StartsWith(query))
-                return true;
-        }
-        
-        return false;
-    }
-    
-
-    /// <summary>
-    /// Ajoute les suggestions de commandes de contrôle système basées sur les paramètres.
-    /// Filtre selon la portée du préfixe : ":" (système) vs "::" (application).
-    /// </summary>
-    private void AddSystemControlSuggestions(string query)
-    {
-        var enabledCommands = _settings.SystemCommands.Where(c => c.IsEnabled).ToList();
-        
-        // Filtrer selon la portée :: vs :
-        var isDoubleColon = query.StartsWith("::");
-        var isSingleColonOnly = query.Length >= 2 && query[1] != ':';
-        
-        if (isSingleColonOnly)
-            enabledCommands = enabledCommands.Where(c => !c.IsAppCommand).ToList();
-        else if (isDoubleColon)
-            enabledCommands = enabledCommands.Where(c => c.IsAppCommand).ToList();
-        
-        // Déterminer si la requête contient un argument (ex: ":sc snip" → arg = "snip")
-        var parts = query.Split(' ', 2);
-        var cmdPrefix = parts[0].TrimStart(':');
-        var arg = parts.Length > 1 ? parts[1] : null;
-        
-        // Trouver la commande exacte correspondant au préfixe
-        var matchedCmd = enabledCommands.FirstOrDefault(c => 
-            c.Prefix.Equals(cmdPrefix, StringComparison.OrdinalIgnoreCase));
-        
-        // Si on a une commande exacte avec argument, ne générer QUE le résultat exécutable
-        // (pas de suggestions de préfixe ni de sous-commandes, on sait ce que l'utilisateur veut)
-        if (matchedCmd != null && arg != null)
-        {
-            AddExecutableResult(matchedCmd, arg, query);
-            return;
-        }
-        
-        // Ensemble des types déjà ajoutés via le builder, pour éviter les doublons
-        var typesFromBuilder = new HashSet<SystemControlType>();
-        
-        // Si on a une commande exacte SANS argument, ajouter le résultat exécutable en premier
-        if (matchedCmd != null)
-        {
-            var suggestions = _suggestionBuilder.Build(matchedCmd, null, query);
-            if (suggestions is { Count: > 0 })
-            {
-                foreach (var s in suggestions)
-                    Results.Add(s);
-                typesFromBuilder.Add(matchedCmd.Type);
-            }
-            
-            // Ajouter les sous-commandes pour screenshot (snip) même quand le préfixe est exact
-            if (matchedCmd.Type == SystemControlType.Screenshot)
-            {
-                var snipName = $":{matchedCmd.Prefix} snip";
-                Results.Add(new SearchResult
-                {
-                    Name = snipName,
-                    Description = "Sélectionner une zone à capturer (Outil Capture d'écran)",
-                    Type = ResultType.SystemControl,
-                    DisplayIcon = "✂️",
-                    Path = snipName
-                });
-            }
-        }
-        
-        // Ajouter les suggestions de préfixe partiel (pour les commandes dont le préfixe
-        // commence par la saisie, ex: ":s" → ":sleep", ":screenshot", "::s" → "::settings", ...)
-        foreach (var cmd in enabledCommands)
-        {
-            // Ne pas dupliquer la commande déjà traitée par le builder
-            if (typesFromBuilder.Contains(cmd.Type))
-                continue;
-            
-            var prefix = cmd.FullPrefix;
-            var displayName = cmd.RequiresArgument 
-                ? $"{cmd.FullPrefix} {cmd.ArgumentHint}" 
-                : cmd.FullPrefix;
-            
-            if (prefix.StartsWith(query) || displayName.Contains(query, StringComparison.OrdinalIgnoreCase))
-            {
-                Results.Add(new SearchResult
-                {
-                    Name = displayName,
-                    Description = cmd.Description,
-                    Type = cmd.IsAppCommand ? ResultType.AppControl : ResultType.SystemControl,
-                    DisplayIcon = cmd.Icon,
-                    Path = prefix
-                });
-                
-                // Ajouter les sous-commandes pour screenshot (snip doit apparaître même avec préfixe partiel)
-                if (cmd.Type == SystemControlType.Screenshot && !query.Contains(" "))
-                {
-                    var snipName = $"{cmd.FullPrefix} snip";
-                    Results.Add(new SearchResult
-                    {
-                        Name = snipName,
-                        Description = "Sélectionner une zone à capturer (Outil Capture d'écran)",
-                        Type = ResultType.SystemControl,
-                        DisplayIcon = "✂️",
-                        Path = snipName
-                    });
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// Ajoute un résultat exécutable pour une commande avec argument.
-    /// Amélioration #1 : délègue au SystemControlSuggestionBuilder déclaratif.
-    /// </summary>
-    private void AddExecutableResult(SystemControlCommand cmd, string? arg, string fullQuery)
-    {
-        var suggestions = _suggestionBuilder.Build(cmd, arg, fullQuery);
-        if (suggestions == null || suggestions.Count == 0)
-            return;
-        
-        // Insérer en tête des résultats (le builder retourne déjà dans le bon ordre)
-        for (var i = suggestions.Count - 1; i >= 0; i--)
-            Results.Insert(0, suggestions[i]);
-    }
-    
     private void ShowRecentHistory()
     {
         Results.Clear();
         
         // Afficher d'abord les items épinglés
-        foreach (var pinned in _settings.Search.PinnedItems.OrderBy(p => p.Order))
-        {
-            Results.Add(pinned.ToSearchResult());
-        }
+        foreach (var pinned in _pinnedItemsManager.GetPinnedResults())
+            Results.Add(pinned);
         
         // Puis l'historique si activé (items récemment utilisés)
         if (_settings.Search.EnableSearchHistory && _settings.Search.SearchHistory.Count > 0)
         {
-            var maxHistory = Math.Max(0, 5 - _settings.Search.PinnedItems.Count);
+            var maxHistory = Math.Max(0, 5 - _pinnedItemsManager.Count);
             foreach (var historyItem in _settings.Search.SearchHistory.Take(maxHistory))
-            {
                 Results.Add(historyItem.ToSearchResult());
-            }
         }
         
         FinalizeResults();
@@ -568,12 +425,11 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     }
     
     /// <summary>
-    /// Réordonne un item épinglé par drag & drop et rafraîchit l'affichage.
+    /// Réordonne un item épinglé par drag &amp; drop et rafraîchit l'affichage.
     /// </summary>
     public void ReorderPinnedItem(int fromIndex, int toIndex)
     {
-        _settings.Search.ReorderPinnedItem(fromIndex, toIndex);
-        _settingsProvider.Save();
+        _pinnedItemsManager.Reorder(fromIndex, toIndex);
         
         // Rafraîchir l'affichage si on est dans la vue des épingles
         if (string.IsNullOrWhiteSpace(SearchText))
@@ -586,15 +442,14 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Nombre d'items épinglés actuels.
     /// </summary>
-    public int PinnedItemCount => _settings.Search.PinnedItems.Count;
+    public int PinnedItemCount => _pinnedItemsManager.Count;
     
     /// <summary>
     /// Vérifie si un résultat à l'index donné est un item épinglé.
     /// </summary>
     public bool IsResultPinned(int resultIndex)
     {
-        if (resultIndex < 0 || resultIndex >= Results.Count) return false;
-        return resultIndex < _settings.Search.PinnedItems.Count 
+        return _pinnedItemsManager.IsResultPinned(resultIndex, Results.Count)
                && Results[resultIndex].Description == "⭐ Épinglé";
     }
     
@@ -767,12 +622,12 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     }
     
     /// <summary>
-    /// Enregistre un alias via l'AliasService.
+    /// Enregistre un alias via le ResultActionService.
     /// </summary>
     public void SaveAlias(string alias, string targetPath)
     {
-        _aliasService.SetAlias(alias, targetPath);
-        ShowNotification?.Invoke(this, $"⌨️ Alias '{alias}' créé");
+        var notification = _resultActionService.SaveAlias(alias, targetPath);
+        ShowNotification?.Invoke(this, notification);
     }
     
     /// <summary>
@@ -780,129 +635,104 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     /// </summary>
     public void DeleteAlias(string targetPath)
     {
-        var entry = _aliasService.GetAliasByTargetPath(targetPath);
-        if (entry != null)
-        {
-            _aliasService.RemoveAlias(entry.Alias);
-            ShowNotification?.Invoke(this, $"⌨️ Alias '{entry.Alias}' supprimé");
-        }
+        var notification = _resultActionService.DeleteAlias(targetPath);
+        if (notification != null)
+            ShowNotification?.Invoke(this, notification);
     }
     
     /// <summary>
     /// Vérifie si un chemin cible possède un alias.
     /// </summary>
-    public bool HasAlias(string targetPath) => _aliasService.GetAliasByTargetPath(targetPath) != null;
+    public bool HasAlias(string targetPath) => _resultActionService.HasAlias(targetPath);
     
     /// <summary>
     /// Exécute une action spécifique sur un résultat.
+    /// Point unique de passage pour le panneau d'actions, le menu contextuel
+    /// et les raccourcis clavier (Point #1 : centralisation).
     /// </summary>
     public void ExecuteActionOnResult(FileAction action, SearchResult result)
     {
-        // Demander confirmation si nécessaire
-        if (action.RequiresConfirmation)
-        {
-            // La confirmation sera gérée par l'UI
-            // Pour l'instant, on exécute directement
-        }
+        var outcome = _resultActionService.Execute(action, result, string.IsNullOrWhiteSpace(SearchText));
+        ApplyActionOutcome(outcome, result);
+    }
+    
+    /// <summary>
+    /// Exécute une action par type sur le résultat actuellement sélectionné.
+    /// Utilisé par les raccourcis clavier du code-behind pour centraliser
+    /// toute l'exécution dans le ViewModel (Point #1).
+    /// </summary>
+    /// <returns>true si l'action a été exécutée, false sinon.</returns>
+    public bool ExecuteShortcutAction(FileActionType actionType)
+    {
+        if (SelectedIndex < 0 || SelectedIndex >= Results.Count)
+            return false;
         
-        // Cas spécial pour Rename
-        if (action.ActionType == FileActionType.Rename)
+        var result = Results[SelectedIndex];
+        var action = new FileAction { ActionType = actionType };
+        var outcome = _resultActionService.Execute(action, result, string.IsNullOrWhiteSpace(SearchText));
+        ApplyActionOutcome(outcome, result);
+        return true;
+    }
+    
+    /// <summary>
+    /// Interprète un <see cref="ActionOutcome"/> et applique les effets côté UI.
+    /// Seul point de traduction entre le résultat déclaratif du service
+    /// et les événements/mutations du ViewModel.
+    /// </summary>
+    private void ApplyActionOutcome(ActionOutcome outcome, SearchResult result)
+    {
+        // Demandes de dialogues UI (la View écoute ces events)
+        if (outcome.RenameRequestPath != null)
         {
-            RequestRename?.Invoke(this, result.Path);
+            RequestRename?.Invoke(this, outcome.RenameRequestPath);
             return;
         }
         
-        // Cas spécial pour CreateAlias
-        if (action.ActionType == FileActionType.CreateAlias)
+        if (outcome.CreateAliasRequest != null)
         {
-            RequestCreateAlias?.Invoke(this, (result.Name, result.Path));
+            RequestCreateAlias?.Invoke(this, outcome.CreateAliasRequest.Value);
             return;
         }
         
-        // Cas spécial pour DeleteAlias
-        if (action.ActionType == FileActionType.DeleteAlias)
+        if (outcome.DeleteConfirmationRequest != null)
         {
-            DeleteAlias(result.Path);
+            RequestDeleteConfirmation?.Invoke(this, outcome.DeleteConfirmationRequest);
+            return;
+        }
+        
+        // Notification
+        if (outcome.Notification != null)
+            ShowNotification?.Invoke(this, outcome.Notification);
+        
+        // Enregistrer l'usage dans l'index
+        if (outcome.RecordUsage)
+            _indexingService.RecordUsage(result);
+        
+        // Rafraîchir les actions disponibles
+        if (outcome.RefreshActions)
             UpdateAvailableActions(result);
-            ShowActionsPanel = false;
-            return;
-        }
         
-        // Cas spécial pour Pin
-        if (action.ActionType == FileActionType.Pin)
+        // Rafraîchir les résultats (ex: après unpin/suppression)
+        if (outcome.RefreshResults)
         {
-            _settings.Search.PinItem(result.Name, result.Path, result.Type, result.DisplayIcon);
-            _settingsProvider.Save();
-            ShowNotification?.Invoke(this, "⭐ Épinglé");
-            UpdateAvailableActions(result); // Rafraîchir les actions
-            ShowActionsPanel = false;
-            return;
-        }
-        
-        // Cas spécial pour Unpin
-        if (action.ActionType == FileActionType.Unpin)
-        {
-            _settings.Search.UnpinItem(result.Path);
-            _settingsProvider.Save();
-            ShowNotification?.Invoke(this, "📌 Désépinglé");
-            UpdateAvailableActions(result); // Rafraîchir les actions
-            // Si on était dans la vue des épingles, rafraîchir
             if (string.IsNullOrWhiteSpace(SearchText))
             {
                 Results.Clear();
                 ShowRecentHistory();
             }
-            ShowActionsPanel = false;
-            return;
-        }
-        
-        // Pour CopyName, passer le nom d'affichage plutôt que le path
-        // (important pour les StoreApps où Path = package family name)
-        var targetPath = action.ActionType == FileActionType.CopyName
-            ? result.Name
-            : result.Path;
-        var success = action.Execute(targetPath);
-        
-        if (success)
-        {
-            // Notification de succès selon l'action
-            var message = action.ActionType switch
+            else
             {
-                FileActionType.CopyUrl => "🔗 URL copiée",
-                FileActionType.CopyPath => "📋 Chemin copié",
-                FileActionType.CopyName => "📋 Nom copié",
-                FileActionType.Compress => "🗜️ Archive ZIP créée",
-                FileActionType.SendByEmail => "📧 Email en cours...",
-                FileActionType.Delete => "🗑️ Envoyé à la corbeille",
-                _ => null
-            };
-            
-            if (message != null)
-                ShowNotification?.Invoke(this, message);
-            
-            // Fermer après les actions qui ouvrent quelque chose
-            if (action.ActionType is FileActionType.Open 
-                or FileActionType.RunAsAdmin 
-                or FileActionType.OpenPrivate
-                or FileActionType.OpenWith
-                or FileActionType.OpenLocation
-                or FileActionType.OpenInTerminal
-                or FileActionType.OpenInExplorer
-                or FileActionType.OpenInVSCode
-                or FileActionType.EditInEditor
-                or FileActionType.SendByEmail)
-            {
-                _indexingService.RecordUsage(result);
-                RequestHide?.Invoke(this, EventArgs.Empty);
+                ForceRefresh();
             }
         }
-        else
-        {
-            if (action.ActionType == FileActionType.OpenInVSCode)
-                ShowNotification?.Invoke(this, "❌ VS Code introuvable");
-        }
         
-        ShowActionsPanel = false;
+        // Fermer le panneau d'actions
+        if (outcome.CloseActionsPanel)
+            ShowActionsPanel = false;
+        
+        // Masquer le launcher
+        if (outcome.ShouldHide)
+            RequestHide?.Invoke(this, EventArgs.Empty);
     }
     
     /// <summary>
@@ -916,7 +746,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         var result = Results[SelectedIndex];
         if (result.Type is ResultType.Application or ResultType.Script or ResultType.File)
         {
-            FileActionExecutor.Execute(FileActionType.RunAsAdmin, result.Path);
+            _launchService.RunAsAdmin(result);
             _indexingService.RecordUsage(result);
             RequestHide?.Invoke(this, EventArgs.Empty);
         }
@@ -929,8 +759,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private void TogglePreview()
     {
         ShowPreviewPanel = !ShowPreviewPanel;
-        _settings.Appearance.ShowPreviewPanel = ShowPreviewPanel;
-        _settingsProvider.Save();
+        _settingsProvider.Update(s => s.Appearance.ShowPreviewPanel = ShowPreviewPanel);
         
         if (ShowPreviewPanel && SelectedIndex >= 0 && SelectedIndex < Results.Count)
         {
@@ -954,7 +783,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     
     private void LaunchItem(SearchResult item)
     {
-        // Enregistrer l'item cliqué dans l'historique (au lieu de la requête de recherche)
+        // Enregistrer l'item cliqué dans l'historique via clone-swap (Point #2)
         if (_settings.Search.EnableSearchHistory && !string.IsNullOrWhiteSpace(item.Path))
         {
             var historyItem = new HistoryItem
@@ -965,12 +794,11 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
                 Icon = item.DisplayIcon,
                 LastUsed = DateTime.Now
             };
-            _settings.Search.AddToSearchHistory(historyItem);
-            _settingsProvider.Save();
+            _settingsProvider.Update(s => s.Search.AddToSearchHistory(historyItem));
         }
         
         _indexingService.RecordUsage(item);
-        LaunchService.Launch(item);
+        _launchService.Launch(item);
         RequestHide?.Invoke(this, EventArgs.Empty);
     }
     
@@ -1075,54 +903,15 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     
     private void ClearHistory()
     {
-        _settings.Search.ClearSearchHistory();
-        _settingsProvider.Save();
+        _settingsProvider.Update(s => s.Search.ClearSearchHistory());
         SearchText = string.Empty;
         RequestHide?.Invoke(this, EventArgs.Empty);
     }
     
     private void ShowHelpCommands()
     {
-        Results.Clear();
-        
-        // Toutes les commandes système (inclut les commandes applicatives)
-        foreach (var cmd in _settings.SystemCommands.Where(c => c.IsEnabled))
-        {
-            var displayName = cmd.RequiresArgument 
-                ? $"{cmd.FullPrefix} {cmd.ArgumentHint}" 
-                : cmd.FullPrefix;
-            
-            Results.Add(new SearchResult 
-            { 
-                Name = displayName, 
-                Description = cmd.Description, 
-                Type = cmd.IsAppCommand ? ResultType.AppControl : ResultType.SystemControl, 
-                DisplayIcon = cmd.Icon,
-                Path = cmd.FullPrefix
-            });
-        }
-        
-        // Recherche web
-        foreach (var engine in _settings.Search.SearchEngines.Take(4))
-        {
-            Results.Add(new SearchResult 
-            { 
-                Name = $"{engine.Prefix} [recherche]", 
-                Description = $"Recherche {engine.Name}", 
-                Type = ResultType.SystemCommand, 
-                DisplayIcon = "🌐" 
-            });
-        }
-        
-        // Raccourcis clavier
-        Results.Add(new SearchResult 
-        { 
-            Name = "Raccourcis clavier", 
-            Description = "Ctrl+Entrée: Admin • Ctrl+O: Emplacement • Ctrl+Maj+C: Copier chemin", 
-            Type = ResultType.SystemCommand, 
-            DisplayIcon = "⌨️" 
-        });
-        
+        var helpResults = _systemControlService.BuildHelpResults();
+        Results.ReplaceAll(helpResults);
         FinalizeResults();
     }
 

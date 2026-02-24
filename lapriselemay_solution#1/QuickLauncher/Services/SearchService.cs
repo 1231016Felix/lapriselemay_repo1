@@ -156,12 +156,12 @@ public sealed class SearchService
         // Score sur la description (pour les paramètres Windows, bookmarks, etc.)
         if (!string.IsNullOrEmpty(item.Description))
         {
-            var descScore = SearchAlgorithms.CalculateDescriptionScore(query, item.Description);
+            var descScore = SearchAlgorithms.CalculateDescriptionScore(query, item.Description, weights);
             if (descScore > 0)
             {
                 if (nameScore == 0)
                 {
-                    var adjustedScore = (int)(descScore * 0.6);
+                    var adjustedScore = (int)(descScore * weights.DescriptionOnlyMultiplier);
 
                     if (item.UseCount > 0)
                         adjustedScore += Math.Min(item.UseCount * weights.UsageBonusPerUse, weights.MaxUsageBonus);
@@ -175,7 +175,7 @@ public sealed class SearchService
                     return adjustedScore;
                 }
 
-                nameScore += (int)(descScore * 0.15);
+                nameScore += (int)(descScore * weights.DescriptionAdditiveMultiplier);
             }
         }
 

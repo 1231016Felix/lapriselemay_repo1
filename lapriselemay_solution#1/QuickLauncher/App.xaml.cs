@@ -156,6 +156,17 @@ public partial class App : Application
         // === System Control Executor (exécution des commandes système via Entrée) ===
         services.AddSingleton<ISystemControlExecutor, SystemControlExecutor>();
         
+        // === Gestion épingles & actions (extraits du ViewModel — Points #1 et #2) ===
+        services.AddSingleton<PinnedItemsManager>();
+        services.AddSingleton<ResultActionService>();
+        
+        // === Suggestions commandes système (extrait du ViewModel — Point #5) ===
+        services.AddSingleton<SystemControlSuggestionService>();
+        
+        // === Lancement et actions fichier (Point #6 : migration static → DI) ===
+        services.AddSingleton<ILaunchService, LaunchService>();
+        services.AddSingleton<IFileActionProvider, FileActionProvider>();
+        
         // === ViewModel et fenêtre principale (singletons réutilisés entre Show/Hide) ===
         services.AddSingleton<LauncherViewModel>();
         services.AddSingleton<LauncherWindow>();
@@ -256,12 +267,12 @@ public partial class App : Application
     {
         try
         {
-            // La fenêtre est un singleton DI : réutilisée entre Show/Hide,
-            // plus besoin de résoudre manuellement chaque service.
-            if (_launcherWindow is not { IsLoaded: true })
+            // La fenêtre est un singleton DI réutilisé entre Show/Hide.
+            // OnClosing est overridé pour empêcher la fermeture (Cancel + Hide),
+            // donc l'instance reste toujours valide.
+            if (_launcherWindow is null)
             {
                 _launcherWindow = Services.GetRequiredService<LauncherWindow>();
-                _launcherWindow.Closed += (_, _) => _launcherWindow = null;
                 _launcherWindow.RequestOpenSettings += (_, _) => Dispatcher.Invoke(ShowSettings);
                 _launcherWindow.RequestQuit += (_, _) => Dispatcher.Invoke(ExitApplication);
                 _launcherWindow.RequestReindex += async (_, _) => await Dispatcher.InvokeAsync(async () => await ReindexAsync());
@@ -441,5 +452,9 @@ public partial class App : Application
         _trayIcon?.Dispose();
         DesktopAttachHelper.Shutdown();
         // ThemeService.Shutdown() est appelé automatiquement via Dispose() par le conteneur DI
+        
+        // Le FileLogger est créé avant le conteneur DI et enregistré comme instance externe.
+        // Services.Dispose() ne dispose PAS les instances externes — il faut le faire manuellement.
+        (_logger as IDisposable)?.Dispose();
     }
 }

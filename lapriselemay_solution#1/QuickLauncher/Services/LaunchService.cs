@@ -4,9 +4,20 @@ using QuickLauncher.Models;
 
 namespace QuickLauncher.Services;
 
-public static class LaunchService
+/// <summary>
+/// Abstraction pour le lancement de fichiers, applications et commandes système.
+/// Permet l'injection de dépendances et la testabilité (Point #6).
+/// </summary>
+public interface ILaunchService
 {
-    public static void Launch(SearchResult item)
+    void Launch(SearchResult item);
+    void OpenContainingFolder(SearchResult item);
+    void RunAsAdmin(SearchResult item);
+}
+
+public class LaunchService : ILaunchService
+{
+    public void Launch(SearchResult item)
     {
         try
         {
@@ -70,7 +81,7 @@ public static class LaunchService
         }
     }
 
-    private static void LaunchApplication(string path)
+    private void LaunchApplication(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
         
@@ -107,7 +118,7 @@ public static class LaunchService
         StartProcess(path);
     }
 
-    private static void LaunchScript(SearchResult item)
+    private void LaunchScript(SearchResult item)
     {
         var ext = Path.GetExtension(item.Path).ToLowerInvariant();
         var workingDir = Path.GetDirectoryName(item.Path) ?? "";
@@ -118,14 +129,14 @@ public static class LaunchService
             StartProcess(item.Path, workingDirectory: workingDir);
     }
     
-    public static void OpenContainingFolder(SearchResult item)
+    public void OpenContainingFolder(SearchResult item)
     {
         var folder = Path.GetDirectoryName(item.Path);
         if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder))
             StartProcess("explorer.exe", $"/select,\"{item.Path}\"");
     }
     
-    public static void RunAsAdmin(SearchResult item)
+    public void RunAsAdmin(SearchResult item)
     {
         try
         {
@@ -146,7 +157,7 @@ public static class LaunchService
     /// Lance un item de paramètres Windows.
     /// Gère les URIs ms-settings:, les commandes control| et les .msc.
     /// </summary>
-    private static void LaunchSystemControl(string path)
+    private void LaunchSystemControl(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || path.StartsWith(":weather:") || path.StartsWith(":timer:"))
             return;
@@ -166,10 +177,10 @@ public static class LaunchService
     /// <summary>
     /// Vérifie si un chemin ressemble à un chemin fichier Windows (ex: C:\...)
     /// </summary>
-    private static bool IsFileSystemPath(string path)
+    private static bool IsFileSystemPath(string path) // reste static, utilitaire pur
         => path.Length >= 3 && char.IsLetter(path[0]) && path[1] == ':' && (path[2] == '\\' || path[2] == '/');
 
-    private static void StartProcess(string fileName, string? arguments = null, string? workingDirectory = null)
+    private static void StartProcess(string fileName, string? arguments = null, string? workingDirectory = null) // reste static, utilitaire pur
     {
         var psi = new ProcessStartInfo
         {

@@ -416,7 +416,7 @@ public static class SearchAlgorithms
                 // Le mot cible commence par le mot requête
                 if (tWord.StartsWith(qWord))
                 {
-                    var sim = 0.95;
+                    var sim = weights.WordPrefixSimilarity;
                     if (sim > bestSimilarity)
                     {
                         bestSimilarity = sim;
@@ -428,7 +428,7 @@ public static class SearchAlgorithms
                 // Le mot requête commence par le mot cible (requête plus longue que la cible)
                 if (qWord.StartsWith(tWord))
                 {
-                    var sim = 0.85;
+                    var sim = weights.WordReversePrefixSimilarity;
                     if (sim > bestSimilarity)
                     {
                         bestSimilarity = sim;
@@ -439,7 +439,7 @@ public static class SearchAlgorithms
                 
                 // Fuzzy via Damerau-Levenshtein
                 // Seuil adaptatif: mots courts → tolérer 1 erreur, mots longs → proportionnel
-                var maxDistance = qWord.Length <= 4 ? 1 : (int)Math.Ceiling(qWord.Length * 0.35);
+                var maxDistance = qWord.Length <= 4 ? 1 : (int)Math.Ceiling(qWord.Length * weights.FuzzyWordMaxDistanceFactor);
                 var distance = DamerauLevenshteinDistance(qWord, tWord);
                 
                 if (distance <= maxDistance)
@@ -477,11 +477,11 @@ public static class SearchAlgorithms
         
         // Bonus si tous les mots de la requête ont matché (pas de résidus)
         if (matchedCount == queryWords.Length)
-            baseScore += 30;
+            baseScore += weights.FuzzyPerWordAllMatchedBonus;
         
         // Bonus quand le nombre de mots requête ≈ nombre de mots cible (match complet)
         if (queryWords.Length >= targetWords.Length)
-            baseScore += 20;
+            baseScore += weights.FuzzyPerWordFullCoverageBonus;
         
         return baseScore;
     }
@@ -511,7 +511,7 @@ public static class SearchAlgorithms
                 var wordSim = LevenshteinSimilarity(queryLower, word);
                 if (wordSim >= weights.FuzzyMatchThreshold)
                 {
-                    var wordScore = (int)(wordSim * weights.FuzzyMatchMultiplier * 0.85);
+                    var wordScore = (int)(wordSim * weights.FuzzyMatchMultiplier * weights.FuzzyGlobalWordMultiplier);
                     bestScore = Math.Max(bestScore, wordScore);
                 }
             }
@@ -658,7 +658,7 @@ public static class SearchAlgorithms
                 else if (word.Length >= 3)
                 {
                     var sim = LevenshteinSimilarity(word, seg);
-                    if (sim >= 0.7)
+                    if (sim >= weights.PathFuzzySegmentThreshold)
                         bestScore = Math.Max(bestScore, (int)(weights.PathExactSegmentMatch * sim * 0.4));
                 }
             }
@@ -687,7 +687,7 @@ public static class SearchAlgorithms
                 else if (word.Length >= 3)
                 {
                     var similarity = LevenshteinSimilarity(word, segment);
-                    if (similarity >= 0.7)
+                    if (similarity >= weights.PathFuzzySegmentThreshold)
                         wordScore = (int)(weights.PathExactSegmentMatch * similarity * 0.4);
                     else
                         continue;
@@ -773,11 +773,12 @@ public static class SearchAlgorithms
     /// Permet de trouver des paramètres Windows via leurs mots-clés de description.
     /// Ex: "DNS" → match sur la description "Adaptateurs réseau, IP, DNS"
     /// </summary>
-    public static int CalculateDescriptionScore(string query, string description)
+    public static int CalculateDescriptionScore(string query, string description, ScoringWeights? weights = null)
     {
         if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(description))
             return 0;
 
+        weights ??= DefaultWeights;
         var queryLower = query.ToLowerInvariant();
         var descLower = description.ToLowerInvariant();
 
@@ -787,7 +788,7 @@ public static class SearchAlgorithms
             // Bonus si le match est au début d'un mot
             var index = descLower.IndexOf(queryLower);
             var atWordBoundary = index == 0 || !char.IsLetterOrDigit(descLower[index - 1]);
-            return atWordBoundary ? 350 : 300;
+            return atWordBoundary ? weights.DescriptionExactAtBoundary : weights.DescriptionExactInline;
         }
 
         // Multi-mots: chaque mot de la requête doit matcher quelque part dans la description
@@ -797,15 +798,14 @@ public static class SearchAlgorithms
         {
             var allMatch = queryWords.All(w => w.Length < 2 || descLower.Contains(w));
             if (allMatch)
-                return 250;
+                return weights.DescriptionAllWordsMatch;
         }
 
         // Match d'au moins un mot significatif (>= 3 chars)
         var matchedWords = queryWords.Count(w => w.Length >= 3 && descLower.Contains(w));
         if (matchedWords > 0)
         {
-            // Score proportionnel au nombre de mots matchés
-            return 100 + (matchedWords * 50);
+            return weights.DescriptionPartialWordBase + (matchedWords * weights.DescriptionPartialWordBonus);
         }
 
         // Fuzzy matching par mot (tolérance aux typos dans la description)
@@ -823,7 +823,7 @@ public static class SearchAlgorithms
                 if (dist <= maxDist)
                 {
                     var sim = 1.0 - (double)dist / Math.Max(queryLower.Length, dWord.Length);
-                    return (int)(sim * 200);
+                    return (int)(sim * weights.DescriptionFuzzyMultiplier);
                 }
             }
         }

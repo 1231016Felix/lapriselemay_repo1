@@ -18,7 +18,7 @@ public partial class LauncherWindow : Window
 {
     private readonly LauncherViewModel _viewModel;
     private readonly ISettingsProvider _settingsProvider;
-    private readonly NotesService _notesService;
+    private readonly IFileActionProvider _fileActionProvider;
     private readonly WindowAnimationHelper _animator;
     
     // === Drag & Drop state ===
@@ -39,12 +39,12 @@ public partial class LauncherWindow : Window
     public event EventHandler? RequestQuit;
     public event EventHandler? RequestReindex;
     
-    public LauncherWindow(LauncherViewModel viewModel, ISettingsProvider settingsProvider, NotesService notesService)
+    public LauncherWindow(LauncherViewModel viewModel, ISettingsProvider settingsProvider, IFileActionProvider fileActionProvider)
     {
         InitializeComponent();
         
         _settingsProvider = settingsProvider;
-        _notesService = notesService;
+        _fileActionProvider = fileActionProvider;
         _viewModel = viewModel;
         DataContext = _viewModel;
         
@@ -77,6 +77,7 @@ public partial class LauncherWindow : Window
         _viewModel.RequestCaretAtEnd += (_, _) => Dispatcher.BeginInvoke(() => SearchBox.CaretIndex = SearchBox.Text.Length);
         _viewModel.RequestScreenCapture += OnRequestScreenCapture;
         _viewModel.RequestCreateAlias += OnRequestCreateAlias;
+        _viewModel.RequestDeleteConfirmation += OnRequestDeleteConfirmation;
         
         _viewModel.PropertyChanged += (_, e) =>
         {
@@ -150,11 +151,49 @@ public partial class LauncherWindow : Window
         }
     }
     
+    private void OnRequestDeleteConfirmation(object? sender, SearchResult result)
+    {
+        ConfirmAndDelete(result);
+    }
+    
+    /// <summary>
+    /// Storyboard du toast en cours (pour pouvoir l'annuler si un nouveau toast arrive).
+    /// </summary>
+    private Storyboard? _toastStoryboard;
+    
+    /// <summary>
+    /// Affiche un toast léger en bas de la fenêtre pendant 2 secondes.
+    /// Si un toast est déjà visible, il est remplacé immédiatement.
+    /// Point #10 : toast notification.
+    /// </summary>
     private void OnShowNotification(object? sender, string message)
     {
-        // Pour l'instant, on peut utiliser une notification simple
-        // TODO: Implémenter un toast notification
         System.Diagnostics.Debug.WriteLine($"[Notification] {message}");
+        
+        // Annuler le toast précédent s'il est encore visible
+        _toastStoryboard?.Stop(ToastBorder);
+        
+        ToastText.Text = message;
+        
+        // Animation : fade-in rapide → maintien → fade-out
+        var fadeIn = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(150));
+        var hold = new DoubleAnimation(1, 1, TimeSpan.FromSeconds(1.8)) { BeginTime = TimeSpan.FromMilliseconds(150) };
+        var fadeOut = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(400)) { BeginTime = TimeSpan.FromMilliseconds(1950) };
+        
+        var sb = new Storyboard();
+        Storyboard.SetTarget(fadeIn, ToastBorder);
+        Storyboard.SetTargetProperty(fadeIn, new PropertyPath(OpacityProperty));
+        Storyboard.SetTarget(hold, ToastBorder);
+        Storyboard.SetTargetProperty(hold, new PropertyPath(OpacityProperty));
+        Storyboard.SetTarget(fadeOut, ToastBorder);
+        Storyboard.SetTargetProperty(fadeOut, new PropertyPath(OpacityProperty));
+        
+        sb.Children.Add(fadeIn);
+        sb.Children.Add(hold);
+        sb.Children.Add(fadeOut);
+        
+        _toastStoryboard = sb;
+        sb.Begin(ToastBorder, true);
     }
 
     private void OnRequestScreenCapture(object? sender, string? mode)
@@ -279,6 +318,19 @@ public partial class LauncherWindow : Window
     {
         Opacity = _settings.Appearance.WindowOpacity;
         SettingsButton.Visibility = _settings.Appearance.ShowSettingsButton ? Visibility.Visible : Visibility.Collapsed;
+    }
+    
+    /// <summary>
+    /// Empêche la fermeture de la fenêtre (Alt+F4, système, etc.).
+    /// La fenêtre est un singleton DI réutilisé entre Show/Hide.
+    /// Une fermeture rendrait l'instance DI invalide (WPF interdit Show() après Close).
+    /// </summary>
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // Ne jamais fermer — seulement masquer.
+        // La vraie fermeture se fait via App.ExitApplication() → Shutdown().
+        e.Cancel = true;
+        HideWindow();
     }
     
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
@@ -411,12 +463,8 @@ public partial class LauncherWindow : Window
                     return;
                     
                 case Key.T:
-                    // Ouvrir terminal
-                    if (_viewModel.SelectedIndex >= 0 && _viewModel.SelectedIndex < _viewModel.Results.Count)
-                    {
-                        var item = _viewModel.Results[_viewModel.SelectedIndex];
-                        FileActionExecutor.Execute(FileActionType.OpenInTerminal, item.Path);
-                    }
+                    // Ouvrir terminal (délégué au ViewModel → ResultActionService)
+                    _viewModel.ExecuteShortcutAction(FileActionType.OpenInTerminal);
                     e.Handled = true;
                     return;
             }
@@ -430,18 +478,10 @@ public partial class LauncherWindow : Window
             return;
         }
         
-        // Ctrl+Shift+Enter: Ouvrir en navigation privée (pour les bookmarks/URLs)
+        // Ctrl+Shift+Enter: Ouvrir en navigation privée (délégué au ViewModel → ResultActionService)
         if (Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && e.Key == Key.Enter)
         {
-            if (_viewModel.SelectedIndex >= 0 && _viewModel.SelectedIndex < _viewModel.Results.Count)
-            {
-                var item = _viewModel.Results[_viewModel.SelectedIndex];
-                if (item.Type is ResultType.Bookmark or ResultType.WebSearch)
-                {
-                    FileActionExecutor.Execute(FileActionType.OpenPrivate, item.Path);
-                    HideWindow();
-                }
-            }
+            _viewModel.ExecuteShortcutAction(FileActionType.OpenPrivate);
             e.Handled = true;
             return;
         }
@@ -496,38 +536,14 @@ public partial class LauncherWindow : Window
                 break;
                 
             case Key.F2:
-                // Renommer
-                if (_viewModel.SelectedIndex >= 0 && _viewModel.SelectedIndex < _viewModel.Results.Count)
-                {
-                    var item = _viewModel.Results[_viewModel.SelectedIndex];
-                    if (item.Type is ResultType.File or ResultType.Folder or ResultType.Application)
-                    {
-                        OnRequestRename(this, item.Path);
-                    }
-                }
+                // Renommer (délégué au ViewModel → ResultActionService)
+                _viewModel.ExecuteShortcutAction(FileActionType.Rename);
                 e.Handled = true;
                 break;
                 
             case Key.Delete:
-                // Supprimer
-                if (_viewModel.SelectedIndex >= 0 && _viewModel.SelectedIndex < _viewModel.Results.Count)
-                {
-                    var item = _viewModel.Results[_viewModel.SelectedIndex];
-                    if (item.Type is ResultType.File or ResultType.Folder)
-                    {
-                        ConfirmAndDelete(item);
-                    }
-                    else if (item.Type == ResultType.Note && item.Path.StartsWith(":note:id:"))
-                    {
-                        // Supprimer la note
-                        if (int.TryParse(item.Path[9..], out var noteId))
-                        {
-                            _notesService.DeleteNote(noteId);
-                            OnShowNotification(this, "🗑️ Note supprimée");
-                            _viewModel.ForceRefresh();
-                        }
-                    }
-                }
+                // Supprimer (délégué au ViewModel → ResultActionService)
+                _viewModel.ExecuteShortcutAction(FileActionType.Delete);
                 e.Handled = true;
                 break;
         }
@@ -959,7 +975,7 @@ public partial class LauncherWindow : Window
         // Obtenir les actions disponibles pour ce résultat
         var isPinned = _settings.Search.IsPinned(result.Path);
         var hasAlias = _viewModel.HasAlias(result.Path);
-        var actions = FileActionProvider.GetActionsForResult(result, isPinned, hasAlias);
+        var actions = _fileActionProvider.GetActionsForResult(result, isPinned, hasAlias);
         
         // Créer le style pour les items
         var menuItemStyle = (Style)FindResource("DarkMenuItemStyle");
@@ -1029,101 +1045,13 @@ public partial class LauncherWindow : Window
     }
     
     /// <summary>
-    /// Exécute une action du menu contextuel.
+    /// Exécute une action du menu contextuel en déléguant au ViewModel.
+    /// Point #1 : toute l'exécution passe par un chemin unique
+    /// (ViewModel → ResultActionService → ActionOutcome).
     /// </summary>
     private void ExecuteContextAction(FileAction action, SearchResult result)
     {
-        // Cas spécial pour Rename
-        if (action.ActionType == FileActionType.Rename)
-        {
-            OnRequestRename(this, result.Path);
-            return;
-        }
-        
-        // Cas spécial pour CreateAlias
-        if (action.ActionType == FileActionType.CreateAlias)
-        {
-            OnRequestCreateAlias(this, (result.Name, result.Path));
-            return;
-        }
-        
-        // Cas spécial pour DeleteAlias
-        if (action.ActionType == FileActionType.DeleteAlias)
-        {
-            _viewModel.DeleteAlias(result.Path);
-            return;
-        }
-        
-        // Cas spécial pour Delete avec confirmation
-        if (action.ActionType == FileActionType.Delete)
-        {
-            ConfirmAndDelete(result);
-            return;
-        }
-        
-        // Cas spécial pour Pin
-        if (action.ActionType == FileActionType.Pin)
-        {
-            _settings.Search.PinItem(result.Name, result.Path, result.Type, result.DisplayIcon);
-            _settingsProvider.Save();
-            OnShowNotification(this, "⭐ Épinglé");
-            return;
-        }
-        
-        // Cas spécial pour Unpin
-        if (action.ActionType == FileActionType.Unpin)
-        {
-            _settings.Search.UnpinItem(result.Path);
-            _settingsProvider.Save();
-            OnShowNotification(this, "📌 Désépinglé");
-            // Rafraîchir si on était dans la vue des épingles
-            if (string.IsNullOrWhiteSpace(_viewModel.SearchText))
-            {
-                _viewModel.Reset();
-            }
-            return;
-        }
-        
-        // Exécuter l'action
-        var success = action.Execute(result.Path);
-        
-        if (success)
-        {
-            // Notification de succès selon l'action
-            var message = action.ActionType switch
-            {
-                FileActionType.CopyUrl => "🔗 URL copiée",
-                FileActionType.CopyPath => "📋 Chemin copié",
-                FileActionType.CopyName => "📋 Nom copié",
-                FileActionType.Compress => "🗜️ Archive ZIP créée",
-                FileActionType.SendByEmail => "📧 Email en cours de création...",
-                _ => null
-            };
-            
-            if (message != null)
-                OnShowNotification(this, message);
-            
-            // Fermer après certaines actions de lancement
-            if (action.ActionType is FileActionType.Open 
-                or FileActionType.RunAsAdmin 
-                or FileActionType.OpenPrivate
-                or FileActionType.OpenInTerminal
-                or FileActionType.OpenInVSCode
-                or FileActionType.OpenWith
-                or FileActionType.EditInEditor
-                or FileActionType.OpenLocation
-                or FileActionType.OpenInExplorer
-                or FileActionType.SendByEmail)
-            {
-                HideWindow();
-            }
-        }
-        else
-        {
-            // Notification d'échec pour les actions qui ne sont pas gérées par l'UI
-            if (action.ActionType == FileActionType.OpenInVSCode)
-                OnShowNotification(this, "❌ VS Code introuvable");
-        }
+        _viewModel.ExecuteActionOnResult(action, result);
     }
 
     #endregion
