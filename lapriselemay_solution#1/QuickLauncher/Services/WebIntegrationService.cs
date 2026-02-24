@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net.Http;
 using System.Text.Json;
@@ -41,7 +41,7 @@ public sealed class WebIntegrationService : IDisposable
         try
         {
             var geoUrl = $"https://geocoding-api.open-meteo.com/v1/search?name={Uri.EscapeDataString(city)}&count=1&language=fr";
-            var geoJson = await _httpClient.GetStringAsync(geoUrl, token);
+            var geoJson = await _httpClient.GetStringAsync(geoUrl, token).ConfigureAwait(false);
             var geoData = JsonDocument.Parse(geoJson);
 
             if (!geoData.RootElement.TryGetProperty("results", out var results) || results.GetArrayLength() == 0)
@@ -80,7 +80,7 @@ public sealed class WebIntegrationService : IDisposable
         {
             // Étape 1: Géocodage (nom de ville → coordonnées)
             var geoUrl = $"https://geocoding-api.open-meteo.com/v1/search?name={Uri.EscapeDataString(city)}&count=1&language=fr";
-            var geoJson = await _httpClient.GetStringAsync(geoUrl, token);
+            var geoJson = await _httpClient.GetStringAsync(geoUrl, token).ConfigureAwait(false);
             var geoData = JsonDocument.Parse(geoJson);
             
             if (!geoData.RootElement.TryGetProperty("results", out var results) || results.GetArrayLength() == 0)
@@ -104,7 +104,7 @@ public sealed class WebIntegrationService : IDisposable
                 $"&timezone=auto" +
                 $"&forecast_days=3";
 
-            var weatherJson = await _httpClient.GetStringAsync(weatherUrl, token);
+            var weatherJson = await _httpClient.GetStringAsync(weatherUrl, token).ConfigureAwait(false);
             var weatherData = JsonDocument.Parse(weatherJson);
             var current = weatherData.RootElement.GetProperty("current");
             
@@ -263,7 +263,7 @@ public sealed class WebIntegrationService : IDisposable
                 $"q={Uri.EscapeDataString(text)}" +
                 $"&langpair={Uri.EscapeDataString(langPair)}";
 
-            var json = await _httpClient.GetStringAsync(url, token);
+            var json = await _httpClient.GetStringAsync(url, token).ConfigureAwait(false);
             var data = JsonDocument.Parse(json);
             var responseData = data.RootElement.GetProperty("responseData");
             

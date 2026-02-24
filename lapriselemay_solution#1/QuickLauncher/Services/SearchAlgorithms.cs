@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Frozen;
 using System.Runtime.CompilerServices;
 using QuickLauncher.Models;
 
@@ -35,12 +36,21 @@ public static class SearchAlgorithms
         if (string.IsNullOrEmpty(source)) return target?.Length ?? 0;
         if (string.IsNullOrEmpty(target)) return source.Length;
         
-        var s = source.ToLowerInvariant();
-        var t = target.ToLowerInvariant();
+        return DamerauLevenshteinDistanceNormalized(source.ToLowerInvariant(), target.ToLowerInvariant());
+    }
+    
+    /// <summary>
+    /// Version pré-normalisée (chaînes déjà en minuscules) pour le hot path.
+    /// Évite les allocations ToLowerInvariant() quand les chaînes proviennent
+    /// du fuzzy per-word (déjà normalisées).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int DamerauLevenshteinDistanceNormalized(string s, string t)
+    {
+        if (string.IsNullOrEmpty(s)) return t?.Length ?? 0;
+        if (string.IsNullOrEmpty(t)) return s.Length;
         
-        // Amélioration #6 : ne pas cacher les requêtes < 3 chars.
-        // Pour un launcher où l'on tape lettre par lettre, les paires éphémères
-        // (1-2 chars) polluent le cache LRU sans bénéfice réel.
+        // Ne pas cacher les requêtes < 3 chars.
         if (s.Length < 3 && t.Length < 3)
             return ComputeDamerauLevenshtein(s.AsSpan(), t.AsSpan());
         
@@ -161,6 +171,19 @@ public static class SearchAlgorithms
         
         return 1.0 - (double)distance / maxLength;
     }
+    
+    /// <summary>
+    /// Version pré-normalisée de la similarité (chaînes déjà en minuscules).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static double LevenshteinSimilarityNormalized(string s, string t)
+    {
+        if (string.IsNullOrEmpty(s) && string.IsNullOrEmpty(t)) return 1.0;
+        if (string.IsNullOrEmpty(s) || string.IsNullOrEmpty(t)) return 0.0;
+
+        var distance = DamerauLevenshteinDistanceNormalized(s, t);
+        return 1.0 - (double)distance / Math.Max(s.Length, t.Length);
+    }
 
     #endregion
 
@@ -174,9 +197,10 @@ public static class SearchAlgorithms
     private static readonly char[] WordSeparators = [' ', '-', '_', '.', '+', '(', ')'];
     
     /// <summary>
-    /// Dictionnaire d'abréviations communes pour améliorer la recherche.
+    /// Point 10 : FrozenDictionary d'abréviations communes — initialisé une seule fois,
+    /// optimisé en lecture (zero-allocation TryGetValue, lookup parfait).
     /// </summary>
-    private static readonly Dictionary<string, string[]> CommonAbbreviations = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly FrozenDictionary<string, string[]> CommonAbbreviations = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
     {
         // Développement
         ["vs"] = ["visual studio", "visual studio code"],
@@ -247,7 +271,7 @@ public static class SearchAlgorithms
         ["7z"] = ["7-zip"],
         ["zip"] = ["7-zip", "winzip", "winrar"],
         ["rar"] = ["winrar"],
-    };
+    }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Effectue un fuzzy match amélioré avec scoring détaillé.
@@ -272,12 +296,26 @@ public static class SearchAlgorithms
         if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(target))
             return 0;
         
-        weights ??= DefaultWeights;
-
         var queryLower = query.ToLowerInvariant();
-        // Strip les emojis du nom pour ne pas polluer le fuzzy matching
-        // Ex: "⚙️ Paramètres Windows" → "paramètres windows"
         var targetLower = StripEmojis(target).ToLowerInvariant();
+        
+        return CalculateFuzzyScoreNormalized(queryLower, targetLower, useCount, lastUsed,
+            weights ?? DefaultWeights, userAbbreviations);
+    }
+    
+    /// <summary>
+    /// Pipeline de scoring sur des chaînes déjà normalisées (pré-lower, pré-stripped).
+    /// Élimine les allocations ToLowerInvariant()/StripEmojis() sur le hot path.
+    /// Appelé par SearchService avec les champs pré-calculés d'IndexedItem.
+    /// </summary>
+    public static int CalculateFuzzyScoreNormalized(string queryLower, string targetLower,
+        int useCount, DateTime? lastUsed, ScoringWeights weights,
+        Dictionary<string, string[]>? userAbbreviations = null)
+    {
+        if (string.IsNullOrEmpty(queryLower) || string.IsNullOrEmpty(targetLower))
+            return 0;
+        
+        weights ??= DefaultWeights;
 
         int score = 0;
         
@@ -437,10 +475,9 @@ public static class SearchAlgorithms
                     continue;
                 }
                 
-                // Fuzzy via Damerau-Levenshtein
-                // Seuil adaptatif: mots courts → tolérer 1 erreur, mots longs → proportionnel
+                // Fuzzy via Damerau-Levenshtein (chaînes déjà normalisées)
                 var maxDistance = qWord.Length <= 4 ? 1 : (int)Math.Ceiling(qWord.Length * weights.FuzzyWordMaxDistanceFactor);
-                var distance = DamerauLevenshteinDistance(qWord, tWord);
+                var distance = DamerauLevenshteinDistanceNormalized(qWord, tWord);
                 
                 if (distance <= maxDistance)
                 {
@@ -493,8 +530,8 @@ public static class SearchAlgorithms
     /// </summary>
     private static int CalculateFuzzyGlobalScore(string queryLower, string targetLower, ScoringWeights weights)
     {
-        // Similarité globale sur tout le nom
-        var similarity = LevenshteinSimilarity(queryLower, targetLower);
+        // Similarité globale sur tout le nom (chaînes déjà normalisées)
+        var similarity = LevenshteinSimilarityNormalized(queryLower, targetLower);
         if (similarity >= weights.FuzzyMatchThreshold)
         {
             return (int)(similarity * weights.FuzzyMatchMultiplier);
@@ -508,7 +545,7 @@ public static class SearchAlgorithms
             
             foreach (var word in targetWords)
             {
-                var wordSim = LevenshteinSimilarity(queryLower, word);
+                var wordSim = LevenshteinSimilarityNormalized(queryLower, word);
                 if (wordSim >= weights.FuzzyMatchThreshold)
                 {
                     var wordScore = (int)(wordSim * weights.FuzzyMatchMultiplier * weights.FuzzyGlobalWordMultiplier);
@@ -626,22 +663,38 @@ public static class SearchAlgorithms
         if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(fullPath))
             return 0;
         
+        return CalculatePathFuzzyScoreNormalized(
+            query.ToLowerInvariant(), fullPath.ToLowerInvariant(), weights);
+    }
+    
+    /// <summary>
+    /// Version pré-normalisée du path fuzzy matching (chaînes déjà en minuscules).
+    /// Élimine les allocations ToLowerInvariant() sur le hot path quand
+    /// appelé depuis SearchService avec query et PathLower pré-calculés.
+    /// </summary>
+    public static int CalculatePathFuzzyScoreNormalized(string queryLower, string pathLower,
+        ScoringWeights? weights = null)
+    {
+        if (string.IsNullOrEmpty(queryLower) || string.IsNullOrEmpty(pathLower))
+            return 0;
+        
         weights ??= DefaultWeights;
         
-        var queryWords = query.ToLowerInvariant()
+        var queryWords = queryLower
             .Split([' '], StringSplitOptions.RemoveEmptyEntries);
         
         if (queryWords.Length < 1)
             return 0;
         
         // Découper le chemin en segments
-        var pathSegments = fullPath.ToLowerInvariant()
+        var pathSegments = pathLower
             .Split(['\\', '/', '-', '_', '.', ' '], StringSplitOptions.RemoveEmptyEntries);
         
         if (queryWords.Length == 1)
         {
-            var pathOnly = System.IO.Path.GetDirectoryName(fullPath) ?? fullPath;
-            var segments = pathOnly.ToLowerInvariant()
+            var lastSep = pathLower.LastIndexOfAny(['\\', '/']);
+            var dirPart = lastSep >= 0 ? pathLower[..lastSep] : pathLower;
+            var segments = dirPart
                 .Split(['\\', '/', '-', '_', '.', ' '], StringSplitOptions.RemoveEmptyEntries);
             
             var word = queryWords[0];
@@ -657,7 +710,7 @@ public static class SearchAlgorithms
                     bestScore = Math.Max(bestScore, (int)(weights.PathExactSegmentMatch * 0.4));
                 else if (word.Length >= 3)
                 {
-                    var sim = LevenshteinSimilarity(word, seg);
+                    var sim = LevenshteinSimilarityNormalized(word, seg);
                     if (sim >= weights.PathFuzzySegmentThreshold)
                         bestScore = Math.Max(bestScore, (int)(weights.PathExactSegmentMatch * sim * 0.4));
                 }
@@ -686,7 +739,7 @@ public static class SearchAlgorithms
                     wordScore = (int)(weights.PathExactSegmentMatch * 0.5);
                 else if (word.Length >= 3)
                 {
-                    var similarity = LevenshteinSimilarity(word, segment);
+                    var similarity = LevenshteinSimilarityNormalized(word, segment);
                     if (similarity >= weights.PathFuzzySegmentThreshold)
                         wordScore = (int)(weights.PathExactSegmentMatch * similarity * 0.4);
                     else
@@ -778,9 +831,20 @@ public static class SearchAlgorithms
         if (string.IsNullOrEmpty(query) || string.IsNullOrEmpty(description))
             return 0;
 
+        return CalculateDescriptionScoreNormalized(
+            query.ToLowerInvariant(), description.ToLowerInvariant(), weights);
+    }
+    
+    /// <summary>
+    /// Version pré-normalisée pour le hot path (chaînes déjà en minuscules).
+    /// </summary>
+    public static int CalculateDescriptionScoreNormalized(string queryLower, string descLower,
+        ScoringWeights? weights = null)
+    {
+        if (string.IsNullOrEmpty(queryLower) || string.IsNullOrEmpty(descLower))
+            return 0;
+
         weights ??= DefaultWeights;
-        var queryLower = query.ToLowerInvariant();
-        var descLower = description.ToLowerInvariant();
 
         // Match exact de la requête complète dans la description
         if (descLower.Contains(queryLower))
@@ -819,7 +883,7 @@ public static class SearchAlgorithms
             {
                 if (dWord.Length < 3) continue;
                 var maxDist = queryLower.Length <= 5 ? 1 : 2;
-                var dist = DamerauLevenshteinDistance(queryLower, dWord);
+                var dist = DamerauLevenshteinDistanceNormalized(queryLower, dWord);
                 if (dist <= maxDist)
                 {
                     var sim = 1.0 - (double)dist / Math.Max(queryLower.Length, dWord.Length);

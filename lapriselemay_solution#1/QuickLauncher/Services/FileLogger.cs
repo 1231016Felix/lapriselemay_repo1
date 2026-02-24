@@ -16,7 +16,6 @@ public sealed class FileLogger : ILogger, IDisposable
     private readonly string _logFilePath;
     private readonly BlockingCollection<string> _logQueue = new(1000);
     private readonly Task _writerTask;
-    private readonly CancellationTokenSource _cts = new();
     private bool _disposed;
     
     /// <summary>Durée de rétention des fichiers de log en jours.</summary>
@@ -130,7 +129,11 @@ public sealed class FileLogger : ILogger, IDisposable
                 AutoFlush = true
             };
             
-            foreach (var logLine in _logQueue.GetConsumingEnumerable(_cts.Token))
+            // CompleteAdding() termine naturellement l'énumération une fois la queue vidée.
+            // Pas de CancellationToken ici : on veut que tous les messages en attente
+            // soient écrits avant de quitter, sinon les derniers logs (souvent les plus
+            // importants en cas de crash) sont perdus.
+            foreach (var logLine in _logQueue.GetConsumingEnumerable())
             {
                 await writer.WriteLineAsync(logLine);
             }
@@ -148,18 +151,20 @@ public sealed class FileLogger : ILogger, IDisposable
         if (_disposed) return;
         _disposed = true;
         
+        // CompleteAdding signale au writer qu'il n'y aura plus de nouveaux messages.
+        // GetConsumingEnumerable se termine proprement après avoir vidé la queue,
+        // garantissant que les derniers messages (souvent les plus importants) sont écrits.
         _logQueue.CompleteAdding();
-        _cts.Cancel();
         
         try
         {
-            _writerTask.Wait(TimeSpan.FromSeconds(2));
+            // Attendre que le writer ait fini de vider la queue (3s max par sécurité)
+            _writerTask.Wait(TimeSpan.FromSeconds(3));
         }
         catch
         {
         }
         
-        _cts.Dispose();
         _logQueue.Dispose();
     }
 }

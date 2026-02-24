@@ -55,7 +55,7 @@ public sealed class TranslationCommandHandler : ICommandHandler
                 }]
             };
 
-        var result = await _webService.TranslateAsync(textToTranslate, targetLang, sourceLang, token);
+        var result = await _webService.TranslateAsync(textToTranslate, targetLang, sourceLang, token).ConfigureAwait(false);
 
         if (token.IsCancellationRequested)
             return new CommandResult();

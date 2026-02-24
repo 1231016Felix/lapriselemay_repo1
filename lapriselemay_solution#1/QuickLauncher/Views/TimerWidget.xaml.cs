@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-using QuickLauncher.Services;
 
 namespace QuickLauncher.Views;
 
@@ -53,9 +52,6 @@ public partial class TimerWidget : Window
         var workArea = SystemParameters.WorkArea;
         Left = workArea.Right - 180;
         Top = workArea.Bottom - 120;
-        
-        // Attacher au bureau pour que le timer reste sur le bureau
-        DesktopAttachHelper.AttachToDesktop(this);
         
         UpdateDisplay(null, EventArgs.Empty);
     }

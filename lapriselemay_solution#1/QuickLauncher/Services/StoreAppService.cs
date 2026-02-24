@@ -183,9 +183,9 @@ public static class StoreAppService
     /// <summary>
     /// Énumère toutes les applications installées (traditionnelles et Store)
     /// </summary>
-    public static List<SearchResult> GetAllApps()
+    public static List<IndexedItem> GetAllApps()
     {
-        var allApps = new List<SearchResult>();
+        var allApps = new List<IndexedItem>();
 
         try
         {
@@ -255,7 +255,7 @@ public static class StoreAppService
             .ToList();
     }
 
-    private static SearchResult? GetAppFromPidl(IShellFolder folder, IntPtr pidl)
+    private static IndexedItem? GetAppFromPidl(IShellFolder folder, IntPtr pidl)
     {
         try
         {
@@ -280,13 +280,11 @@ public static class StoreAppService
             // Ex: "C:\Program Files\...\app.exe" ou "Microsoft.VisualStudio.Installer" → Application
             var isUwpApp = appUserModelId.Contains('!');
 
-            return new SearchResult
-            {
-                Name = displayName,
-                Path = appUserModelId,
-                Description = isUwpApp ? "Microsoft Store" : "Application",
-                Type = isUwpApp ? ResultType.StoreApp : ResultType.Application
-            };
+            return IndexedItem.Create(
+                path: appUserModelId,
+                name: displayName,
+                description: isUwpApp ? "Microsoft Store" : "Application",
+                type: isUwpApp ? ResultType.StoreApp : ResultType.Application);
         }
         catch
         {

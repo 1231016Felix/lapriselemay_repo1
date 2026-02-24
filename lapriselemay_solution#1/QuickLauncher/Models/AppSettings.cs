@@ -60,24 +60,20 @@ public sealed class AppSettings
     public void ResetSystemCommands() => SystemCommands = DefaultSystemCommands.Create();
     
     /// <summary>
-    /// Copie profonde de tous les paramètres.
+    /// Copie profonde de tous les paramètres via round-trip JSON.
+    /// 
     /// Utilisée par SettingsProvider pour le pattern clone-swap :
     /// les threads de recherche travaillent sur un snapshot stable
     /// pendant que le UI thread mute une nouvelle copie.
+    /// 
+    /// Le round-trip JSON est intrinsèquement sûr : toute nouvelle propriété
+    /// ajoutée est automatiquement clonée sans intervention manuelle,
+    /// éliminant le risque de partage de référence silencieux.
     /// </summary>
     public AppSettings Clone()
     {
-        var clone = (AppSettings)MemberwiseClone();
-        clone.Search = Search.Clone();
-        clone.Appearance = Appearance.Clone();
-        clone.Integrations = Integrations.Clone();
-        clone.SystemCommands = SystemCommands.Select(c => c.Clone()).ToList();
-        clone.Hotkey = new HotkeySettings
-        {
-            UseAlt = Hotkey.UseAlt, UseCtrl = Hotkey.UseCtrl,
-            UseShift = Hotkey.UseShift, UseWin = Hotkey.UseWin, Key = Hotkey.Key
-        };
-        return clone;
+        var json = JsonSerializer.Serialize(this, JsonOptions);
+        return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions)!;
     }
     
     // ══════════════════════════════════════════════════════════
@@ -112,30 +108,80 @@ public sealed class AppSettings
             if (settings != null)
             {
                 DefaultSystemCommands.Migrate(settings.SystemCommands);
-                System.Diagnostics.Debug.WriteLine($"[Settings] Chargé avec {settings.Search.PinnedItems.Count} épingles (format: {(isNewFormat ? "v2" : "legacy→v2")})");
+                System.Diagnostics.Trace.WriteLine($"[Settings] Chargé avec {settings.Search.PinnedItems.Count} épingles (format: {(isNewFormat ? "v2" : "legacy→v2")})");
                 return settings;
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Settings] Erreur chargement: {ex.Message}");
+            System.Diagnostics.Trace.WriteLine($"[Settings] Erreur chargement: {ex.Message}");
         }
         
         return new AppSettings();
     }
 
+    /// <summary>
+    /// Sauvegarde fire-and-forget : sérialise en mémoire (rapide, UI thread)
+    /// puis écrit sur disque en arrière-plan via fichier temporaire + Move.
+    /// 
+    /// Utilisé pour les sauvegardes courantes où le process reste vivant.
+    /// Pour le shutdown, utiliser <see cref="SaveSync"/> pour garantir
+    /// que l'écriture est terminée avant la fin du process.
+    /// </summary>
     public void Save()
     {
         try
         {
             Directory.CreateDirectory(SettingsDir);
             var json = JsonSerializer.Serialize(this, JsonOptions);
-            File.WriteAllText(SettingsPath, json);
-            System.Diagnostics.Debug.WriteLine($"[Settings] Sauvegardé avec {Search.PinnedItems.Count} épingles");
+            // File.Move avec overwrite est atomique sur NTFS, ce qui garantit que le fichier
+            // settings est toujours soit l'ancien soit le nouveau — jamais un état partiel.
+            _ = Task.Run(() => WriteAtomically(json));
+            System.Diagnostics.Trace.WriteLine($"[Settings] Sauvegardé (async) avec {Search.PinnedItems.Count} épingles");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Settings] Erreur sauvegarde: {ex.Message}");
+            System.Diagnostics.Trace.WriteLine($"[Settings] Erreur sauvegarde: {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// Sauvegarde synchrone bloquante : garantit que l'écriture est terminée au retour.
+    /// 
+    /// Utilisé par <see cref="Services.SettingsProvider.Dispose"/> et le callback
+    /// du timer debounce (qui s'exécute déjà sur un thread ThreadPool).
+    /// Ne jamais appeler depuis le UI thread en conditions normales.
+    /// </summary>
+    public void SaveSync()
+    {
+        try
+        {
+            Directory.CreateDirectory(SettingsDir);
+            var json = JsonSerializer.Serialize(this, JsonOptions);
+            WriteAtomically(json);
+            System.Diagnostics.Trace.WriteLine($"[Settings] Sauvegardé (sync) avec {Search.PinnedItems.Count} épingles");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Settings] Erreur sauvegarde sync: {ex.Message}");
+        }
+    }
+    
+    /// <summary>
+    /// Écriture atomique sur disque via fichier temporaire + Move.
+    /// Factorisation commune à <see cref="Save"/> et <see cref="SaveSync"/>.
+    /// </summary>
+    private static void WriteAtomically(string json)
+    {
+        try
+        {
+            var tempPath = SettingsPath + ".tmp";
+            File.WriteAllText(tempPath, json);
+            File.Move(tempPath, SettingsPath, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[Settings] Erreur écriture atomique: {ex.Message}");
         }
     }
     

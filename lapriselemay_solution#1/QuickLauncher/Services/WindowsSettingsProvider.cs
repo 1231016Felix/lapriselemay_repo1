@@ -13,7 +13,7 @@ public static class WindowsSettingsProvider
     /// pour les rendre accessibles via la recherche primaire (sans préfixe :).
     /// Chaque item utilise un URI ms-settings: ou une commande control panel.
     /// </summary>
-    public static List<SearchResult> GetItems()
+    public static List<IndexedItem> GetItems()
     {
         return
         [
@@ -121,15 +121,12 @@ public static class WindowsSettingsProvider
         ];
     }
 
-    private static SearchResult WinSetting(string name, string path, string description)
+    private static IndexedItem WinSetting(string name, string path, string description)
     {
-        return new SearchResult
-        {
-            Name = name,
-            Path = path,
-            Description = $"⚙️ {description}",
-            Type = ResultType.SystemControl,
-            Score = 0
-        };
+        return IndexedItem.Create(
+            path: path,
+            name: name,
+            description: $"⚙️ {description}",
+            type: ResultType.SystemControl);
     }
 }

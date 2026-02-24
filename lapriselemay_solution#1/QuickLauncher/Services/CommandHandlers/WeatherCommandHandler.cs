@@ -35,7 +35,7 @@ public sealed class WeatherCommandHandler : ICommandHandler
             : null;
 
         var targetCity = string.IsNullOrWhiteSpace(weatherArg) ? settings.Integrations.WeatherCity : weatherArg;
-        var result = await _webService.GetWeatherAsync(targetCity, settings.Integrations.WeatherUnit, token);
+        var result = await _webService.GetWeatherAsync(targetCity, settings.Integrations.WeatherUnit, token).ConfigureAwait(false);
 
         if (token.IsCancellationRequested)
             return new CommandResult();

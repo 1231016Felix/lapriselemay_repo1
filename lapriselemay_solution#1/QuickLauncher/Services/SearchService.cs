@@ -96,8 +96,11 @@ public sealed class SearchService
             .Take(settings.Search.MaxResults)
             .Select(x =>
             {
-                x.Item.Score = x.Score;
-                return x.Item;
+                // Conversion IndexedItem → SearchResult pour la couche UI.
+                // L'IndexedItem immutable reste intact dans le cache.
+                var result = x.Item.ToSearchResult();
+                result.Score = x.Score;
+                return result;
             })
             .ToList();
     }
@@ -120,21 +123,23 @@ public sealed class SearchService
         return name[start..].ToLowerInvariant();
     }
 
-    private int CalculateScore(string query, SearchResult item)
+    private int CalculateScore(string query, IndexedItem item)
     {
         var searchSettings = _settingsProvider.Current.Search;
         var weights = searchSettings.ScoringWeights;
         var userAbbreviations = searchSettings.UserAbbreviations;
 
-        // Score principal sur le nom
-        var nameScore = SearchAlgorithms.CalculateFuzzyScore(
-            query, item.Name, item.UseCount, item.LastUsed, weights,
+        // Score principal sur le nom — utilise les champs pré-normalisés (Point #5)
+        // pour éviter ~4000 allocations ToLowerInvariant()/StripEmojis() par frappe.
+        var nameScore = SearchAlgorithms.CalculateFuzzyScoreNormalized(
+            query, item.NameNormalized, item.UseCount, item.LastUsed, weights,
             userAbbreviations.Count > 0 ? userAbbreviations : null);
 
         // Score additionnel sur le chemin complet (pour les requêtes multi-mots)
-        if (weights.EnablePathFuzzyMatch && !string.IsNullOrEmpty(item.Path))
+        // Utilise PathLower pré-calculé (Point #5).
+        if (weights.EnablePathFuzzyMatch && !string.IsNullOrEmpty(item.PathLower))
         {
-            var pathScore = SearchAlgorithms.CalculatePathFuzzyScore(query, item.Path, weights);
+            var pathScore = SearchAlgorithms.CalculatePathFuzzyScoreNormalized(query, item.PathLower, weights);
 
             if (pathScore > 0 && nameScore == 0)
             {
@@ -154,9 +159,10 @@ public sealed class SearchService
         }
 
         // Score sur la description (pour les paramètres Windows, bookmarks, etc.)
-        if (!string.IsNullOrEmpty(item.Description))
+        // Utilise DescriptionLower pré-calculé (Point #5).
+        if (!string.IsNullOrEmpty(item.DescriptionLower))
         {
-            var descScore = SearchAlgorithms.CalculateDescriptionScore(query, item.Description, weights);
+            var descScore = SearchAlgorithms.CalculateDescriptionScoreNormalized(query, item.DescriptionLower, weights);
             if (descScore > 0)
             {
                 if (nameScore == 0)

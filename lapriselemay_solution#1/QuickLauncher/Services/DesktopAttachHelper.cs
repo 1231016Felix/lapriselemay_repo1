@@ -11,8 +11,10 @@ namespace QuickLauncher.Services;
 /// 
 /// Utilise SetWinEventHook (EVENT_SYSTEM_FOREGROUND) au lieu d'un timer polling
 /// pour détecter les changements de fenêtre active → zéro CPU au repos.
+/// 
+/// Enregistré en singleton dans le conteneur DI.
 /// </summary>
-public static class DesktopAttachHelper
+public sealed class DesktopAttachHelper : IDesktopAttachHelper
 {
     #region Win32 API
 
@@ -76,24 +78,22 @@ public static class DesktopAttachHelper
 
     #endregion
 
-    private static readonly List<WeakReference<Window>> _attachedWindows = [];
-    private static readonly object _lock = new();
-    private static bool _isDesktopVisible;
+    private readonly List<WeakReference<Window>> _attachedWindows = [];
+    private readonly object _lock = new();
+    private bool _isDesktopVisible;
+    private bool _disposed;
 
     // ── Hook state ──
-    private static IntPtr _foregroundHook;
-    private static IntPtr _minimizeStartHook;
-    private static IntPtr _minimizeEndHook;
+    private IntPtr _foregroundHook;
+    private IntPtr _minimizeStartHook;
+    private IntPtr _minimizeEndHook;
     // IMPORTANT : garder une référence forte au delegate pour empêcher le GC de le collecter
     // tant que le hook Win32 est actif (sinon → CallbackOnCollectedDelegate crash).
-    private static WinEventDelegate? _winEventProc;
-    private static Dispatcher? _dispatcher;
+    private WinEventDelegate? _winEventProc;
+    private Dispatcher? _dispatcher;
 
-    /// <summary>
-    /// Attache une fenêtre WPF au bureau Windows.
-    /// La fenêtre sera visible sur le bureau et se comportera comme un gadget.
-    /// </summary>
-    public static void AttachToDesktop(Window window)
+    /// <inheritdoc />
+    public void AttachToDesktop(Window window)
     {
         window.SourceInitialized += (s, e) =>
         {
@@ -137,7 +137,7 @@ public static class DesktopAttachHelper
     /// EVENT_SYSTEM_FOREGROUND : déclenché quand une fenêtre passe au premier plan.
     /// EVENT_SYSTEM_MINIMIZESTART/END : déclenché lors de minimize/restore (Show Desktop).
     /// </summary>
-    private static void StartHook(Dispatcher dispatcher)
+    private void StartHook(Dispatcher dispatcher)
     {
         _dispatcher = dispatcher;
         _winEventProc = OnWinEvent;
@@ -161,7 +161,7 @@ public static class DesktopAttachHelper
     /// <summary>
     /// Désinstalle tous les hooks Win32.
     /// </summary>
-    private static void StopHook()
+    private void StopHook()
     {
         if (_foregroundHook != IntPtr.Zero)
         {
@@ -186,7 +186,7 @@ public static class DesktopAttachHelper
     /// Callback appelé par Windows quand une fenêtre change de Z-order.
     /// Exécuté sur le thread du message pump Win32, on dispatch vers le thread WPF.
     /// </summary>
-    private static void OnWinEvent(
+    private void OnWinEvent(
         IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
     {
@@ -198,7 +198,7 @@ public static class DesktopAttachHelper
     /// Évalue l'état du bureau et met à jour toutes les fenêtres si changement.
     /// Équivalent de l'ancien OnDesktopWatcherTick mais appelé uniquement sur événement.
     /// </summary>
-    private static void EvaluateDesktopState()
+    private void EvaluateDesktopState()
     {
         var isDesktopNow = IsDesktopForeground();
 
@@ -212,7 +212,7 @@ public static class DesktopAttachHelper
     /// <summary>
     /// Vérifie si le bureau est actuellement au premier plan (Show Desktop activé).
     /// </summary>
-    private static bool IsDesktopForeground()
+    private bool IsDesktopForeground()
     {
         var foreground = GetForegroundWindow();
 
@@ -271,7 +271,7 @@ public static class DesktopAttachHelper
         };
     }
 
-    private static void UpdateAllWindows(bool isDesktopVisible)
+    private void UpdateAllWindows(bool isDesktopVisible)
     {
         List<Window> windows = [];
 
@@ -314,10 +314,8 @@ public static class DesktopAttachHelper
         }
     }
 
-    /// <summary>
-    /// Force l'affichage de tous les widgets attachés.
-    /// </summary>
-    public static void ShowAllWidgets()
+    /// <inheritdoc />
+    public void ShowAllWidgets()
     {
         lock (_lock)
         {
@@ -336,10 +334,13 @@ public static class DesktopAttachHelper
     }
 
     /// <summary>
-    /// Arrête la surveillance du bureau et libère les hooks Win32.
+    /// Libère les hooks Win32 et nettoie les références aux fenêtres.
     /// </summary>
-    public static void Shutdown()
+    public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+        
         StopHook();
         lock (_lock)
         {

@@ -13,13 +13,15 @@ public sealed class NoteWidgetService
 {
     private readonly Dictionary<int, NoteWidget> _activeWidgets = [];
     private readonly ISettingsProvider _settingsProvider;
+    private readonly IDesktopAttachHelper _desktopAttach;
     private int _nextId;
     
     private AppSettings Settings => _settingsProvider.Current;
     
-    public NoteWidgetService(ISettingsProvider settingsProvider)
+    public NoteWidgetService(ISettingsProvider settingsProvider, IDesktopAttachHelper desktopAttach)
     {
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
+        _desktopAttach = desktopAttach ?? throw new ArgumentNullException(nameof(desktopAttach));
         _nextId = Settings.Integrations.NoteWidgets.Count > 0 
             ? Settings.Integrations.NoteWidgets.Max(n => n.Id) + 1 
             : 1;
@@ -42,9 +44,10 @@ public sealed class NoteWidgetService
         var left = workArea.Right - 300 - offsetX;
         var top = workArea.Bottom - 150 - offsetY;
         
-        // Créer le widget
+        // Créer le widget et l'attacher au bureau
         var widget = new NoteWidget(noteId, content, OnWidgetClosed, SaveWidgetPosition);
         widget.SetPosition(left, top);
+        _desktopAttach.AttachToDesktop(widget);
         
         // Enregistrer dans les settings
         var info = new NoteWidgetInfo
@@ -111,6 +114,7 @@ public sealed class NoteWidgetService
             {
                 var widget = new NoteWidget(info.Id, info.Content, OnWidgetClosed, SaveWidgetPosition);
                 widget.SetPosition(info.Left, info.Top);
+                _desktopAttach.AttachToDesktop(widget);
                 _activeWidgets[info.Id] = widget;
                 widget.Show();
                 Debug.WriteLine($"[NoteWidget] Restauré: ID={info.Id}");

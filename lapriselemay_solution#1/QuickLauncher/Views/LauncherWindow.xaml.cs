@@ -19,6 +19,7 @@ public partial class LauncherWindow : Window
     private readonly LauncherViewModel _viewModel;
     private readonly ISettingsProvider _settingsProvider;
     private readonly IFileActionProvider _fileActionProvider;
+    private readonly ScreenCaptureService _screenCapture;
     private readonly WindowAnimationHelper _animator;
     
     // === Drag & Drop state ===
@@ -39,12 +40,14 @@ public partial class LauncherWindow : Window
     public event EventHandler? RequestQuit;
     public event EventHandler? RequestReindex;
     
-    public LauncherWindow(LauncherViewModel viewModel, ISettingsProvider settingsProvider, IFileActionProvider fileActionProvider)
+    public LauncherWindow(LauncherViewModel viewModel, ISettingsProvider settingsProvider,
+        IFileActionProvider fileActionProvider, ScreenCaptureService screenCapture)
     {
         InitializeComponent();
         
         _settingsProvider = settingsProvider;
         _fileActionProvider = fileActionProvider;
+        _screenCapture = screenCapture;
         _viewModel = viewModel;
         DataContext = _viewModel;
         
@@ -207,7 +210,7 @@ public partial class LauncherWindow : Window
             
             if (captureMode is "snip" or "region" or "select")
             {
-                // Capture de région avec overlay → ouvre l'annotateur
+                // Capture de région avec overlay → ouvre l'annotateur (nécessite des dialogues UI)
                 var overlay = new ScreenshotOverlayWindow();
                 if (overlay.ShowDialog() == true && overlay.CapturedRegion != null)
                 {
@@ -220,21 +223,20 @@ public partial class LauncherWindow : Window
             }
             else
             {
-                // Capture plein écran ou écran principal → sauvegarde directe, sans rien afficher
+                // Capture plein écran ou écran principal → délégué au service
                 var primaryOnly = captureMode is "primary" or "main";
-                var bitmap = CaptureScreen(primaryOnly);
+                var bitmap = _screenCapture.CaptureScreen(primaryOnly);
                 
                 if (bitmap != null)
                 {
-                    var filePath = SaveScreenshotDirect(bitmap);
+                    var filePath = _screenCapture.SaveScreenshot(bitmap);
                     bitmap.Dispose();
                     
                     if (filePath != null)
                     {
-                        // Copier aussi dans le presse-papier
-                        var bitmapSource = LoadBitmapSourceFromFile(filePath);
+                        var bitmapSource = ScreenCaptureService.LoadBitmapSource(filePath);
                         if (bitmapSource != null)
-                            System.Windows.Clipboard.SetImage(bitmapSource);
+                            Clipboard.SetImage(bitmapSource);
                     }
                 }
             }
@@ -247,73 +249,7 @@ public partial class LauncherWindow : Window
         }
     }
 
-    /// <summary>
-    /// Sauvegarde directe d'un bitmap sans ouvrir l'annotateur.
-    /// </summary>
-    private static string? SaveScreenshotDirect(System.Drawing.Bitmap bitmap)
-    {
-        try
-        {
-            var screenshotsFolder = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
-                "Screenshots");
-            System.IO.Directory.CreateDirectory(screenshotsFolder);
 
-            var fileName = $"Screenshot_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}.png";
-            var filePath = System.IO.Path.Combine(screenshotsFolder, fileName);
-
-            bitmap.Save(filePath, System.Drawing.Imaging.ImageFormat.Png);
-            return filePath;
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SaveScreenshotDirect ERROR] {ex.Message}");
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Charge un BitmapSource depuis un fichier PNG pour le presse-papier.
-    /// </summary>
-    private static System.Windows.Media.Imaging.BitmapSource? LoadBitmapSourceFromFile(string filePath)
-    {
-        try
-        {
-            var bi = new System.Windows.Media.Imaging.BitmapImage();
-            bi.BeginInit();
-            bi.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-            bi.UriSource = new Uri(filePath);
-            bi.EndInit();
-            bi.Freeze();
-            return bi;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static System.Drawing.Bitmap? CaptureScreen(bool primaryOnly)
-    {
-        try
-        {
-            var bounds = primaryOnly
-                ? System.Windows.Forms.Screen.PrimaryScreen!.Bounds
-                : System.Windows.Forms.Screen.AllScreens
-                    .Select(s => s.Bounds)
-                    .Aggregate(System.Drawing.Rectangle.Union);
-
-            var bitmap = new System.Drawing.Bitmap(bounds.Width, bounds.Height);
-            using var graphics = System.Drawing.Graphics.FromImage(bitmap);
-            graphics.CopyFromScreen(bounds.Location, System.Drawing.Point.Empty, bounds.Size);
-            return bitmap;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-    
     private void ApplySettings()
     {
         Opacity = _settings.Appearance.WindowOpacity;

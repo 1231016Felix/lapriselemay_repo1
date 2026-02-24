@@ -56,7 +56,7 @@ public static class WindowsSearchService
                     if (result != null)
                         results.Add(result);
                 }
-            }, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
