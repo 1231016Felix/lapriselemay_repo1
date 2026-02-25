@@ -7,10 +7,6 @@ namespace QuickLauncher.Services;
 
 /// <summary>
 /// Service de gestion du raccourci clavier global avec meilleure gestion des ressources.
-/// 
-/// Point #11 : enregistré en singleton dans le conteneur DI pour cohérence
-/// avec les autres services. Le hotkey est lu depuis ISettingsProvider.
-/// Register() doit être appelé sur le UI thread (crée un HwndSource).
 /// </summary>
 public sealed class HotkeyService : IDisposable
 {
@@ -30,23 +26,18 @@ public sealed class HotkeyService : IDisposable
     private IntPtr _windowHandle;
     private bool _isRegistered;
     private bool _disposed;
-    private readonly ISettingsProvider _settingsProvider;
+    private readonly HotkeySettings _hotkeySettings;
     
     public event EventHandler? HotkeyPressed;
     public bool IsRegistered => _isRegistered;
     
-    /// <summary>
-    /// Constructeur DI : lit le hotkey depuis le SettingsProvider.
-    /// </summary>
-    public HotkeyService(ISettingsProvider settingsProvider)
+    public HotkeyService() : this(AppSettings.Load().Hotkey) { }
+    
+    public HotkeyService(HotkeySettings settings)
     {
-        _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
+        _hotkeySettings = settings ?? throw new ArgumentNullException(nameof(settings));
     }
 
-    /// <summary>
-    /// Enregistre le raccourci clavier global.
-    /// Doit être appelé sur le UI thread (crée un HwndSource Win32).
-    /// </summary>
     public bool Register()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -54,8 +45,6 @@ public sealed class HotkeyService : IDisposable
         
         try
         {
-            var hotkeySettings = _settingsProvider.Current.Hotkey;
-            
             var parameters = new HwndSourceParameters("HotkeyWindow")
             {
                 Width = 0,
@@ -69,14 +58,14 @@ public sealed class HotkeyService : IDisposable
             _source.AddHook(WndProc);
             _windowHandle = _source.Handle;
             
-            var modifiers = GetModifiers(hotkeySettings);
-            var vk = GetVirtualKeyCode(hotkeySettings.Key);
+            var modifiers = GetModifiers();
+            var vk = GetVirtualKeyCode(_hotkeySettings.Key);
             
             _isRegistered = RegisterHotKey(_windowHandle, Constants.HotkeyId, modifiers, vk);
             
             Debug.WriteLine(_isRegistered 
-                ? $"Hotkey enregistré: {hotkeySettings.DisplayText}" 
-                : $"Échec enregistrement hotkey: {hotkeySettings.DisplayText}");
+                ? $"Hotkey enregistré: {_hotkeySettings.DisplayText}" 
+                : $"Échec enregistrement hotkey: {_hotkeySettings.DisplayText}");
             
             return _isRegistered;
         }
@@ -87,13 +76,13 @@ public sealed class HotkeyService : IDisposable
         }
     }
     
-    private static uint GetModifiers(HotkeySettings settings)
+    private uint GetModifiers()
     {
         uint modifiers = MOD_NOREPEAT;
-        if (settings.UseAlt) modifiers |= MOD_ALT;
-        if (settings.UseCtrl) modifiers |= MOD_CONTROL;
-        if (settings.UseShift) modifiers |= MOD_SHIFT;
-        if (settings.UseWin) modifiers |= MOD_WIN;
+        if (_hotkeySettings.UseAlt) modifiers |= MOD_ALT;
+        if (_hotkeySettings.UseCtrl) modifiers |= MOD_CONTROL;
+        if (_hotkeySettings.UseShift) modifiers |= MOD_SHIFT;
+        if (_hotkeySettings.UseWin) modifiers |= MOD_WIN;
         return modifiers;
     }
     

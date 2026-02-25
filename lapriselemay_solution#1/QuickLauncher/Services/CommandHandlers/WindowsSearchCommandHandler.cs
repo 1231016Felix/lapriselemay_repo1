@@ -37,7 +37,7 @@ public sealed class WindowsSearchCommandHandler : ICommandHandler
 
         _universalSearchService.MaxSearchDepth = settings.Search.SystemSearchDepth;
 
-        var searchResults = await _universalSearchService.SearchAsync(searchQuery, null, token).ConfigureAwait(false);
+        var searchResults = await _universalSearchService.SearchAsync(searchQuery, null, token);
 
         if (token.IsCancellationRequested)
             return new CommandResult();

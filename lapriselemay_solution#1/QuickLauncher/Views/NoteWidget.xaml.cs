@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using QuickLauncher.Services;
 
 namespace QuickLauncher.Views;
 
@@ -34,6 +35,8 @@ public partial class NoteWidget : Window
         Left = workArea.Right - 300;
         Top = workArea.Bottom - 150;
         
+        // Attacher au bureau pour que la note reste sur le bureau
+        DesktopAttachHelper.AttachToDesktop(this);
     }
     
     /// <summary>

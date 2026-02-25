@@ -6,26 +6,6 @@ namespace QuickLauncher.Models.Settings;
 /// </summary>
 public sealed class SearchSettings
 {
-    // === Guard de mutation (Point #9) ===
-    // Empêche les mutations directes sur l'instance publiée par SettingsProvider.Current.
-    // Seuls les clones (via Update()) doivent être mutés.
-    
-    [System.Text.Json.Serialization.JsonIgnore]
-    internal bool IsFrozen { get; private set; }
-    
-    /// <summary>
-    /// Gèle l'instance : toute mutation ultérieure lèvera une InvalidOperationException.
-    /// Appelé par SettingsProvider après le swap atomique.
-    /// </summary>
-    internal void Freeze() => IsFrozen = true;
-    
-    private void ThrowIfFrozen()
-    {
-        if (IsFrozen)
-            throw new InvalidOperationException(
-                "Impossible de muter un snapshot gelé de SearchSettings. "
-                + "Utilisez ISettingsProvider.Update() pour appliquer des modifications.");
-    }
     // === Recherche générale ===
     public int MaxResults { get; set; } = Constants.DefaultMaxResults;
     public int SearchDepth { get; set; } = Constants.DefaultSearchDepth;
@@ -79,7 +59,6 @@ public sealed class SearchSettings
     
     public void PinItem(string name, string path, ResultType type, string? icon = null)
     {
-        ThrowIfFrozen();
         if (string.IsNullOrWhiteSpace(path)) return;
         if (PinnedItems.Any(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase))) return;
         
@@ -92,7 +71,6 @@ public sealed class SearchSettings
     
     public bool UnpinItem(string path)
     {
-        ThrowIfFrozen();
         var item = PinnedItems.FirstOrDefault(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
         if (item == null) return false;
         PinnedItems.Remove(item);
@@ -105,7 +83,6 @@ public sealed class SearchSettings
     
     public void MovePinnedItemUp(string path)
     {
-        ThrowIfFrozen();
         var index = PinnedItems.FindIndex(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
         if (index <= 0) return;
         (PinnedItems[index], PinnedItems[index - 1]) = (PinnedItems[index - 1], PinnedItems[index]);
@@ -115,7 +92,6 @@ public sealed class SearchSettings
     
     public void MovePinnedItemDown(string path)
     {
-        ThrowIfFrozen();
         var index = PinnedItems.FindIndex(p => p.Path.Equals(path, StringComparison.OrdinalIgnoreCase));
         if (index < 0 || index >= PinnedItems.Count - 1) return;
         (PinnedItems[index], PinnedItems[index + 1]) = (PinnedItems[index + 1], PinnedItems[index]);
@@ -128,7 +104,6 @@ public sealed class SearchSettings
     /// </summary>
     public void ReorderPinnedItem(int fromIndex, int toIndex)
     {
-        ThrowIfFrozen();
         if (fromIndex < 0 || fromIndex >= PinnedItems.Count) return;
         if (toIndex < 0 || toIndex >= PinnedItems.Count) return;
         if (fromIndex == toIndex) return;
@@ -144,7 +119,6 @@ public sealed class SearchSettings
     
     public void AddToSearchHistory(HistoryItem item)
     {
-        ThrowIfFrozen();
         if (!EnableSearchHistory || item == null || string.IsNullOrWhiteSpace(item.Path)) return;
         SearchHistory.RemoveAll(h => h.Path.Equals(item.Path, StringComparison.OrdinalIgnoreCase));
         SearchHistory.Insert(0, item);
@@ -152,18 +126,13 @@ public sealed class SearchSettings
             SearchHistory.RemoveRange(MaxSearchHistory, SearchHistory.Count - MaxSearchHistory);
     }
     
-    public void ClearSearchHistory()
-    {
-        ThrowIfFrozen();
-        SearchHistory.Clear();
-    }
+    public void ClearSearchHistory() => SearchHistory.Clear();
     
     /// <summary>
     /// Réinitialise la liste des dossiers indexés aux valeurs par défaut.
     /// </summary>
     public void ResetIndexedFolders()
     {
-        ThrowIfFrozen();
         IndexedFolders.Clear();
         IndexedFolders.AddRange(GetDefaultIndexedFolders());
     }

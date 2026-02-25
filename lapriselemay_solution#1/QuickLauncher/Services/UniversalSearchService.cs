@@ -61,7 +61,7 @@ public class UniversalSearchService : IUniversalSearchService
         {
             try
             {
-                results = await Task.Run(() => SearchWithEverything(query, MaxResultsLimit), cancellationToken).ConfigureAwait(false);
+                results = await Task.Run(() => SearchWithEverything(query, MaxResultsLimit), cancellationToken);
             }
             catch (Exception ex)
             {
@@ -74,7 +74,7 @@ public class UniversalSearchService : IUniversalSearchService
             {
                 try
                 {
-                    results = await WindowsSearchService.SearchAsync(query, searchScope, cancellationToken).ConfigureAwait(false);
+                    results = await WindowsSearchService.SearchAsync(query, searchScope, cancellationToken);
                 }
                 catch (Exception ex)
                 {
@@ -84,7 +84,7 @@ public class UniversalSearchService : IUniversalSearchService
         }
 
         if (results == null || results.Count == 0)
-            results = await SearchDirectWithCacheAsync(query, searchScope, cancellationToken).ConfigureAwait(false);
+            results = await SearchDirectWithCacheAsync(query, searchScope, cancellationToken);
 
         return DeduplicateResults(results);
     }
@@ -262,7 +262,7 @@ public class UniversalSearchService : IUniversalSearchService
             }
             _searchCache.TryRemove(cacheKey, out _);
         }
-        var results = await SearchDirectAsync(query, searchScope, cancellationToken).ConfigureAwait(false);
+        var results = await SearchDirectAsync(query, searchScope, cancellationToken);
 
         if (!cancellationToken.IsCancellationRequested && results.Count > 0)
         {
@@ -383,7 +383,7 @@ public class UniversalSearchService : IUniversalSearchService
                     Debug.WriteLine($"[DirectSearch] Error in {basePath}: {ex.Message}");
                 }
             }
-        }, cancellationToken).ConfigureAwait(false);
+        }, cancellationToken);
 
         return results.Take(MaxResultsLimit).ToList();
     }

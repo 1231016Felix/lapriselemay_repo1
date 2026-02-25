@@ -44,6 +44,6 @@ public sealed class CommandRouter
         if (handler == null)
             return null;
         
-        return await handler.ExecuteAsync(query, token).ConfigureAwait(false);
+        return await handler.ExecuteAsync(query, token);
     }
 }

@@ -23,7 +23,11 @@ public class WindowsSettingsProvider : IWindowsSettingsProvider
     /// pour les rendre accessibles via la recherche primaire (sans préfixe :).
     /// Chaque item utilise un URI ms-settings: ou une commande control panel.
     /// </summary>
+<<<<<<< HEAD
     public List<IndexedItem> GetItems()
+=======
+    public static List<SearchResult> GetItems()
+>>>>>>> parent of b03f815 (update)
     {
         return
         [
@@ -131,12 +135,15 @@ public class WindowsSettingsProvider : IWindowsSettingsProvider
         ];
     }
 
-    private static IndexedItem WinSetting(string name, string path, string description)
+    private static SearchResult WinSetting(string name, string path, string description)
     {
-        return IndexedItem.Create(
-            path: path,
-            name: name,
-            description: $"⚙️ {description}",
-            type: ResultType.SystemControl);
+        return new SearchResult
+        {
+            Name = name,
+            Path = path,
+            Description = $"⚙️ {description}",
+            Type = ResultType.SystemControl,
+            Score = 0
+        };
     }
 }

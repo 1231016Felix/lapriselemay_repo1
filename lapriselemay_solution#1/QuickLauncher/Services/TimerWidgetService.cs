@@ -13,16 +13,14 @@ public sealed partial class TimerWidgetService
 {
     private readonly Dictionary<int, TimerWidget> _activeWidgets = [];
     private readonly ISettingsProvider _settingsProvider;
-    private readonly IDesktopAttachHelper _desktopAttach;
     private readonly object _lock = new();
     private int _nextId = 1;
     
     private AppSettings Settings => _settingsProvider.Current;
     
-    public TimerWidgetService(ISettingsProvider settingsProvider, IDesktopAttachHelper desktopAttach)
+    public TimerWidgetService(ISettingsProvider settingsProvider)
     {
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
-        _desktopAttach = desktopAttach ?? throw new ArgumentNullException(nameof(desktopAttach));
     }
     
     /// <summary>
@@ -68,7 +66,6 @@ public sealed partial class TimerWidgetService
                     SaveWidgetPosition
                 );
                 widget.SetPosition(timerInfo.Left, timerInfo.Top);
-                _desktopAttach.AttachToDesktop(widget);
                 widget.Show();
                 
                 _activeWidgets[timerInfo.Id] = widget;
@@ -162,7 +159,6 @@ public sealed partial class TimerWidgetService
                     SaveWidgetPosition
                 );
                 widget.SetPosition(timerInfo.Left, timerInfo.Top);
-                _desktopAttach.AttachToDesktop(widget);
                 widget.RestoreWithRemaining(remaining);
                 widget.Show();
                 

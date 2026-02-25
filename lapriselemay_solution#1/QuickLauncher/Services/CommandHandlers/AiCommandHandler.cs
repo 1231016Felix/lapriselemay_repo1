@@ -36,8 +36,7 @@ public sealed class AiCommandHandler : ICommandHandler
 
         var result = await _aiService.AskAsync(
             question, settings.Integrations.AiApiUrl, settings.Integrations.AiApiKey,
-            settings.Integrations.AiModel, settings.Integrations.AiSystemPrompt, settings.Integrations.AiProvider, token)
-            .ConfigureAwait(false);
+            settings.Integrations.AiModel, settings.Integrations.AiSystemPrompt, settings.Integrations.AiProvider, token);
 
         if (token.IsCancellationRequested)
             return new CommandResult();

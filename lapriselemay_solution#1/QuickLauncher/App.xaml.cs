@@ -82,7 +82,7 @@ public partial class App : Application
             CreateTrayIcon(settings);
             
             _logger.Info("Enregistrement hotkey...");
-            _hotkeyService = Services.GetRequiredService<HotkeyService>();
+            _hotkeyService = new HotkeyService(settings.Hotkey);
             _hotkeyService.HotkeyPressed += OnHotkeyPressed;
             
             if (!_hotkeyService.Register())
@@ -113,16 +113,12 @@ public partial class App : Application
         services.AddSingleton<ISettingsProvider, SettingsProvider>();
         
         // Services principaux
-        services.AddSingleton<IIndexRepository, IndexRepository>();
         services.AddSingleton<FolderFingerprintService>();
         services.AddSingleton<IndexingService>();
         services.AddSingleton<AliasService>();
         
         // FileWatcher (optionnel, enregistré mais peut échouer à l'init)
         services.AddSingleton<FileWatcherService>();
-        
-        // Desktop attach (hooks Win32 pour widgets sur le bureau)
-        services.AddSingleton<IDesktopAttachHelper, DesktopAttachHelper>();
         
         // Services de widgets (migrés depuis singletons manuels)
         services.AddSingleton<NotesService>();
@@ -179,16 +175,6 @@ public partial class App : Application
         // === Lancement et actions fichier (Point #6 : migration static → DI) ===
         services.AddSingleton<ILaunchService, LaunchService>();
         services.AddSingleton<IFileActionProvider, FileActionProvider>();
-        
-        // === Capture d'écran (Point #3 : extrait de LauncherWindow) ===
-        services.AddSingleton<ScreenCaptureService>();
-        
-        // === Composites (réduisent les paramètres du ViewModel de 17 à 4) ===
-        services.AddSingleton<SearchContext>();
-        services.AddSingleton<ActionContext>();
-        
-        // === Hotkey global (Point #11 : migré dans le conteneur DI) ===
-        services.AddSingleton<HotkeyService>();
         
         // === ViewModel et fenêtre principale (singletons réutilisés entre Show/Hide) ===
         services.AddSingleton<LauncherViewModel>();
@@ -459,8 +445,7 @@ public partial class App : Application
     {
         _autoReindexTimer?.Stop();
         _hotkeyService?.Unregister();
-        // HotkeyService.Dispose() est appelé automatiquement par Services.Dispose()
-        // car il est enregistré comme singleton IDisposable dans le conteneur DI.
+        _hotkeyService?.Dispose();
         
         // Fermer les widgets avant le dispose DI (ils ont des fenêtres WPF à fermer)
         if (Services != null)
@@ -475,8 +460,8 @@ public partial class App : Application
         }
         
         _trayIcon?.Dispose();
-        // DesktopAttachHelper.Dispose() et ThemeService.Dispose() sont appelés
-        // automatiquement par Services.Dispose() (singletons IDisposable)
+        DesktopAttachHelper.Shutdown();
+        // ThemeService.Shutdown() est appelé automatiquement via Dispose() par le conteneur DI
         
         // Le FileLogger est créé avant le conteneur DI et enregistré comme instance externe.
         // Services.Dispose() ne dispose PAS les instances externes — il faut le faire manuellement.

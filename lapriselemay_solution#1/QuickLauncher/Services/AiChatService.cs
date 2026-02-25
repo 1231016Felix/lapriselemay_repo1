@@ -76,8 +76,8 @@ public sealed class AiChatService : IDisposable
             var provider = ResolveProvider(providerId);
             using var request = provider.BuildRequest(apiUrl, apiKey, model, systemPrompt, question);
 
-            var response = await _httpClient.SendAsync(request, token).ConfigureAwait(false);
-            var responseJson = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
+            var response = await _httpClient.SendAsync(request, token);
+            var responseJson = await response.Content.ReadAsStringAsync(token);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -158,8 +158,7 @@ public sealed class AiChatService : IDisposable
         try
         {
             var result = await AskAsync("Dis simplement 'OK'.", apiUrl, apiKey, model,
-                "Réponds uniquement 'OK'.", providerId, CancellationToken.None)
-                .ConfigureAwait(false);
+                "Réponds uniquement 'OK'.", providerId, CancellationToken.None);
 
             if (result == null)
                 return (false, "Aucune réponse");

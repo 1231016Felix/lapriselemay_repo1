@@ -19,8 +19,8 @@ public sealed class FileWatcherService : IDisposable
     private readonly object _processLock = new();
     
     private readonly ISettingsProvider _settingsProvider;
-    private readonly CancellationTokenSource _disposeCts = new();
     private bool _disposed;
+    private bool _isProcessing;
 
     /// <summary>
     /// Événement déclenché quand des fichiers ont changé.
@@ -164,29 +164,17 @@ public sealed class FileWatcherService : IDisposable
     {
         _logger.Warning($"Erreur FileWatcher: {e.GetException().Message}");
         
-        // Tenter de redémarrer le watcher après un délai.
-        // Le token _disposeCts annule la tentative si le service est disposé
-        // entre-temps, évitant un AddFolder sur un service mort.
+        // Tenter de redémarrer le watcher
         if (sender is FileSystemWatcher watcher)
         {
             var path = watcher.Path;
             RemoveFolder(path);
             
-            _ = RecoverWatcherAsync(path);
-        }
-    }
-    
-    private async Task RecoverWatcherAsync(string path)
-    {
-        try
-        {
-            await Task.Delay(5000, _disposeCts.Token);
-            if (Directory.Exists(path))
-                AddFolder(path);
-        }
-        catch (OperationCanceledException)
-        {
-            // Service disposé pendant le délai, abandon silencieux
+            Task.Delay(5000).ContinueWith(_ =>
+            {
+                if (Directory.Exists(path))
+                    AddFolder(path);
+            });
         }
     }
 
@@ -216,11 +204,13 @@ public sealed class FileWatcherService : IDisposable
 
     private void ProcessChanges(object? state)
     {
-        // Monitor.TryEnter est atomique : un seul callback peut entrer.
-        // Remplace le double-check _isProcessing hors/dans le lock,
-        // qui n'était pas thread-safe (lecture non-volatile hors lock).
-        if (!Monitor.TryEnter(_processLock))
-            return;
+        if (_isProcessing) return;
+        
+        lock (_processLock)
+        {
+            if (_isProcessing) return;
+            _isProcessing = true;
+        }
 
         try
         {
@@ -245,7 +235,7 @@ public sealed class FileWatcherService : IDisposable
         }
         finally
         {
-            Monitor.Exit(_processLock);
+            _isProcessing = false;
         }
     }
 
@@ -254,10 +244,6 @@ public sealed class FileWatcherService : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        // Annuler les recovery en cours (RecoverWatcherAsync) avant de stopper.
-        _disposeCts.Cancel();
-        _disposeCts.Dispose();
-        
         _processTimer.Dispose();
         Stop();
         

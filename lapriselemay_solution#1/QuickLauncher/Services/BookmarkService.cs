@@ -96,9 +96,9 @@ public class BookmarkService : IBookmarkService
     /// <summary>
     /// Récupère tous les favoris de tous les profils d'un navigateur Chromium.
     /// </summary>
-    private static List<IndexedItem> GetAllChromiumBookmarks(string userDataPath, string browserName)
+    private static List<SearchResult> GetAllChromiumBookmarks(string userDataPath, string browserName)
     {
-        var bookmarks = new List<IndexedItem>();
+        var bookmarks = new List<SearchResult>();
         
         foreach (var bookmarkFile in FindChromiumBookmarkFiles(userDataPath))
         {
@@ -170,7 +170,11 @@ public class BookmarkService : IBookmarkService
     /// <summary>
     /// Importe les favoris d'un navigateur spécifique.
     /// </summary>
+<<<<<<< HEAD
     public List<IndexedItem> GetBookmarksForBrowser(string browserName)
+=======
+    public static List<SearchResult> GetBookmarksForBrowser(string browserName)
+>>>>>>> parent of b03f815 (update)
     {
         return browserName switch
         {
@@ -190,9 +194,13 @@ public class BookmarkService : IBookmarkService
     /// <summary>
     /// Récupère tous les favoris de tous les navigateurs installés.
     /// </summary>
+<<<<<<< HEAD
     public List<IndexedItem> GetAllBookmarks()
+=======
+    public static List<SearchResult> GetAllBookmarks()
+>>>>>>> parent of b03f815 (update)
     {
-        var bookmarks = new List<IndexedItem>();
+        var bookmarks = new List<SearchResult>();
         
         // Chrome
         bookmarks.AddRange(GetAllChromiumBookmarks(ChromeUserDataPath, "Chrome"));
@@ -228,9 +236,9 @@ public class BookmarkService : IBookmarkService
     /// Lit les favoris d'un navigateur basé sur Chromium.
     /// Le format est JSON avec une structure roots > bookmark_bar/other/synced.
     /// </summary>
-    private static List<IndexedItem> GetChromiumBookmarks(string bookmarksPath, string browserName)
+    private static List<SearchResult> GetChromiumBookmarks(string bookmarksPath, string browserName)
     {
-        var results = new List<IndexedItem>();
+        var results = new List<SearchResult>();
         
         if (!File.Exists(bookmarksPath))
             return results;
@@ -260,7 +268,7 @@ public class BookmarkService : IBookmarkService
         return results;
     }
     
-    private static void ParseChromiumFolder(JsonElement element, List<IndexedItem> results, 
+    private static void ParseChromiumFolder(JsonElement element, List<SearchResult> results, 
         string browserName, string folderPath)
     {
         if (!element.TryGetProperty("children", out var children))
@@ -281,11 +289,13 @@ public class BookmarkService : IBookmarkService
                 
                 if (!string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(url) && IsValidUrl(url))
                 {
-                    results.Add(IndexedItem.Create(
-                        path: url,
-                        name: name,
-                        description: $"{browserName} • {folderPath}",
-                        type: ResultType.Bookmark));
+                    results.Add(new SearchResult
+                    {
+                        Name = name,
+                        Path = url,
+                        Description = $"{browserName} • {folderPath}",
+                        Type = ResultType.Bookmark
+                    });
                 }
             }
             else if (type == "folder")
@@ -306,9 +316,9 @@ public class BookmarkService : IBookmarkService
     /// Lit les favoris de Firefox.
     /// Firefox stocke les favoris dans une base SQLite (places.sqlite).
     /// </summary>
-    private static List<IndexedItem> GetFirefoxBookmarks()
+    private static List<SearchResult> GetFirefoxBookmarks()
     {
-        var results = new List<IndexedItem>();
+        var results = new List<SearchResult>();
         
         if (!Directory.Exists(FirefoxProfilesPath))
             return results;
@@ -346,9 +356,9 @@ public class BookmarkService : IBookmarkService
         return results;
     }
     
-    private static List<IndexedItem> ReadFirefoxDatabase(string dbPath)
+    private static List<SearchResult> ReadFirefoxDatabase(string dbPath)
     {
-        var results = new List<IndexedItem>();
+        var results = new List<SearchResult>();
         
         try
         {
@@ -381,11 +391,13 @@ public class BookmarkService : IBookmarkService
                         ? "Firefox" 
                         : $"Firefox • {folder}";
                     
-                    results.Add(IndexedItem.Create(
-                        path: url,
-                        name: name,
-                        description: description,
-                        type: ResultType.Bookmark));
+                    results.Add(new SearchResult
+                    {
+                        Name = name,
+                        Path = url,
+                        Description = description,
+                        Type = ResultType.Bookmark
+                    });
                 }
             }
         }
