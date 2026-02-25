@@ -8,7 +8,7 @@ namespace QuickLauncher.Services;
 /// </summary>
 public interface IWindowsSettingsProvider
 {
-    List<IndexedItem> GetItems();
+    List<SearchResult> GetItems();
 }
 
 /// <summary>
@@ -23,11 +23,7 @@ public class WindowsSettingsProvider : IWindowsSettingsProvider
     /// pour les rendre accessibles via la recherche primaire (sans préfixe :).
     /// Chaque item utilise un URI ms-settings: ou une commande control panel.
     /// </summary>
-<<<<<<< HEAD
-    public List<IndexedItem> GetItems()
-=======
-    public static List<SearchResult> GetItems()
->>>>>>> parent of b03f815 (update)
+    public List<SearchResult> GetItems()
     {
         return
         [

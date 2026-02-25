@@ -18,11 +18,11 @@ public interface ILaunchService
 
 public class LaunchService : ILaunchService
 {
-    private readonly StoreAppService _storeAppService;
-    private readonly ShortcutHelper _shortcutHelper;
+    private readonly IStoreAppService _storeAppService;
+    private readonly IShortcutHelper _shortcutHelper;
 
     // Injection des services par le constructeur
-    public LaunchService(StoreAppService storeAppService, ShortcutHelper shortcutHelper)
+    public LaunchService(IStoreAppService storeAppService, IShortcutHelper shortcutHelper)
     {
         _storeAppService = storeAppService ?? throw new ArgumentNullException(nameof(storeAppService));
         _shortcutHelper = shortcutHelper ?? throw new ArgumentNullException(nameof(shortcutHelper));

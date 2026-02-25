@@ -9,7 +9,7 @@ namespace QuickLauncher.Services;
 /// </summary>
 public interface IStoreAppService
 {
-    List<IndexedItem> GetAllApps();
+    List<SearchResult> GetAllApps();
     bool LaunchApp(string appUserModelId);
 }
 
@@ -194,11 +194,7 @@ public class StoreAppService : IStoreAppService
     /// <summary>
     /// Énumère toutes les applications installées (traditionnelles et Store)
     /// </summary>
-<<<<<<< HEAD
-    public List<IndexedItem> GetAllApps()
-=======
-    public static List<SearchResult> GetAllApps()
->>>>>>> parent of b03f815 (update)
+    public List<SearchResult> GetAllApps()
     {
         var allApps = new List<SearchResult>();
 

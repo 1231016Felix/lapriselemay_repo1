@@ -54,6 +54,7 @@ public sealed class ResultActionService
     private readonly PinnedItemsManager _pinnedItemsManager;
     private readonly NotesService _notesService;
     private readonly IFileActionExecutor _fileActionExecutor;
+    private readonly ILaunchService _launchService;
 
     public ResultActionService(
         ISettingsProvider settingsProvider,
@@ -61,7 +62,8 @@ public sealed class ResultActionService
         IndexingService indexingService,
         PinnedItemsManager pinnedItemsManager,
         NotesService notesService,
-        IFileActionExecutor fileActionExecutor)
+        IFileActionExecutor fileActionExecutor,
+        ILaunchService launchService)
     {
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
         _aliasService = aliasService ?? throw new ArgumentNullException(nameof(aliasService));
@@ -69,6 +71,7 @@ public sealed class ResultActionService
         _pinnedItemsManager = pinnedItemsManager ?? throw new ArgumentNullException(nameof(pinnedItemsManager));
         _notesService = notesService ?? throw new ArgumentNullException(nameof(notesService));
         _fileActionExecutor = fileActionExecutor ?? throw new ArgumentNullException(nameof(fileActionExecutor));
+        _launchService = launchService ?? throw new ArgumentNullException(nameof(launchService));
     }
 
     /// <summary>
@@ -96,6 +99,9 @@ public sealed class ResultActionService
             FileActionType.DeleteAlias => ExecuteDeleteAlias(result),
             FileActionType.Pin => ExecutePin(result),
             FileActionType.Unpin => ExecuteUnpin(result, isSearchEmpty),
+            
+            // === RunAsAdmin : déléguer à LaunchService qui résout les .lnk et StoreApps ===
+            FileActionType.RunAsAdmin => ExecuteRunAsAdmin(result),
             
             // === Actions fichier standard ===
             _ => ExecuteFileAction(action, result)
@@ -186,6 +192,21 @@ public sealed class ResultActionService
             RefreshActions = true,
             CloseActionsPanel = true,
             RefreshResults = isSearchEmpty
+        };
+    }
+
+    /// <summary>
+    /// Exécute en admin via LaunchService qui résout correctement les raccourcis .lnk
+    /// et les AppUserModelId (StoreApps), contrairement à FileActionExecutor qui lance le path brut.
+    /// </summary>
+    private ActionOutcome ExecuteRunAsAdmin(SearchResult result)
+    {
+        _launchService.RunAsAdmin(result);
+        return new ActionOutcome
+        {
+            ShouldHide = true,
+            RecordUsage = true,
+            CloseActionsPanel = true
         };
     }
 

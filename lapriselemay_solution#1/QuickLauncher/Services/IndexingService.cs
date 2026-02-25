@@ -57,14 +57,10 @@ public sealed partial class IndexingService : IDisposable
     /// </summary>
     public IReadOnlyDictionary<string, SearchResult> CachedItems => _cache;
 
-<<<<<<< HEAD
-    public IndexingService(ISettingsProvider settingsProvider, IIndexRepository repository,
+    public IndexingService(ISettingsProvider settingsProvider,
         FolderFingerprintService fingerprintService, IStoreAppService storeAppService,
         IBookmarkService bookmarkService, IWindowsSettingsProvider windowsSettingsProvider,
         IShortcutHelper shortcutHelper, ILogger? logger = null)
-=======
-    public IndexingService(ISettingsProvider settingsProvider, FolderFingerprintService fingerprintService, ILogger? logger = null)
->>>>>>> parent of b03f815 (update)
     {
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
         _fingerprintService = fingerprintService ?? throw new ArgumentNullException(nameof(fingerprintService));

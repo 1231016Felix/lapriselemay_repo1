@@ -21,9 +21,9 @@ public class BrowserInfo
 /// </summary>
 public interface IBookmarkService
 {
-    List<IndexedItem> GetAllBookmarks();
+    List<SearchResult> GetAllBookmarks();
     List<BrowserInfo> GetSupportedBrowsers();
-    List<IndexedItem> GetBookmarksForBrowser(string browserName);
+    List<SearchResult> GetBookmarksForBrowser(string browserName);
 }
 
 /// <summary>
@@ -170,11 +170,7 @@ public class BookmarkService : IBookmarkService
     /// <summary>
     /// Importe les favoris d'un navigateur spécifique.
     /// </summary>
-<<<<<<< HEAD
-    public List<IndexedItem> GetBookmarksForBrowser(string browserName)
-=======
-    public static List<SearchResult> GetBookmarksForBrowser(string browserName)
->>>>>>> parent of b03f815 (update)
+    public List<SearchResult> GetBookmarksForBrowser(string browserName)
     {
         return browserName switch
         {
@@ -194,11 +190,7 @@ public class BookmarkService : IBookmarkService
     /// <summary>
     /// Récupère tous les favoris de tous les navigateurs installés.
     /// </summary>
-<<<<<<< HEAD
-    public List<IndexedItem> GetAllBookmarks()
-=======
-    public static List<SearchResult> GetAllBookmarks()
->>>>>>> parent of b03f815 (update)
+    public List<SearchResult> GetAllBookmarks()
     {
         var bookmarks = new List<SearchResult>();
         

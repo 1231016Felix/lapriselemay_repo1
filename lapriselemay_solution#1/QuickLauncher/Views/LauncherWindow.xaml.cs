@@ -19,11 +19,7 @@ public partial class LauncherWindow : Window
     private readonly LauncherViewModel _viewModel;
     private readonly ISettingsProvider _settingsProvider;
     private readonly IFileActionProvider _fileActionProvider;
-<<<<<<< HEAD
     private readonly IFileActionsService _fileActionsService;
-    private readonly ScreenCaptureService _screenCapture;
-=======
->>>>>>> parent of b03f815 (update)
     private readonly WindowAnimationHelper _animator;
     
     // === Drag & Drop state ===
@@ -44,22 +40,14 @@ public partial class LauncherWindow : Window
     public event EventHandler? RequestQuit;
     public event EventHandler? RequestReindex;
     
-<<<<<<< HEAD
     public LauncherWindow(LauncherViewModel viewModel, ISettingsProvider settingsProvider,
-        IFileActionProvider fileActionProvider, IFileActionsService fileActionsService, ScreenCaptureService screenCapture)
-=======
-    public LauncherWindow(LauncherViewModel viewModel, ISettingsProvider settingsProvider, IFileActionProvider fileActionProvider)
->>>>>>> parent of b03f815 (update)
+        IFileActionProvider fileActionProvider, IFileActionsService fileActionsService)
     {
         InitializeComponent();
         
         _settingsProvider = settingsProvider;
         _fileActionProvider = fileActionProvider;
-<<<<<<< HEAD
         _fileActionsService = fileActionsService;
-        _screenCapture = screenCapture;
-=======
->>>>>>> parent of b03f815 (update)
         _viewModel = viewModel;
         DataContext = _viewModel;
         
