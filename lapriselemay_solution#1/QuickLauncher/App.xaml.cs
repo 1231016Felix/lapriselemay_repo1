@@ -160,6 +160,15 @@ public partial class App : Application
         // === System Control Executor (exécution des commandes système via Entrée) ===
         services.AddSingleton<ISystemControlExecutor, SystemControlExecutor>();
         
+        // === Services autrefois statiques, migrés vers DI (Amélioration #2) ===
+        services.AddSingleton<IStoreAppService, StoreAppService>();
+        services.AddSingleton<IBookmarkService, BookmarkService>();
+        services.AddSingleton<IWindowsSettingsProvider, WindowsSettingsProvider>();
+        services.AddSingleton<ICalculatorService, CalculatorService>();
+        services.AddSingleton<IShortcutHelper, ShortcutHelper>();
+        services.AddSingleton<IFileActionExecutor, FileActionExecutor>();
+        services.AddSingleton<IFileActionsService, FileActionsService>();
+        
         // === Gestion épingles & actions (extraits du ViewModel — Points #1 et #2) ===
         services.AddSingleton<PinnedItemsManager>();
         services.AddSingleton<ResultActionService>();
@@ -311,7 +320,8 @@ public partial class App : Application
             var themeService = Services.GetRequiredService<ThemeService>();
             var universalSearchService = Services.GetRequiredService<UniversalSearchService>();
             
-            var settingsWindow = new SettingsWindow(indexingService, settingsProvider, themeService, universalSearchService);
+            var bookmarkService = Services.GetRequiredService<IBookmarkService>();
+            var settingsWindow = new SettingsWindow(indexingService, settingsProvider, themeService, universalSearchService, bookmarkService);
             settingsWindow.ShowDialog();
             
             // Les paramètres sont déjà sauvegardés via le provider, mais on force un reload

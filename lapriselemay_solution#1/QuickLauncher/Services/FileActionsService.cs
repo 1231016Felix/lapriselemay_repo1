@@ -5,16 +5,42 @@ using Microsoft.VisualBasic.FileIO;
 namespace QuickLauncher.Services;
 
 /// <summary>
-/// Service pour les actions rapides sur les fichiers.
+/// Abstraction pour le service d'actions sur les fichiers.
+/// Permet l'injection de dépendances et la testabilité (Amélioration #1/#2).
 /// </summary>
-public static class FileActionsService
+public interface IFileActionsService
+{
+    bool CopyPath(string path);
+    bool CopyName(string path);
+    bool CopyFolder(string path);
+    bool OpenContainingFolder(string path);
+    bool ShowProperties(string path);
+    bool DeleteToRecycleBin(string path);
+    bool DeletePermanently(string path);
+    bool Rename(string path, string newName);
+    bool MoveTo(string path, string destinationFolder);
+    bool CopyTo(string path, string destinationFolder);
+    bool RunAsAdmin(string path);
+    bool OpenWith(string path);
+    bool OpenCommandPromptHere(string path);
+    bool OpenPowerShellHere(string path);
+    bool OpenTerminalHere(string path);
+    bool IsExecutable(string path);
+    FileInfoResult? GetFileInfo(string path);
+}
+
+/// <summary>
+/// Service pour les actions rapides sur les fichiers.
+/// Converti de static vers injectable (Amélioration #1/#2).
+/// </summary>
+public class FileActionsService : IFileActionsService
 {
     #region Clipboard Actions
 
     /// <summary>
     /// Copie le chemin du fichier dans le presse-papiers.
     /// </summary>
-    public static bool CopyPath(string path)
+    public bool CopyPath(string path)
     {
         try
         {
@@ -30,7 +56,7 @@ public static class FileActionsService
     /// <summary>
     /// Copie le nom du fichier dans le presse-papiers.
     /// </summary>
-    public static bool CopyName(string path)
+    public bool CopyName(string path)
     {
         try
         {
@@ -47,7 +73,7 @@ public static class FileActionsService
     /// <summary>
     /// Copie le dossier parent dans le presse-papiers.
     /// </summary>
-    public static bool CopyFolder(string path)
+    public bool CopyFolder(string path)
     {
         try
         {
@@ -72,7 +98,7 @@ public static class FileActionsService
     /// <summary>
     /// Ouvre le dossier contenant le fichier dans l'Explorateur.
     /// </summary>
-    public static bool OpenContainingFolder(string path)
+    public bool OpenContainingFolder(string path)
     {
         try
         {
@@ -99,7 +125,7 @@ public static class FileActionsService
     /// <summary>
     /// Ouvre les propriétés du fichier.
     /// </summary>
-    public static bool ShowProperties(string path)
+    public bool ShowProperties(string path)
     {
         try
         {
@@ -130,7 +156,7 @@ public static class FileActionsService
     /// <summary>
     /// Supprime le fichier vers la corbeille.
     /// </summary>
-    public static bool DeleteToRecycleBin(string path)
+    public bool DeleteToRecycleBin(string path)
     {
         try
         {
@@ -157,7 +183,7 @@ public static class FileActionsService
     /// <summary>
     /// Supprime définitivement le fichier.
     /// </summary>
-    public static bool DeletePermanently(string path)
+    public bool DeletePermanently(string path)
     {
         try
         {
@@ -184,7 +210,7 @@ public static class FileActionsService
     /// <summary>
     /// Renomme un fichier ou dossier.
     /// </summary>
-    public static bool Rename(string path, string newName)
+    public bool Rename(string path, string newName)
     {
         try
         {
@@ -220,7 +246,7 @@ public static class FileActionsService
     /// <summary>
     /// Déplace un fichier vers un nouveau dossier.
     /// </summary>
-    public static bool MoveTo(string path, string destinationFolder)
+    public bool MoveTo(string path, string destinationFolder)
     {
         try
         {
@@ -253,7 +279,7 @@ public static class FileActionsService
     /// <summary>
     /// Copie un fichier vers un nouveau dossier.
     /// </summary>
-    public static bool CopyTo(string path, string destinationFolder)
+    public bool CopyTo(string path, string destinationFolder)
     {
         try
         {
@@ -286,7 +312,7 @@ public static class FileActionsService
     /// <summary>
     /// Exécute en tant qu'administrateur.
     /// </summary>
-    public static bool RunAsAdmin(string path)
+    public bool RunAsAdmin(string path)
     {
         try
         {
@@ -309,7 +335,7 @@ public static class FileActionsService
     /// <summary>
     /// Ouvre avec une application spécifique.
     /// </summary>
-    public static bool OpenWith(string path)
+    public bool OpenWith(string path)
     {
         try
         {
@@ -332,7 +358,7 @@ public static class FileActionsService
     /// <summary>
     /// Ouvre une invite de commandes dans le dossier.
     /// </summary>
-    public static bool OpenCommandPromptHere(string path)
+    public bool OpenCommandPromptHere(string path)
     {
         try
         {
@@ -359,7 +385,7 @@ public static class FileActionsService
     /// <summary>
     /// Ouvre PowerShell dans le dossier.
     /// </summary>
-    public static bool OpenPowerShellHere(string path)
+    public bool OpenPowerShellHere(string path)
     {
         try
         {
@@ -386,7 +412,7 @@ public static class FileActionsService
     /// <summary>
     /// Ouvre Windows Terminal dans le dossier.
     /// </summary>
-    public static bool OpenTerminalHere(string path)
+    public bool OpenTerminalHere(string path)
     {
         try
         {
@@ -435,7 +461,7 @@ public static class FileActionsService
     /// <summary>
     /// Vérifie si le chemin est un fichier exécutable.
     /// </summary>
-    public static bool IsExecutable(string path)
+    public bool IsExecutable(string path)
     {
         if (string.IsNullOrEmpty(path))
             return false;
@@ -447,7 +473,7 @@ public static class FileActionsService
     /// <summary>
     /// Obtient des informations sur le fichier.
     /// </summary>
-    public static FileInfoResult? GetFileInfo(string path)
+    public FileInfoResult? GetFileInfo(string path)
     {
         try
         {

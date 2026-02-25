@@ -13,11 +13,14 @@ public sealed class SearchService
 {
     private readonly IndexingService _indexingService;
     private readonly ISettingsProvider _settingsProvider;
+    private readonly ICalculatorService _calculatorService;
 
-    public SearchService(IndexingService indexingService, ISettingsProvider settingsProvider)
+    public SearchService(IndexingService indexingService, ISettingsProvider settingsProvider,
+        ICalculatorService calculatorService)
     {
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
+        _calculatorService = calculatorService ?? throw new ArgumentNullException(nameof(calculatorService));
     }
 
     /// <summary>
@@ -52,7 +55,7 @@ public sealed class SearchService
         }
 
         // Calculatrice (Amélioration #7 : utilise le nouveau parser)
-        if (CalculatorService.TryCalculate(normalizedQuery, out var calcResult))
+        if (_calculatorService.TryCalculate(normalizedQuery, out var calcResult))
         {
             return
             [

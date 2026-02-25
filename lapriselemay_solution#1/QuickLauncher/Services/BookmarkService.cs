@@ -16,9 +16,21 @@ public class BrowserInfo
 }
 
 /// <summary>
-/// Service pour indexer les favoris des navigateurs (Chrome, Edge, Firefox, Brave, Vivaldi, Opera).
+/// Abstraction pour le service d'indexation des favoris navigateurs.
+/// Permet l'injection de dépendances et la testabilité (Amélioration #2).
 /// </summary>
-public static class BookmarkService
+public interface IBookmarkService
+{
+    List<IndexedItem> GetAllBookmarks();
+    List<BrowserInfo> GetSupportedBrowsers();
+    List<IndexedItem> GetBookmarksForBrowser(string browserName);
+}
+
+/// <summary>
+/// Service pour indexer les favoris des navigateurs (Chrome, Edge, Firefox, Brave, Vivaldi, Opera).
+/// Converti de static vers injectable (Amélioration #2).
+/// </summary>
+public class BookmarkService : IBookmarkService
 {
     #region Browser Paths
     
@@ -99,7 +111,7 @@ public static class BookmarkService
     /// <summary>
     /// Retourne la liste des navigateurs supportés avec leur statut d'installation.
     /// </summary>
-    public static List<BrowserInfo> GetSupportedBrowsers()
+    public List<BrowserInfo> GetSupportedBrowsers()
     {
         return
         [
@@ -158,7 +170,7 @@ public static class BookmarkService
     /// <summary>
     /// Importe les favoris d'un navigateur spécifique.
     /// </summary>
-    public static List<IndexedItem> GetBookmarksForBrowser(string browserName)
+    public List<IndexedItem> GetBookmarksForBrowser(string browserName)
     {
         return browserName switch
         {
@@ -178,7 +190,7 @@ public static class BookmarkService
     /// <summary>
     /// Récupère tous les favoris de tous les navigateurs installés.
     /// </summary>
-    public static List<IndexedItem> GetAllBookmarks()
+    public List<IndexedItem> GetAllBookmarks()
     {
         var bookmarks = new List<IndexedItem>();
         

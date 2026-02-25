@@ -3,17 +3,27 @@ using QuickLauncher.Models;
 namespace QuickLauncher.Services;
 
 /// <summary>
+/// Abstraction pour le fournisseur de pages de paramètres Windows.
+/// Permet l'injection de dépendances et la testabilité (Amélioration #2).
+/// </summary>
+public interface IWindowsSettingsProvider
+{
+    List<IndexedItem> GetItems();
+}
+
+/// <summary>
 /// Fournit la liste des pages de paramètres Windows accessibles via la recherche.
 /// Extrait de IndexingService pour réduire ses responsabilités (Amélioration #3).
+/// Converti de static vers injectable (Amélioration #2).
 /// </summary>
-public static class WindowsSettingsProvider
+public class WindowsSettingsProvider : IWindowsSettingsProvider
 {
     /// <summary>
     /// Retourne une liste de pages de paramètres Windows courantes
     /// pour les rendre accessibles via la recherche primaire (sans préfixe :).
     /// Chaque item utilise un URI ms-settings: ou une commande control panel.
     /// </summary>
-    public static List<IndexedItem> GetItems()
+    public List<IndexedItem> GetItems()
     {
         return
         [

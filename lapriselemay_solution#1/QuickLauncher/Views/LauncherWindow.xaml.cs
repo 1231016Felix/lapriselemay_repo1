@@ -19,6 +19,7 @@ public partial class LauncherWindow : Window
     private readonly LauncherViewModel _viewModel;
     private readonly ISettingsProvider _settingsProvider;
     private readonly IFileActionProvider _fileActionProvider;
+    private readonly IFileActionsService _fileActionsService;
     private readonly ScreenCaptureService _screenCapture;
     private readonly WindowAnimationHelper _animator;
     
@@ -41,12 +42,13 @@ public partial class LauncherWindow : Window
     public event EventHandler? RequestReindex;
     
     public LauncherWindow(LauncherViewModel viewModel, ISettingsProvider settingsProvider,
-        IFileActionProvider fileActionProvider, ScreenCaptureService screenCapture)
+        IFileActionProvider fileActionProvider, IFileActionsService fileActionsService, ScreenCaptureService screenCapture)
     {
         InitializeComponent();
         
         _settingsProvider = settingsProvider;
         _fileActionProvider = fileActionProvider;
+        _fileActionsService = fileActionsService;
         _screenCapture = screenCapture;
         _viewModel = viewModel;
         DataContext = _viewModel;
@@ -118,7 +120,7 @@ public partial class LauncherWindow : Window
             
             if (dialog.ShowDialog() == true && !string.IsNullOrWhiteSpace(dialog.NewName))
             {
-                var success = FileActionsService.Rename(path, dialog.NewName);
+                var success = _fileActionsService.Rename(path, dialog.NewName);
                 if (success)
                 {
                     RequestReindex?.Invoke(this, EventArgs.Empty);
@@ -498,7 +500,7 @@ public partial class LauncherWindow : Window
             
             if (result == MessageBoxResult.Yes)
             {
-                var success = FileActionsService.DeleteToRecycleBin(item.Path);
+                var success = _fileActionsService.DeleteToRecycleBin(item.Path);
                 if (success)
                 {
                     RequestReindex?.Invoke(this, EventArgs.Empty);
@@ -521,6 +523,12 @@ public partial class LauncherWindow : Window
     {
         // Pendant un hide animé ou un dialogue modal, on ignore
         if (_animator.IsAnimatingHide || _isDialogOpen) return;
+        
+        // Ne pas masquer quand le menu contextuel est ouvert
+        // (AllowsTransparency + WindowStyle=None fait que le popup du ContextMenu
+        // déclenche Deactivated sur la fenêtre parente)
+        if (FindResource("ResultContextMenu") is ContextMenu cm && cm.IsOpen) return;
+        
         HideWindow();
     }
     

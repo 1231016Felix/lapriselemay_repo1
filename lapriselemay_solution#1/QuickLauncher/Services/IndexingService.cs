@@ -19,6 +19,10 @@ public sealed class IndexingService : IDisposable
     private readonly ISettingsProvider _settingsProvider;
     private readonly IIndexRepository _repository;
     private readonly FolderFingerprintService _fingerprintService;
+    private readonly IStoreAppService _storeAppService;
+    private readonly IBookmarkService _bookmarkService;
+    private readonly IWindowsSettingsProvider _windowsSettingsProvider;
+    private readonly IShortcutHelper _shortcutHelper;
     
     private CancellationTokenSource? _indexingCts;
     private bool _disposed;
@@ -37,11 +41,17 @@ public sealed class IndexingService : IDisposable
     public IReadOnlyDictionary<string, IndexedItem> CachedItems => _cache;
 
     public IndexingService(ISettingsProvider settingsProvider, IIndexRepository repository,
-        FolderFingerprintService fingerprintService, ILogger? logger = null)
+        FolderFingerprintService fingerprintService, IStoreAppService storeAppService,
+        IBookmarkService bookmarkService, IWindowsSettingsProvider windowsSettingsProvider,
+        IShortcutHelper shortcutHelper, ILogger? logger = null)
     {
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
         _fingerprintService = fingerprintService ?? throw new ArgumentNullException(nameof(fingerprintService));
+        _storeAppService = storeAppService ?? throw new ArgumentNullException(nameof(storeAppService));
+        _bookmarkService = bookmarkService ?? throw new ArgumentNullException(nameof(bookmarkService));
+        _windowsSettingsProvider = windowsSettingsProvider ?? throw new ArgumentNullException(nameof(windowsSettingsProvider));
+        _shortcutHelper = shortcutHelper ?? throw new ArgumentNullException(nameof(shortcutHelper));
         _logger = logger ?? new FileLogger(Constants.AppName, Constants.LogFileName);
         
         LoadCacheFromRepository();
@@ -82,7 +92,7 @@ public sealed class IndexingService : IDisposable
             // Indexer les apps Store en parallèle
             var storeTask = Task.Run(() =>
             {
-                var storeApps = StoreAppService.GetAllApps();
+                var storeApps = _storeAppService.GetAllApps();
                 foreach (var app in storeApps)
                     items.Add(app);
                 _logger.Info($"Apps Store: {storeApps.Count} trouvées");
@@ -93,7 +103,7 @@ public sealed class IndexingService : IDisposable
             {
                 if (settings.Search.IndexBrowserBookmarks)
                 {
-                    var bookmarks = BookmarkService.GetAllBookmarks();
+                    var bookmarks = _bookmarkService.GetAllBookmarks();
                     foreach (var bookmark in bookmarks)
                         items.Add(bookmark);
                     _logger.Info($"Favoris navigateurs: {bookmarks.Count} trouvés");
@@ -101,7 +111,7 @@ public sealed class IndexingService : IDisposable
             }, token);
             
             // Ajouter les pages de paramètres Windows (Amélioration #3 : extrait dans WindowsSettingsProvider)
-            var windowsSettings = WindowsSettingsProvider.GetItems();
+            var windowsSettings = _windowsSettingsProvider.GetItems();
             foreach (var ws in windowsSettings)
                 items.Add(ws);
             _logger.Info($"Paramètres Windows: {windowsSettings.Count} ajoutés");
@@ -213,7 +223,7 @@ public sealed class IndexingService : IDisposable
             
             if (ext == ".lnk")
             {
-                var info = ShortcutHelper.ResolveShortcut(filePath);
+                var info = _shortcutHelper.ResolveShortcut(filePath);
                 if (info != null)
                 {
                     targetPath = info.TargetPath;
@@ -547,7 +557,7 @@ public sealed class IndexingService : IDisposable
         
         var storeTask = Task.Run(() =>
         {
-            var storeApps = StoreAppService.GetAllApps();
+            var storeApps = _storeAppService.GetAllApps();
             foreach (var app in storeApps) items.Add(app);
         }, token);
         
@@ -555,7 +565,7 @@ public sealed class IndexingService : IDisposable
         {
             if (settings.Search.IndexBrowserBookmarks)
             {
-                var bookmarks = BookmarkService.GetAllBookmarks();
+                var bookmarks = _bookmarkService.GetAllBookmarks();
                 foreach (var bm in bookmarks) items.Add(bm);
             }
         }, token);
@@ -563,7 +573,7 @@ public sealed class IndexingService : IDisposable
         await Task.WhenAll(storeTask, bookmarksTask).ConfigureAwait(false);
         
         // Ajouter les pages de paramètres Windows (toujours présentes)
-        var windowsSettings = WindowsSettingsProvider.GetItems();
+        var windowsSettings = _windowsSettingsProvider.GetItems();
         foreach (var ws in windowsSettings)
             items.Add(ws);
         

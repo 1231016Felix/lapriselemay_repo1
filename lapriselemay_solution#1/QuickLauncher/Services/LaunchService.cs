@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using System.IO;
 using QuickLauncher.Models;
@@ -17,6 +18,16 @@ public interface ILaunchService
 
 public class LaunchService : ILaunchService
 {
+    private readonly StoreAppService _storeAppService;
+    private readonly ShortcutHelper _shortcutHelper;
+
+    // Injection des services par le constructeur
+    public LaunchService(StoreAppService storeAppService, ShortcutHelper shortcutHelper)
+    {
+        _storeAppService = storeAppService ?? throw new ArgumentNullException(nameof(storeAppService));
+        _shortcutHelper = shortcutHelper ?? throw new ArgumentNullException(nameof(shortcutHelper));
+    }
+
     public void Launch(SearchResult item)
     {
         try
@@ -30,7 +41,7 @@ public class LaunchService : ILaunchService
                     // doivent être lancées via shell:AppsFolder
                     if (item.Type == ResultType.Application && !IsFileSystemPath(item.Path))
                     {
-                        if (!StoreAppService.LaunchApp(item.Path))
+                        if (!_storeAppService.LaunchApp(item.Path))
                             LaunchApplication(item.Path);
                     }
                     else
@@ -38,38 +49,38 @@ public class LaunchService : ILaunchService
                         LaunchApplication(item.Path);
                     }
                     break;
-                
+
                 case ResultType.StoreApp:
                     // Utiliser shell:AppsFolder pour toutes les apps de AppsFolder
-                    if (!StoreAppService.LaunchApp(item.Path))
+                    if (!_storeAppService.LaunchApp(item.Path))
                     {
                         // Fallback: essayer de lancer directement
                         LaunchApplication(item.Path);
                     }
                     break;
-                    
+
                 case ResultType.Folder:
                     StartProcess("explorer.exe", $"\"{item.Path}\"");
                     break;
-                    
+
                 case ResultType.Script:
                     LaunchScript(item);
                     break;
-                    
+
                 case ResultType.WebSearch:
                 case ResultType.Bookmark:
                     StartProcess(item.Path);
                     break;
-                    
+
                 case ResultType.SystemControl:
                 case ResultType.AppControl:
                     LaunchSystemControl(item.Path);
                     break;
-                    
+
                 case ResultType.Calculator:
                     System.Windows.Clipboard.SetText(item.Path);
                     break;
-                    
+
                 case ResultType.Command:
                     StartProcess("cmd.exe", $"/c {item.Path}");
                     break;
@@ -84,27 +95,27 @@ public class LaunchService : ILaunchService
     private void LaunchApplication(string path)
     {
         var ext = Path.GetExtension(path).ToLowerInvariant();
-        
+
         // Pour les fichiers .lnk, résoudre le raccourci si nécessaire
         if (ext == ".lnk")
         {
-            var info = ShortcutHelper.ResolveShortcut(path);
+            var info = _shortcutHelper.ResolveShortcut(path);
             if (info != null && !string.IsNullOrEmpty(info.TargetPath))
             {
                 // Vérifier si la cible existe
                 if (File.Exists(info.TargetPath) || Directory.Exists(info.TargetPath))
                 {
-                    var workingDir = !string.IsNullOrEmpty(info.WorkingDirectory) 
-                        ? info.WorkingDirectory 
+                    var workingDir = !string.IsNullOrEmpty(info.WorkingDirectory)
+                        ? info.WorkingDirectory
                         : Path.GetDirectoryName(info.TargetPath);
-                    
+
                     if (!string.IsNullOrEmpty(info.Arguments))
                         StartProcess(info.TargetPath, info.Arguments, workingDir);
                     else
                         StartProcess(info.TargetPath, workingDirectory: workingDir);
                     return;
                 }
-                
+
                 // La cible n'existe pas mais c'est peut-être une URL ou un protocole
                 if (info.TargetPath.Contains("://") || info.TargetPath.StartsWith("steam:"))
                 {
@@ -113,7 +124,7 @@ public class LaunchService : ILaunchService
                 }
             }
         }
-        
+
         // Lancement direct (fonctionne pour .exe, .lnk avec UseShellExecute, URLs, etc.)
         StartProcess(path);
     }
@@ -122,37 +133,71 @@ public class LaunchService : ILaunchService
     {
         var ext = Path.GetExtension(item.Path).ToLowerInvariant();
         var workingDir = Path.GetDirectoryName(item.Path) ?? "";
-        
+
         if (ext == ".ps1")
             StartProcess("powershell.exe", $"-ExecutionPolicy Bypass -File \"{item.Path}\"", workingDir);
         else
             StartProcess(item.Path, workingDirectory: workingDir);
     }
-    
+
     public void OpenContainingFolder(SearchResult item)
     {
         var folder = Path.GetDirectoryName(item.Path);
         if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder))
             StartProcess("explorer.exe", $"/select,\"{item.Path}\"");
     }
-    
+
     public void RunAsAdmin(SearchResult item)
     {
         try
         {
-            Process.Start(new ProcessStartInfo
+            var path = item.Path;
+            var arguments = string.Empty;
+            var workingDirectory = string.Empty;
+
+            // Comme pour LaunchApplication, on résout le raccourci pour cibler le véritable .exe
+            if (Path.GetExtension(path).ToLowerInvariant() == ".lnk")
             {
-                FileName = item.Path,
+                var info = _shortcutHelper.ResolveShortcut(path);
+                if (info != null && !string.IsNullOrEmpty(info.TargetPath))
+                {
+                    if (File.Exists(info.TargetPath) || Directory.Exists(info.TargetPath))
+                    {
+                        path = info.TargetPath;
+                        arguments = info.Arguments ?? string.Empty;
+                        workingDirectory = !string.IsNullOrEmpty(info.WorkingDirectory)
+                            ? info.WorkingDirectory
+                            : Path.GetDirectoryName(info.TargetPath) ?? string.Empty;
+                    }
+                }
+            }
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = path,
                 UseShellExecute = true,
                 Verb = "runas"
-            });
+            };
+
+            if (!string.IsNullOrEmpty(arguments))
+                psi.Arguments = arguments;
+
+            if (!string.IsNullOrEmpty(workingDirectory))
+                psi.WorkingDirectory = workingDirectory;
+
+            Process.Start(psi);
         }
-        catch (System.ComponentModel.Win32Exception)
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
-            // L'utilisateur a annulé l'élévation UAC
+            // Code 1223 = L'utilisateur a annulé l'élévation UAC, on ignore silencieusement
+            Debug.WriteLine("Élévation UAC annulée par l'utilisateur.");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Erreur RunAsAdmin: {ex.Message}");
         }
     }
-    
+
     /// <summary>
     /// Lance un item de paramètres Windows.
     /// Gère les URIs ms-settings:, les commandes control| et les .msc.
@@ -161,7 +206,7 @@ public class LaunchService : ILaunchService
     {
         if (string.IsNullOrWhiteSpace(path) || path.StartsWith(":weather:") || path.StartsWith(":timer:"))
             return;
-        
+
         // Format "control|args" pour les applets du panneau de configuration
         if (path.StartsWith("control|"))
         {
@@ -169,7 +214,7 @@ public class LaunchService : ILaunchService
             StartProcess("control.exe", string.IsNullOrEmpty(args) ? null : args);
             return;
         }
-        
+
         // ms-settings: URIs, .msc, mstsc, etc. → lancement direct
         StartProcess(path);
     }
@@ -177,23 +222,23 @@ public class LaunchService : ILaunchService
     /// <summary>
     /// Vérifie si un chemin ressemble à un chemin fichier Windows (ex: C:\...)
     /// </summary>
-    private static bool IsFileSystemPath(string path) // reste static, utilitaire pur
+    private static bool IsFileSystemPath(string path)
         => path.Length >= 3 && char.IsLetter(path[0]) && path[1] == ':' && (path[2] == '\\' || path[2] == '/');
 
-    private static void StartProcess(string fileName, string? arguments = null, string? workingDirectory = null) // reste static, utilitaire pur
+    private static void StartProcess(string fileName, string? arguments = null, string? workingDirectory = null)
     {
         var psi = new ProcessStartInfo
         {
             FileName = fileName,
             UseShellExecute = true
         };
-        
+
         if (!string.IsNullOrEmpty(arguments))
             psi.Arguments = arguments;
-        
+
         if (!string.IsNullOrEmpty(workingDirectory))
             psi.WorkingDirectory = workingDirectory;
-        
+
         Process.Start(psi);
     }
 }

@@ -27,6 +27,7 @@ public partial class SettingsWindow : Window
     private readonly IndexingService? _indexingService;
     private readonly ThemeService? _themeService;
     private readonly UniversalSearchService? _universalSearchService;
+    private readonly IBookmarkService _bookmarkService;
     private readonly WebIntegrationService _webService = new();
     
     private const string StartupRegistryKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
@@ -46,7 +47,8 @@ public partial class SettingsWindow : Window
     private readonly DispatcherTimer _saveIndicatorTimer;
 
     public SettingsWindow(IndexingService? indexingService = null, ISettingsProvider? settingsProvider = null,
-        ThemeService? themeService = null, UniversalSearchService? universalSearchService = null)
+        ThemeService? themeService = null, UniversalSearchService? universalSearchService = null,
+        IBookmarkService? bookmarkService = null)
     {
         InitializeComponent();
         _settingsProvider = settingsProvider;
@@ -54,6 +56,7 @@ public partial class SettingsWindow : Window
         _indexingService = indexingService;
         _themeService = themeService;
         _universalSearchService = universalSearchService;
+        _bookmarkService = bookmarkService ?? new BookmarkService();
         
         // Initialiser le timer pour le feedback de sauvegarde
         _saveIndicatorTimer = new DispatcherTimer
@@ -976,7 +979,7 @@ public partial class SettingsWindow : Window
     
     private void LoadBrowsersList()
     {
-        BrowsersList.ItemsSource = BookmarkService.GetSupportedBrowsers();
+        BrowsersList.ItemsSource = _bookmarkService.GetSupportedBrowsers();
     }
     
     private async void ImportBrowserBookmarks_Click(object sender, RoutedEventArgs e)
@@ -985,7 +988,7 @@ public partial class SettingsWindow : Window
         
         try
         {
-            var bookmarks = BookmarkService.GetBookmarksForBrowser(browserName);
+            var bookmarks = _bookmarkService.GetBookmarksForBrowser(browserName);
             
             if (bookmarks.Count == 0)
             {
@@ -1027,7 +1030,7 @@ public partial class SettingsWindow : Window
         
         try
         {
-            var bookmarks = BookmarkService.GetAllBookmarks();
+            var bookmarks = _bookmarkService.GetAllBookmarks();
             
             if (bookmarks.Count == 0)
             {

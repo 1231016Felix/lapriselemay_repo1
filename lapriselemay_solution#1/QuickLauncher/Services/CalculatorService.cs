@@ -4,6 +4,15 @@ using System.Text.RegularExpressions;
 namespace QuickLauncher.Services;
 
 /// <summary>
+/// Abstraction pour le service de calcul mathématique.
+/// Permet l'injection de dépendances et la testabilité (Amélioration #2).
+/// </summary>
+public interface ICalculatorService
+{
+    bool TryCalculate(string expression, out string result);
+}
+
+/// <summary>
 /// Service de calcul mathématique avec parser récursif descendant.
 /// Remplace DataTable.Compute qui ne supportait pas ^ (puissance),
 /// les fonctions math (sqrt, sin, cos, etc.), ni les constantes (pi, e).
@@ -22,8 +31,10 @@ namespace QuickLauncher.Services;
 ///   unary  → ('-' | '+') unary | call
 ///   call   → IDENT '(' expr ')' | primary
 ///   primary→ NUMBER | '(' expr ')'
+/// 
+/// Converti de static vers injectable (Amélioration #2).
 /// </summary>
-public static partial class CalculatorService
+public sealed partial class CalculatorService : ICalculatorService
 {
     [GeneratedRegex(@"^[\d\s\+\-\*\/\(\)\.\,\^%a-z]+$", RegexOptions.IgnoreCase)]
     private static partial Regex MathExpressionRegex();
@@ -31,7 +42,7 @@ public static partial class CalculatorService
     /// <summary>
     /// Tente d'évaluer une expression mathématique.
     /// </summary>
-    public static bool TryCalculate(string expression, out string result)
+    public bool TryCalculate(string expression, out string result)
     {
         result = string.Empty;
 

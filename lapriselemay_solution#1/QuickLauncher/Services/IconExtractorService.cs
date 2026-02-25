@@ -251,7 +251,7 @@ public static class IconExtractorService
             else if (path.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
             {
                 Debug.WriteLine($"[IconExtractor] Processing .lnk: {path}");
-                var shortcutInfo = ShortcutHelper.ResolveShortcut(path);
+                var shortcutInfo = ShortcutHelper.ResolveShortcutStatic(path);
                 if (shortcutInfo != null && !string.IsNullOrEmpty(shortcutInfo.TargetPath) && File.Exists(shortcutInfo.TargetPath))
                 {
                     Debug.WriteLine($"[IconExtractor] Shortcut target: {shortcutInfo.TargetPath}");

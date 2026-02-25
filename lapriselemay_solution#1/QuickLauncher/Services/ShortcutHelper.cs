@@ -12,9 +12,29 @@ public class ShortcutInfo
     public string WorkingDirectory { get; set; } = string.Empty;
 }
 
-public static class ShortcutHelper
+/// <summary>
+/// Abstraction pour la résolution des raccourcis Windows (.lnk).
+/// Permet l'injection de dépendances et la testabilité (Amélioration #2).
+/// </summary>
+public interface IShortcutHelper
 {
-    public static ShortcutInfo? ResolveShortcut(string shortcutPath)
+    ShortcutInfo? ResolveShortcut(string shortcutPath);
+}
+
+/// <summary>
+/// Résout les raccourcis Windows (.lnk) via COM IShellLink.
+/// Converti de static vers injectable (Amélioration #2).
+/// </summary>
+public class ShortcutHelper : IShortcutHelper
+{
+    /// <summary>
+    /// Méthode statique de rétrocompatibilité pour les appelants statiques
+    /// (ex: IconExtractorService). Préférer l'injection de IShortcutHelper.
+    /// </summary>
+    public static ShortcutInfo? ResolveShortcutStatic(string shortcutPath)
+        => new ShortcutHelper().ResolveShortcut(shortcutPath);
+
+    public ShortcutInfo? ResolveShortcut(string shortcutPath)
     {
         if (!shortcutPath.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase))
             return null;

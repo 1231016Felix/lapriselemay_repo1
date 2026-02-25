@@ -4,10 +4,21 @@ using QuickLauncher.Models;
 namespace QuickLauncher.Services;
 
 /// <summary>
-/// Service pour découvrir les applications du Microsoft Store (UWP/MSIX)
-/// via l'énumération du dossier virtuel shell:AppsFolder
+/// Abstraction pour le service de découverte des applications Store.
+/// Permet l'injection de dépendances et la testabilité (Amélioration #2).
 /// </summary>
-public static class StoreAppService
+public interface IStoreAppService
+{
+    List<IndexedItem> GetAllApps();
+    bool LaunchApp(string appUserModelId);
+}
+
+/// <summary>
+/// Service pour découvrir les applications du Microsoft Store (UWP/MSIX)
+/// via l'énumération du dossier virtuel shell:AppsFolder.
+/// Converti de static vers injectable (Amélioration #2).
+/// </summary>
+public class StoreAppService : IStoreAppService
 {
     #region COM Interop
 
@@ -183,7 +194,7 @@ public static class StoreAppService
     /// <summary>
     /// Énumère toutes les applications installées (traditionnelles et Store)
     /// </summary>
-    public static List<IndexedItem> GetAllApps()
+    public List<IndexedItem> GetAllApps()
     {
         var allApps = new List<IndexedItem>();
 
@@ -307,7 +318,7 @@ public static class StoreAppService
     /// <summary>
     /// Lance une application via son AppUserModelId
     /// </summary>
-    public static bool LaunchApp(string appUserModelId)
+    public bool LaunchApp(string appUserModelId)
     {
         try
         {

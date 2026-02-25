@@ -53,19 +53,22 @@ public sealed class ResultActionService
     private readonly IndexingService _indexingService;
     private readonly PinnedItemsManager _pinnedItemsManager;
     private readonly NotesService _notesService;
+    private readonly IFileActionExecutor _fileActionExecutor;
 
     public ResultActionService(
         ISettingsProvider settingsProvider,
         AliasService aliasService,
         IndexingService indexingService,
         PinnedItemsManager pinnedItemsManager,
-        NotesService notesService)
+        NotesService notesService,
+        IFileActionExecutor fileActionExecutor)
     {
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
         _aliasService = aliasService ?? throw new ArgumentNullException(nameof(aliasService));
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
         _pinnedItemsManager = pinnedItemsManager ?? throw new ArgumentNullException(nameof(pinnedItemsManager));
         _notesService = notesService ?? throw new ArgumentNullException(nameof(notesService));
+        _fileActionExecutor = fileActionExecutor ?? throw new ArgumentNullException(nameof(fileActionExecutor));
     }
 
     /// <summary>
@@ -194,7 +197,7 @@ public sealed class ResultActionService
             ? result.Name
             : result.Path;
         
-        var success = action.Execute(targetPath);
+        var success = _fileActionExecutor.Execute(action.ActionType, targetPath);
         
         if (!success)
         {

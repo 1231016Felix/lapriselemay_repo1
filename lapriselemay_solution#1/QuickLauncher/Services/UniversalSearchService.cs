@@ -14,6 +14,7 @@ public class UniversalSearchService : IUniversalSearchService
 {
     private const int MaxResultsLimit = 50;
     private readonly string[] _defaultSearchPaths;
+    private readonly IShortcutHelper _shortcutHelper;
     private static readonly string[] ExcludedFolders =
     [
         "node_modules", ".git", ".vs", "bin", "obj", "__pycache__",
@@ -30,8 +31,9 @@ public class UniversalSearchService : IUniversalSearchService
     /// <inheritdoc/>
     public string[] GetDefaultSearchPaths() => _defaultSearchPaths;
 
-    public UniversalSearchService()
+    public UniversalSearchService(IShortcutHelper shortcutHelper)
     {
+        _shortcutHelper = shortcutHelper;
         _defaultSearchPaths =
         [
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -93,7 +95,7 @@ public class UniversalSearchService : IUniversalSearchService
     /// le même programme plusieurs fois (ex: Ollama.lnk dans Start Menu, StartUp, Programs\Ollama).
     /// Conserve le résultat ayant le meilleur score, puis le plus récent.
     /// </summary>
-    private static List<SearchResult> DeduplicateResults(List<SearchResult> results)
+    private List<SearchResult> DeduplicateResults(List<SearchResult> results)
     {
         if (results.Count <= 1)
             return results;
@@ -114,7 +116,7 @@ public class UniversalSearchService : IUniversalSearchService
     /// les raccourcis pointant vers le même exécutable.
     /// Pour les autres fichiers, on utilise le nom + extension comme clé.
     /// </summary>
-    private static string GetDeduplicationKey(SearchResult result)
+    private string GetDeduplicationKey(SearchResult result)
     {
         var path = result.Path;
 
@@ -123,7 +125,7 @@ public class UniversalSearchService : IUniversalSearchService
         {
             try
             {
-                var info = ShortcutHelper.ResolveShortcut(path);
+                var info = _shortcutHelper.ResolveShortcut(path);
                 if (info != null && !string.IsNullOrEmpty(info.TargetPath))
                     return Path.GetFileName(info.TargetPath).ToLowerInvariant();
             }
