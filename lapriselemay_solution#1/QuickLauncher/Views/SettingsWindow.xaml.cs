@@ -171,7 +171,7 @@ public partial class SettingsWindow : Window
         // Assistant IA
         SelectComboByTag(AiProviderCombo, _settings.Integrations.AiProvider);
         AiApiUrlBox.Text = _settings.Integrations.AiApiUrl;
-        AiApiKeyBox.Password = _settings.Integrations.AiApiKey;
+        AiApiKeyBox.Password = _settings.Integrations.AiApiKeyDecrypted;
         AiModelBox.Text = _settings.Integrations.AiModel;
         AiSystemPromptBox.Text = _settings.Integrations.AiSystemPrompt;
         AiDebounceSlider.Value = Math.Clamp(_settings.Integrations.AiDebounceSeconds, Constants.AiDebounceSecondsMin, Constants.AiDebounceSecondsMax);
@@ -900,7 +900,7 @@ public partial class SettingsWindow : Window
     {
         if (!_isLoading)
         {
-            _settings.Integrations.AiApiKey = AiApiKeyBox.Password;
+            _settings.Integrations.AiApiKeyDecrypted = AiApiKeyBox.Password;
             AutoSave();
         }
     }

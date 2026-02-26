@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using QuickLauncher.Services;
+
 namespace QuickLauncher.Models.Settings;
 
 /// <summary>
@@ -16,7 +19,26 @@ public sealed class IntegrationSettings
     // === IA ===
     public string AiProvider { get; set; } = "chatgpt";
     public string AiApiUrl { get; set; } = "https://api.openai.com/v1/chat/completions";
+    
+    /// <summary>
+    /// Clé API chiffrée via DPAPI (préfixe "dpapi:" + Base64).
+    /// Sérialisée dans le fichier settings.json — ne jamais lire directement.
+    /// Utiliser <see cref="AiApiKeyDecrypted"/> pour obtenir la valeur en clair.
+    /// </summary>
     public string AiApiKey { get; set; } = string.Empty;
+    
+    /// <summary>
+    /// Clé API en clair (lecture/écriture).
+    /// Le getter déchiffre la valeur stockée, le setter chiffre via DPAPI.
+    /// Non sérialisé en JSON — seul <see cref="AiApiKey"/> est persisté.
+    /// </summary>
+    [JsonIgnore]
+    public string AiApiKeyDecrypted
+    {
+        get => SecureStorageService.Decrypt(AiApiKey);
+        set => AiApiKey = SecureStorageService.Encrypt(value);
+    }
+    
     public string AiModel { get; set; } = "gpt-4o-mini";
     public string AiSystemPrompt { get; set; } = "Tu es un assistant concis intégré dans un lanceur d'applications. Réponds de manière courte et directe (2-3 phrases max). Pas de markdown. Langue: français.";
     

@@ -23,6 +23,9 @@
     
     <!-- OleDb (Windows Search API) -->
     <PackageVersion Include="System.Data.OleDb" Version="9.0.0" />
+    
+    <!-- DPAPI - Chiffrement des données sensibles (clés API) -->
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="9.0.2" />
   </ItemGroup>
 
 </Project>

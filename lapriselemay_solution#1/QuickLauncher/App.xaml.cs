@@ -176,6 +176,10 @@ public partial class App : Application
         services.AddSingleton<ILaunchService, LaunchService>();
         services.AddSingleton<IFileActionProvider, FileActionProvider>();
         
+        // === Façades (regroupement des dépendances pour le ViewModel) ===
+        services.AddSingleton<SearchFacade>();
+        services.AddSingleton<ActionFacade>();
+        
         // === ViewModel et fenêtre principale (singletons réutilisés entre Show/Hide) ===
         services.AddSingleton<LauncherViewModel>();
         services.AddSingleton<LauncherWindow>();

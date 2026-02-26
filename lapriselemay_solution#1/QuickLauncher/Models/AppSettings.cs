@@ -112,6 +112,17 @@ public sealed class AppSettings
             if (settings != null)
             {
                 DefaultSystemCommands.Migrate(settings.SystemCommands);
+                
+                // Migration : chiffrer la clé API si elle est encore en clair (legacy)
+                if (!string.IsNullOrEmpty(settings.Integrations.AiApiKey) &&
+                    !Services.SecureStorageService.IsEncrypted(settings.Integrations.AiApiKey))
+                {
+                    var plainKey = settings.Integrations.AiApiKey;
+                    settings.Integrations.AiApiKeyDecrypted = plainKey;
+                    settings.Save();
+                    System.Diagnostics.Debug.WriteLine("[Settings] Clé API migrée vers DPAPI");
+                }
+                
                 System.Diagnostics.Debug.WriteLine($"[Settings] Chargé avec {settings.Search.PinnedItems.Count} épingles (format: {(isNewFormat ? "v2" : "legacy→v2")})");
                 return settings;
             }

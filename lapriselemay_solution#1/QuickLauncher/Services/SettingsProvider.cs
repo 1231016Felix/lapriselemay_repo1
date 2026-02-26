@@ -30,6 +30,13 @@ public sealed class SettingsProvider : ISettingsProvider
     /// </summary>
     private volatile AppSettings _current;
 
+    /// <summary>
+    /// Verrou protégeant <see cref="Update"/> contre les appels concurrents.
+    /// Sans ce verrou, deux Update() simultanés clonent le même _current
+    /// et le second écrase les modifications du premier (lost update).
+    /// </summary>
+    private readonly object _updateLock = new();
+
     public AppSettings Current => _current;
 
     public event EventHandler<AppSettings>? SettingsChanged;
@@ -61,15 +68,24 @@ public sealed class SettingsProvider : ISettingsProvider
     /// 3. Sauvegarde le clone sur disque
     /// 4. Swap la référence volatile (publication atomique)
     /// 
-    /// Les threads de recherche qui tenaient une référence à l'ancien objet
-    /// continuent de le lire sans risque de données incohérentes.
+    /// Protégé par un verrou pour empêcher les lost updates :
+    /// sans lock, deux appels concurrents cloneraient le même _current
+    /// et le dernier à écrire écraserait les modifications du premier.
+    /// 
+    /// L'événement <see cref="SettingsChanged"/> est déclenché hors du verrou
+    /// pour éviter les risques de deadlock si un abonné tente un Update() en réaction.
     /// </summary>
     public void Update(Action<AppSettings> updateAction)
     {
-        var clone = _current.Clone();
-        updateAction(clone);
-        clone.Save();
-        _current = clone;
-        SettingsChanged?.Invoke(this, clone);
+        AppSettings snapshot;
+        lock (_updateLock)
+        {
+            var clone = _current.Clone();
+            updateAction(clone);
+            clone.Save();
+            _current = clone;
+            snapshot = clone;
+        }
+        SettingsChanged?.Invoke(this, snapshot);
     }
 }

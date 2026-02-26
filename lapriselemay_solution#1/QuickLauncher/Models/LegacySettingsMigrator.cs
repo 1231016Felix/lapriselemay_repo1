@@ -71,7 +71,7 @@ internal static class LegacySettingsMigrator
         settings.Integrations.TranslateSourceLang = legacy.TranslateSourceLang ?? "auto";
         settings.Integrations.AiProvider = legacy.AiProvider ?? "chatgpt";
         settings.Integrations.AiApiUrl = legacy.AiApiUrl ?? "https://api.openai.com/v1/chat/completions";
-        settings.Integrations.AiApiKey = legacy.AiApiKey ?? string.Empty;
+        settings.Integrations.AiApiKeyDecrypted = legacy.AiApiKey ?? string.Empty;
         settings.Integrations.AiModel = legacy.AiModel ?? "gpt-4o-mini";
         settings.Integrations.AiSystemPrompt = legacy.AiSystemPrompt ?? settings.Integrations.AiSystemPrompt;
         settings.Integrations.NoteWidgets = legacy.NoteWidgets ?? [];

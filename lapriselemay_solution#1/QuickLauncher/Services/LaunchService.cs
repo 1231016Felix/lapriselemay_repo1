@@ -155,8 +155,15 @@ public class LaunchService : ILaunchService
             var arguments = string.Empty;
             var workingDirectory = string.Empty;
 
-            // Comme pour LaunchApplication, on résout le raccourci pour cibler le véritable .exe
-            if (Path.GetExtension(path).ToLowerInvariant() == ".lnk")
+            // 1. Gérer les applications du Windows Store (ex: PowerShell 7, Windows Terminal)
+            // Elles n'ont pas de chemin fichier classique (AppUserModelId)
+            if (!IsFileSystemPath(path) && (item.Type == ResultType.Application || item.Type == ResultType.StoreApp))
+            {
+                // L'ajout de "shell:AppsFolder\" permet à Windows d'accepter le verbe "runas" sur une App UWP
+                path = $"shell:AppsFolder\\{path}";
+            }
+            // 2. Gérer les raccourcis classiques (.lnk)
+            else if (Path.GetExtension(path).ToLowerInvariant() == ".lnk")
             {
                 var info = _shortcutHelper.ResolveShortcut(path);
                 if (info != null && !string.IsNullOrEmpty(info.TargetPath))
@@ -172,11 +179,12 @@ public class LaunchService : ILaunchService
                 }
             }
 
+            // 3. Configuration du processus d'élévation
             var psi = new ProcessStartInfo
             {
                 FileName = path,
                 UseShellExecute = true,
-                Verb = "runas"
+                Verb = "runas" // C'est ici que l'élévation UAC (Admin) est demandée
             };
 
             if (!string.IsNullOrEmpty(arguments))
@@ -189,7 +197,7 @@ public class LaunchService : ILaunchService
         }
         catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
         {
-            // Code 1223 = L'utilisateur a annulé l'élévation UAC, on ignore silencieusement
+            // Code 1223 = L'utilisateur a annulé l'élévation UAC (fenêtre "Voulez-vous autoriser..."), on ignore silencieusement
             Debug.WriteLine("Élévation UAC annulée par l'utilisateur.");
         }
         catch (Exception ex)

@@ -10,26 +10,18 @@ namespace QuickLauncher.ViewModels;
 
 /// <summary>
 /// ViewModel pour la fenêtre principale avec commandes système optimisées.
+/// 
+/// Les 17 dépendances d'origine sont regroupées en deux façades :
+/// - <see cref="SearchFacade"/> : recherche, scoring, suggestions, commandes async, icônes, alias
+/// - <see cref="ActionFacade"/> : épingles, actions, lancement, contrôle système
 /// </summary>
 public sealed partial class LauncherViewModel : ObservableObject, IDisposable
 {
     private readonly IndexingService _indexingService;
-    private readonly FileWatcherService? _fileWatcherService;
-    private readonly AliasService _aliasService;
     private readonly ISettingsProvider _settingsProvider;
-    private readonly NoteWidgetService _noteWidgetService;
-    private readonly TimerWidgetService _timerWidgetService;
-    private readonly NotesService _notesService;
-    private readonly CommandRouter _commandRouter;
-    private readonly ISystemControlExecutor _systemControlExecutor;
-    private readonly SearchService _searchService;
-    private readonly IIconLoader _iconLoader;
-    private readonly GhostSuggestionService _ghostSuggestionService;
-    private readonly PinnedItemsManager _pinnedItemsManager;
-    private readonly ResultActionService _resultActionService;
-    private readonly ILaunchService _launchService;
-    private readonly IFileActionProvider _fileActionProvider;
-    private readonly SystemControlSuggestionService _systemControlService;
+    private readonly SearchFacade _search;
+    private readonly ActionFacade _actions;
+    private readonly FileWatcherService? _fileWatcherService;
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _debounceCts;
     private bool _disposed;
@@ -101,31 +93,17 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     /// </summary>
     private AppSettings _settings => _settingsProvider.Current;
 
-    public LauncherViewModel(IndexingService indexingService, ISettingsProvider settingsProvider,
-        AliasService aliasService, NoteWidgetService noteWidgetService, TimerWidgetService timerWidgetService,
-        NotesService notesService, CommandRouter commandRouter, ISystemControlExecutor systemControlExecutor,
-        SearchService searchService, IIconLoader iconLoader, GhostSuggestionService ghostSuggestionService,
-        PinnedItemsManager pinnedItemsManager, ResultActionService resultActionService,
-        ILaunchService launchService, IFileActionProvider fileActionProvider,
-        SystemControlSuggestionService systemControlService,
+    public LauncherViewModel(
+        IndexingService indexingService,
+        ISettingsProvider settingsProvider,
+        SearchFacade search,
+        ActionFacade actions,
         FileWatcherService? fileWatcherService = null)
     {
         _indexingService = indexingService ?? throw new ArgumentNullException(nameof(indexingService));
         _settingsProvider = settingsProvider ?? throw new ArgumentNullException(nameof(settingsProvider));
-        _aliasService = aliasService ?? throw new ArgumentNullException(nameof(aliasService));
-        _noteWidgetService = noteWidgetService ?? throw new ArgumentNullException(nameof(noteWidgetService));
-        _timerWidgetService = timerWidgetService ?? throw new ArgumentNullException(nameof(timerWidgetService));
-        _notesService = notesService ?? throw new ArgumentNullException(nameof(notesService));
-        _commandRouter = commandRouter ?? throw new ArgumentNullException(nameof(commandRouter));
-        _systemControlExecutor = systemControlExecutor ?? throw new ArgumentNullException(nameof(systemControlExecutor));
-        _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
-        _iconLoader = iconLoader ?? throw new ArgumentNullException(nameof(iconLoader));
-        _ghostSuggestionService = ghostSuggestionService ?? throw new ArgumentNullException(nameof(ghostSuggestionService));
-        _pinnedItemsManager = pinnedItemsManager ?? throw new ArgumentNullException(nameof(pinnedItemsManager));
-        _resultActionService = resultActionService ?? throw new ArgumentNullException(nameof(resultActionService));
-        _launchService = launchService ?? throw new ArgumentNullException(nameof(launchService));
-        _fileActionProvider = fileActionProvider ?? throw new ArgumentNullException(nameof(fileActionProvider));
-        _systemControlService = systemControlService ?? throw new ArgumentNullException(nameof(systemControlService));
+        _search = search ?? throw new ArgumentNullException(nameof(search));
+        _actions = actions ?? throw new ArgumentNullException(nameof(actions));
         
         // Initialiser les propriétés d'apparence depuis les settings
         ShowCategoryBadges = _settings.Appearance.ShowCategoryBadges;
@@ -269,9 +247,9 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     private void UpdateAvailableActions(SearchResult result)
     {
         AvailableActions.Clear();
-        var isPinned = _pinnedItemsManager.IsPinned(result.Path);
-        var hasAlias = _resultActionService.HasAlias(result.Path);
-        var actions = _fileActionProvider.GetActionsForResult(result, isPinned, hasAlias);
+        var isPinned = _actions.IsPinned(result.Path);
+        var hasAlias = _actions.HasAlias(result.Path);
+        var actions = _actions.GetActionsForResult(result, isPinned, hasAlias);
         foreach (var action in actions)
             AvailableActions.Add(action);
         
@@ -322,7 +300,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         
         // === Commandes asynchrones spécialisées ===
         // Le CommandRouter dispatche vers le bon handler (météo, traduction, IA, recherche système).
-        var handler = _commandRouter.FindHandler(queryLower);
+        var handler = _search.FindCommandHandler(queryLower);
         if (handler != null)
         {
             // Les commandes async gèrent leur propre cycle Results.Clear → affichage
@@ -359,9 +337,9 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         }
         
         // Vérifier les commandes de contrôle système (inclut les commandes applicatives)
-        if (_systemControlService.IsSystemControlCommand(queryLower))
+        if (_search.IsSystemControlCommand(queryLower))
         {
-            var controlResults = _systemControlService.BuildSuggestions(queryLower);
+            var controlResults = _search.BuildControlSuggestions(queryLower);
             Results.ReplaceAll(controlResults);
             FinalizeResults();
             return;
@@ -370,7 +348,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         // Recherche d'alias (priorité haute)
         if (settings.Search.EnableAliases)
         {
-            var aliasResults = _aliasService.Search(query);
+            var aliasResults = _search.SearchAliases(query);
             foreach (var alias in aliasResults.Take(3))
             {
                 alias.DisplayIcon = "⌨️";
@@ -380,7 +358,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         }
         
         // Résultats de recherche normaux
-        var searchResults = _searchService.Search(SearchText);
+        var searchResults = _search.Search(SearchText);
         foreach (var result in searchResults)
             tempResults.Add(result);
         
@@ -398,7 +376,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         
         // Charger les icônes natives en arrière-plan
         if (newResults.Count > 0)
-            _ = _iconLoader.LoadIconsAsync(newResults, _searchCts?.Token ?? CancellationToken.None);
+            _ = _search.LoadIconsAsync(newResults, _searchCts?.Token ?? CancellationToken.None);
     }
     
     private void ShowRecentHistory()
@@ -406,13 +384,13 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         Results.Clear();
         
         // Afficher d'abord les items épinglés
-        foreach (var pinned in _pinnedItemsManager.GetPinnedResults())
+        foreach (var pinned in _actions.GetPinnedResults())
             Results.Add(pinned);
         
         // Puis l'historique si activé (items récemment utilisés)
         if (_settings.Search.EnableSearchHistory && _settings.Search.SearchHistory.Count > 0)
         {
-            var maxHistory = Math.Max(0, 5 - _pinnedItemsManager.Count);
+            var maxHistory = Math.Max(0, 5 - _actions.PinnedCount);
             foreach (var historyItem in _settings.Search.SearchHistory.Take(maxHistory))
                 Results.Add(historyItem.ToSearchResult());
         }
@@ -421,7 +399,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         
         // Charger les icônes natives en arrière-plan
         if (Results.Count > 0)
-            _ = _iconLoader.LoadIconsAsync(Results.ToList(), _searchCts?.Token ?? CancellationToken.None);
+            _ = _search.LoadIconsAsync(Results.ToList(), _searchCts?.Token ?? CancellationToken.None);
     }
     
     /// <summary>
@@ -429,7 +407,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     /// </summary>
     public void ReorderPinnedItem(int fromIndex, int toIndex)
     {
-        _pinnedItemsManager.Reorder(fromIndex, toIndex);
+        _actions.ReorderPinned(fromIndex, toIndex);
         
         // Rafraîchir l'affichage si on est dans la vue des épingles
         if (string.IsNullOrWhiteSpace(SearchText))
@@ -442,14 +420,14 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Nombre d'items épinglés actuels.
     /// </summary>
-    public int PinnedItemCount => _pinnedItemsManager.Count;
+    public int PinnedItemCount => _actions.PinnedCount;
     
     /// <summary>
     /// Vérifie si un résultat à l'index donné est un item épinglé.
     /// </summary>
     public bool IsResultPinned(int resultIndex)
     {
-        return _pinnedItemsManager.IsResultPinned(resultIndex, Results.Count)
+        return _actions.IsResultPinned(resultIndex, Results.Count)
                && Results[resultIndex].Description == "⭐ Épinglé";
     }
     
@@ -515,7 +493,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
             
             // Charger les icônes natives en arrière-plan
             if (result.Results.Count > 0)
-                _ = _iconLoader.LoadIconsAsync(result.Results, token);
+                _ = _search.LoadIconsAsync(result.Results, token);
         }
         catch (OperationCanceledException)
         {
@@ -551,7 +529,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     /// </summary>
     private void UpdateGhostSuggestion()
     {
-        GhostSuggestionText = _ghostSuggestionService.GetSuggestion(SearchText, Results);
+        GhostSuggestionText = _search.GetGhostSuggestion(SearchText, Results);
     }
 
     /// <summary>
@@ -626,7 +604,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     /// </summary>
     public void SaveAlias(string alias, string targetPath)
     {
-        var notification = _resultActionService.SaveAlias(alias, targetPath);
+        var notification = _actions.SaveAlias(alias, targetPath);
         ShowNotification?.Invoke(this, notification);
     }
     
@@ -635,7 +613,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     /// </summary>
     public void DeleteAlias(string targetPath)
     {
-        var notification = _resultActionService.DeleteAlias(targetPath);
+        var notification = _actions.DeleteAlias(targetPath);
         if (notification != null)
             ShowNotification?.Invoke(this, notification);
     }
@@ -643,7 +621,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Vérifie si un chemin cible possède un alias.
     /// </summary>
-    public bool HasAlias(string targetPath) => _resultActionService.HasAlias(targetPath);
+    public bool HasAlias(string targetPath) => _actions.HasAlias(targetPath);
     
     /// <summary>
     /// Exécute une action spécifique sur un résultat.
@@ -652,7 +630,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     /// </summary>
     public void ExecuteActionOnResult(FileAction action, SearchResult result)
     {
-        var outcome = _resultActionService.Execute(action, result, string.IsNullOrWhiteSpace(SearchText));
+        var outcome = _actions.ExecuteAction(action, result, string.IsNullOrWhiteSpace(SearchText));
         ApplyActionOutcome(outcome, result);
     }
     
@@ -669,7 +647,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         
         var result = Results[SelectedIndex];
         var action = new FileAction { ActionType = actionType };
-        var outcome = _resultActionService.Execute(action, result, string.IsNullOrWhiteSpace(SearchText));
+        var outcome = _actions.ExecuteAction(action, result, string.IsNullOrWhiteSpace(SearchText));
         ApplyActionOutcome(outcome, result);
         return true;
     }
@@ -746,7 +724,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         var result = Results[SelectedIndex];
         if (result.Type is ResultType.Application or ResultType.Script or ResultType.File)
         {
-            _launchService.RunAsAdmin(result);
+            _actions.RunAsAdmin(result);
             _indexingService.RecordUsage(result);
             RequestHide?.Invoke(this, EventArgs.Empty);
         }
@@ -798,7 +776,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         }
         
         _indexingService.RecordUsage(item);
-        _launchService.Launch(item);
+        _actions.Launch(item);
         RequestHide?.Invoke(this, EventArgs.Empty);
     }
     
@@ -808,7 +786,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         if (string.IsNullOrEmpty(command))
             return;
         
-        var executionResult = _systemControlExecutor.Execute(command);
+        var executionResult = _actions.ExecuteSystemControl(command);
         
         if (!executionResult.Handled)
         {
@@ -870,7 +848,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         if (matchedCmd == null) return;
         
         var fullQuery = matchedCmd.FullPrefix + (arg != null ? $" {arg}" : "");
-        var handler = _commandRouter.FindHandler(fullQuery);
+        var handler = _search.FindCommandHandler(fullQuery);
         if (handler != null)
             _ = DispatchCommandAsync(handler, fullQuery, _searchGeneration, _searchCts?.Token ?? CancellationToken.None);
     }
@@ -910,7 +888,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
     
     private void ShowHelpCommands()
     {
-        var helpResults = _systemControlService.BuildHelpResults();
+        var helpResults = _search.BuildHelpResults();
         Results.ReplaceAll(helpResults);
         FinalizeResults();
     }
@@ -991,7 +969,7 @@ public sealed partial class LauncherViewModel : ObservableObject, IDisposable
         _searchCts?.Cancel();
         _searchCts?.Dispose();
         _fileWatcherService?.Dispose();
-        _aliasService?.Dispose();
+        _search?.Dispose();
         
         GC.SuppressFinalize(this);
     }

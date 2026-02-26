@@ -36,6 +36,9 @@
     
     <!-- Injection de dépendances -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    
+    <!-- DPAPI - Chiffrement des données sensibles (clés API) -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
   </ItemGroup>
 
 
