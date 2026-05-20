@@ -20,6 +20,11 @@
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
       <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+      <!-- DPI awareness : PerMonitorV2 pour que GDI+, WinForms et WPF voient tous les mêmes pixels physiques.
+           Nécessaire pour que CopyFromScreen et Screen.AllScreens fonctionnent correctement
+           sur tous les écrans à n'importe quel scaling DPI (100%, 125%, 150%, 200%, mixte multi-écrans). -->
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2, PerMonitor</dpiAwareness>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/PM</dpiAware>
     </windowsSettings>
   </application>
 </assembly>

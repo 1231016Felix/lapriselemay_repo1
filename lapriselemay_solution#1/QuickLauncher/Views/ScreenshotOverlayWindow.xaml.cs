@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Shapes;
+using QuickLauncher.Services;
 using Point = System.Windows.Point;
 using Screen = System.Windows.Forms.Screen;
 using Rectangle = System.Drawing.Rectangle;
@@ -27,6 +28,10 @@ public partial class ScreenshotOverlayWindow : Window
     private Bitmap? _fullScreenBitmap;
     private double _dpiScaleX = 1.0;
     private double _dpiScaleY = 1.0;
+    // Bounds physiques de l'écran virtuel au moment de la capture.
+    // Stockés pour pouvoir retraduire correctement les coordonnées WPF (DIP)
+    // en coordonnées pixel du bitmap, peu importe les offsets multi-écrans.
+    private Rectangle _virtualScreenBounds;
 
     /// <summary>
     /// Image capturée de la région sélectionnée (null si annulé).
@@ -45,20 +50,51 @@ public partial class ScreenshotOverlayWindow : Window
 
     private void CaptureFullScreen()
     {
-        // Calculer les bounds physiques de tous les écrans
-        var allScreens = Screen.AllScreens;
-        var bounds = allScreens
-            .Select(s => s.Bounds)
-            .Aggregate(Rectangle.Union);
+        // S'assurer que le process est DPI-aware AVANT toute mesure d'écran.
+        // Le manifest est censé le faire, mais on renforce ici au cas où
+        // (lancement depuis le debugger, manifest non appliqué, etc.).
+        EnsureDpiAwareness();
 
-        _fullScreenBitmap = new Bitmap(bounds.Width, bounds.Height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        // Récupérer les bounds physiques de l'écran virtuel via Win32 directement.
+        // C'est plus fiable que Screen.AllScreens qui peut être affecté par
+        // la virtualisation DPI si le process n'est pas correctement DPI-aware.
+        int virtualX = NativeMethods.GetSystemMetrics(NativeMethods.SM_XVIRTUALSCREEN);
+        int virtualY = NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN);
+        int virtualW = NativeMethods.GetSystemMetrics(NativeMethods.SM_CXVIRTUALSCREEN);
+        int virtualH = NativeMethods.GetSystemMetrics(NativeMethods.SM_CYVIRTUALSCREEN);
+
+        _virtualScreenBounds = new Rectangle(virtualX, virtualY, virtualW, virtualH);
+
+        _fullScreenBitmap = new Bitmap(virtualW, virtualH, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using var graphics = Graphics.FromImage(_fullScreenBitmap);
-        graphics.CopyFromScreen(bounds.Location, System.Drawing.Point.Empty, bounds.Size);
+        // CopyFromScreen prend des coordonnées d'écran (pixels physiques sur l'écran virtuel)
+        graphics.CopyFromScreen(virtualX, virtualY, 0, 0, new System.Drawing.Size(virtualW, virtualH));
+    }
+
+    /// <summary>
+    /// Force le process en PerMonitorV2 si possible. No-op si déjà appliqué via manifest.
+    /// </summary>
+    private static void EnsureDpiAwareness()
+    {
+        try
+        {
+            // -4 = DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+            NativeMethods.SetProcessDpiAwarenessContext(NativeMethods.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        }
+        catch
+        {
+            // L'API n'existe pas (< Windows 10 1703) ou le DPI awareness est déjà figé.
+            // Dans les deux cas on continue silencieusement.
+        }
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // Obtenir le scaling DPI
+        // Obtenir le scaling DPI de la fenêtre.
+        // Note : sur multi-écran avec DPI hétérogènes, c'est le DPI de l'écran
+        // où la fenêtre apparaît. Étant donné qu'on couvre TOUT l'espace virtuel
+        // physique, on convertit pixels→DIP avec ce facteur uniforme — ce qui suffit
+        // tant que WPF rend correctement (PerMonitorV2 prend le relais pour l'affichage).
         var source = PresentationSource.FromVisual(this);
         if (source?.CompositionTarget != null)
         {
@@ -66,15 +102,13 @@ public partial class ScreenshotOverlayWindow : Window
             _dpiScaleY = source.CompositionTarget.TransformToDevice.M22;
         }
 
-        // Positionner la fenêtre sur tout l'espace virtuel (tous les écrans)
-        var allBounds = Screen.AllScreens
-            .Select(s => s.Bounds)
-            .Aggregate(Rectangle.Union);
-
-        Left = allBounds.X / _dpiScaleX;
-        Top = allBounds.Y / _dpiScaleY;
-        Width = allBounds.Width / _dpiScaleX;
-        Height = allBounds.Height / _dpiScaleY;
+        // Positionner la fenêtre sur tout l'espace virtuel.
+        // _virtualScreenBounds est en PIXELS PHYSIQUES (rempli par CaptureFullScreen via Win32).
+        // WPF Left/Top/Width/Height attend des DIP → on divise par le scale.
+        Left = _virtualScreenBounds.X / _dpiScaleX;
+        Top = _virtualScreenBounds.Y / _dpiScaleY;
+        Width = _virtualScreenBounds.Width / _dpiScaleX;
+        Height = _virtualScreenBounds.Height / _dpiScaleY;
 
         // Afficher le screenshot capturé comme fond
         if (_fullScreenBitmap != null)
@@ -185,16 +219,15 @@ public partial class ScreenshotOverlayWindow : Window
     {
         if (_fullScreenBitmap == null) return;
 
-        // Convertir les coordonnées WPF (DIP) en pixels physiques
-        // Tenir compte de l'offset de l'écran virtuel
-        var allBounds = Screen.AllScreens
-            .Select(s => s.Bounds)
-            .Aggregate(Rectangle.Union);
-
-        var pixelX = (int)(dipRect.X * _dpiScaleX);
-        var pixelY = (int)(dipRect.Y * _dpiScaleY);
-        var pixelW = (int)(dipRect.Width * _dpiScaleX);
-        var pixelH = (int)(dipRect.Height * _dpiScaleY);
+        // dipRect.X et dipRect.Y sont relatifs au coin haut-gauche de la fenêtre WPF.
+        // Cette fenêtre couvre TOUT l'écran virtuel (positionnée à _virtualScreenBounds.X/Y
+        // en pixels, traduit en DIP dans OnLoaded). Donc dipRect (0,0) correspond au
+        // coin haut-gauche du bitmap (qui couvre aussi l'écran virtuel entier).
+        // Pas besoin d'ajouter d'offset : le bitmap et la fenêtre partagent la même origine.
+        var pixelX = (int)Math.Round(dipRect.X * _dpiScaleX);
+        var pixelY = (int)Math.Round(dipRect.Y * _dpiScaleY);
+        var pixelW = (int)Math.Round(dipRect.Width * _dpiScaleX);
+        var pixelH = (int)Math.Round(dipRect.Height * _dpiScaleY);
 
         // Clamp aux limites du bitmap
         pixelX = Math.Max(0, Math.Min(pixelX, _fullScreenBitmap.Width - 1));

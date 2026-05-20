@@ -13,9 +13,12 @@
     <Description>Application Launcher style Spotlight/PowerToys Run</Description>
     <StartupObject>QuickLauncher.App</StartupObject>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <!-- Requis par le source generator WinRT (WinRTGenericInstantiation.g.cs) -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- WFO0003 suggère SetHighDpiMode (WinForms only). Inapproprié ici :
+         l'app est à base WPF, le manifest est la seule méthode qui applique
+         le DPI awareness avant la création de la première fenêtre. -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
